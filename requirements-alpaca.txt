@@ -1,0 +1,3 @@
+# Optional broker integration — install only when Alpaca is confirmed
+-r requirements.txt
+alpaca-py>=0.43,<1.0
