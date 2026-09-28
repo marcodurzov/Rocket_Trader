@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Rocket Trader — Core v0.1
+Rocket Trader — Core v0.2
 
-Primer núcleo ejecutable del sistema.
+Núcleo de seguridad, decisión y ejecución desacoplada.
 
-Objetivos de esta versión:
-- Separar DECISIÓN, RIESGO y EJECUCIÓN.
-- Implementar el concepto de capital operativo vs. piso protegido.
-- Mantener un registro auditable de decisiones y órdenes.
-- Incorporar comparación contra precedentes/benchmarks de traders exitosos
-  sin convertirlos en una copia ciega.
-- Distinguir entre PRECEDENTED y NOVEL cuando la evidencia disponible no
-  permite una comparación fiable.
-- Tener PAPER execution como único modo de ejecución por defecto.
-- No contener todavía una estrategia específica de acciones/cripto: esa capa
-  requiere definir primero el mercado y la fuente de datos.
+PRINCIPIOS:
+1. El cerebro NO conoce los detalles del broker.
+2. El broker NO decide cuánto riesgo asumir.
+3. El panel web NO ejecuta lógica financiera crítica.
+4. PAPER es el modo por defecto y LIVE requiere una habilitación explícita.
+5. Rocket Trader opera inicialmente LONG-ONLY y con capital disponible en cash.
+6. Nunca se usa margen/apalancamiento deliberadamente.
+7. Los precedentes de traders exitosos sirven como benchmark, no como copia.
+8. Una situación novedosa puede ser aceptada, pero con presupuesto de riesgo
+   específico para novedad.
+9. El piso protegido y las reservas no forman parte del capital operativo.
+10. El reparto mensual es 10% reserva / 70% reinversión / 20% flujo personal.
 
-Este archivo es autocontenido y usa únicamente Python estándar.
-No envía órdenes reales.
+IMPORTANTE:
+- Este archivo NO contiene todavía la estrategia predictiva de mercado.
+- Tampoco habilita por sí mismo transferencias reales ni trading LIVE.
+- Es la base sobre la que se conectará el motor estadístico/ML.
 """
 
 from __future__ import annotations
@@ -56,6 +59,12 @@ def stable_id(prefix: str, payload: Any) -> str:
     return f"{prefix}_{digest}"
 
 
+def month_key(timestamp: Optional[str] = None) -> str:
+    if timestamp:
+        return timestamp[:7]
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
 # ============================================================================
 # ENUMS
 # ============================================================================
@@ -85,18 +94,28 @@ class ExecutionMode(str, enum.Enum):
     LIVE = "LIVE"
 
 
+class AllocationBucket(str, enum.Enum):
+    RESERVE = "RESERVE"
+    REINVESTMENT = "REINVESTMENT"
+    PERSONAL = "PERSONAL"
+
+
 # ============================================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN DE RIESGO
 # ============================================================================
 
 
 @dataclass(frozen=True)
 class RiskConfig:
-    """Reglas duras de protección del capital operativo."""
-
     initial_capital: float = 1000.0
+
+    # El piso empieza en 0 porque el primer objetivo es construirlo.
+    # Cuando se alcance un hito, se debe elevar explícitamente.
     permanent_floor: float = 0.0
-    reserve_cash: float = 0.0
+
+    # Operación inicialmente LONG-ONLY y CASH-ONLY.
+    allow_short: bool = False
+    allow_margin: bool = False
 
     max_position_pct: float = 0.25
     max_total_exposure_pct: float = 0.80
@@ -112,6 +131,9 @@ class RiskConfig:
 
     min_signal_score: float = 0.60
     min_benchmark_confidence: float = 0.55
+
+    # Una situación novedosa jamás recibe automáticamente el mismo presupuesto
+    # de riesgo que una situación con precedente robusto.
     novel_risk_budget_pct: float = 0.01
 
     def validate(self) -> None:
@@ -134,20 +156,20 @@ class RiskConfig:
             raise ValueError("initial_capital debe ser > 0")
         if self.permanent_floor < 0:
             raise ValueError("permanent_floor no puede ser negativo")
-        if self.reserve_cash < 0:
-            raise ValueError("reserve_cash no puede ser negativo")
         if self.max_position_pct > self.max_total_exposure_pct:
             raise ValueError("max_position_pct no puede superar max_total_exposure_pct")
         if self.max_trades_per_day < 1:
             raise ValueError("max_trades_per_day debe ser >= 1")
         if self.max_consecutive_losses < 1:
             raise ValueError("max_consecutive_losses debe ser >= 1")
+        if self.stop_loss_pct <= 0:
+            raise ValueError("stop_loss_pct debe ser > 0")
+        if self.take_profit_pct <= 0:
+            raise ValueError("take_profit_pct debe ser > 0")
 
 
 @dataclass(frozen=True)
 class TraderBenchmarkConfig:
-    """Configuración del uso de precedentes externos."""
-
     min_comparable_traders: int = 3
     min_comparable_events: int = 20
     min_confidence: float = 0.55
@@ -165,6 +187,23 @@ class TraderBenchmarkConfig:
             raise ValueError("novelty_penalty debe estar entre 0 y 1")
         if not 0 <= self.benchmark_weight <= 1:
             raise ValueError("benchmark_weight debe estar entre 0 y 1")
+
+
+@dataclass(frozen=True)
+class ProfitDistributionConfig:
+    reserve_pct: float = 0.10
+    reinvestment_pct: float = 0.70
+    personal_pct: float = 0.20
+    frequency: str = "MONTHLY"
+
+    def validate(self) -> None:
+        values = (self.reserve_pct, self.reinvestment_pct, self.personal_pct)
+        if any(x < 0 for x in values):
+            raise ValueError("Los porcentajes de distribución no pueden ser negativos")
+        if not math.isclose(sum(values), 1.0, abs_tol=1e-9):
+            raise ValueError("La distribución debe sumar 100%")
+        if self.frequency != "MONTHLY":
+            raise ValueError("La frecuencia configurada actualmente es MONTHLY")
 
 
 # ============================================================================
@@ -222,45 +261,34 @@ class Position:
 class AccountState:
     equity: float
     cash: float
-    protected_floor: float
-    reserve_cash: float = 0.0
-    daily_start_equity: float = 0.0
-    realized_pnl_today: float = 0.0
-    unrealized_pnl: float = 0.0
+    protected_floor: float = 0.0
+    positions: Dict[str, Position] = field(default_factory=dict)
+    day_start_equity: Optional[float] = None
     trades_today: int = 0
     consecutive_losses: int = 0
-    positions: Dict[str, Position] = field(default_factory=dict)
-    halted: bool = False
-    halt_reason: str = ""
+    realized_pnl_today: float = 0.0
 
     def __post_init__(self) -> None:
-        if self.daily_start_equity <= 0:
-            self.daily_start_equity = self.equity
+        if self.day_start_equity is None:
+            self.day_start_equity = self.equity
 
     @property
-    def operational_equity(self) -> float:
-        return max(0.0, self.equity - self.protected_floor - self.reserve_cash)
+    def operating_capital(self) -> float:
+        return max(0.0, self.equity - self.protected_floor)
 
     @property
-    def exposure(self) -> float:
+    def total_exposure(self) -> float:
         return sum(p.notional for p in self.positions.values())
 
     @property
-    def exposure_pct(self) -> float:
-        if self.operational_equity <= 0:
-            return 1.0 if self.exposure > 0 else 0.0
-        return self.exposure / self.operational_equity
-
-    @property
-    def daily_loss_pct(self) -> float:
-        if self.daily_start_equity <= 0:
-            return 1.0
-        loss = self.daily_start_equity - self.equity
-        return max(0.0, loss / self.daily_start_equity)
+    def daily_pnl_pct(self) -> float:
+        if not self.day_start_equity or self.day_start_equity <= 0:
+            return 0.0
+        return (self.equity - self.day_start_equity) / self.day_start_equity
 
 
 # ============================================================================
-# SEÑALES
+# SEÑAL
 # ============================================================================
 
 
@@ -273,6 +301,7 @@ class StrategySignal:
     confidence: float
     rationale: Dict[str, float] = field(default_factory=dict)
     strategy_id: str = "unknown"
+    setup_signature: str = ""
 
     def validate(self) -> None:
         if not self.symbol:
@@ -281,19 +310,22 @@ class StrategySignal:
             raise ValueError("signal.score debe estar entre 0 y 1")
         if not 0 <= self.confidence <= 1:
             raise ValueError("signal.confidence debe estar entre 0 y 1")
-        if self.side == Side.HOLD and abs(self.expected_return) > 0:
-            raise ValueError("HOLD no debe tener expected_return distinto de 0")
+
+
+# ============================================================================
+# BENCHMARK DE TRADERS EXITOSOS
+# ============================================================================
 
 
 @dataclass(frozen=True)
 class BenchmarkEvent:
     trader_id: str
-    symbol: str
+    strategy_family: str
     setup_signature: str
-    side: Side
-    outcome_return: float
     timestamp: str
-    source: str
+    outcome_return: float
+    risk_taken_pct: float
+    sample_weight: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -302,239 +334,191 @@ class BenchmarkAssessment:
     comparable_traders: int
     comparable_events: int
     confidence: float
-    historical_mean_return: float
-    historical_win_rate: float
-    agreement_rate: float
-    reason: str
+    benchmark_score: float
+    rationale: str
+
+
+class BenchmarkRepository(Protocol):
+    def comparable_events(self, setup_signature: str, strategy_family: str) -> Sequence[BenchmarkEvent]:
+        ...
+
+
+class InMemoryBenchmarkRepository:
+    def __init__(self, events: Optional[Iterable[BenchmarkEvent]] = None) -> None:
+        self._events = list(events or [])
+
+    def add(self, event: BenchmarkEvent) -> None:
+        self._events.append(event)
+
+    def comparable_events(self, setup_signature: str, strategy_family: str) -> Sequence[BenchmarkEvent]:
+        return [
+            event
+            for event in self._events
+            if event.setup_signature == setup_signature
+            and event.strategy_family == strategy_family
+        ]
+
+
+class BenchmarkEngine:
+    def __init__(self, config: TraderBenchmarkConfig, repository: BenchmarkRepository) -> None:
+        self.config = config
+        self.repository = repository
+        self.config.validate()
+
+    def assess(self, signal: StrategySignal) -> BenchmarkAssessment:
+        events = list(
+            self.repository.comparable_events(
+                signal.setup_signature,
+                signal.strategy_id,
+            )
+        )
+
+        traders = {e.trader_id for e in events}
+        if not events:
+            return BenchmarkAssessment(
+                evidence_class=EvidenceClass.INSUFFICIENT,
+                comparable_traders=0,
+                comparable_events=0,
+                confidence=0.0,
+                benchmark_score=0.0,
+                rationale="No existe evidencia comparable registrada.",
+            )
+
+        weighted_returns = [max(-1.0, min(1.0, e.outcome_return)) * e.sample_weight for e in events]
+        weights = [max(0.0, e.sample_weight) for e in events]
+        total_weight = sum(weights) or 1.0
+        avg_return = sum(weighted_returns) / total_weight
+        positive_rate = sum(1 for e in events if e.outcome_return > 0) / len(events)
+        consistency = 1.0 - min(1.0, abs(avg_return - signal.expected_return))
+        confidence = min(
+            1.0,
+            0.35 * min(1.0, len(traders) / self.config.min_comparable_traders)
+            + 0.35 * min(1.0, len(events) / self.config.min_comparable_events)
+            + 0.30 * positive_rate,
+        )
+        benchmark_score = clamp(
+            0.50 * positive_rate + 0.25 * consistency + 0.25 * clamp(avg_return + 0.5, 0, 1),
+            0,
+            1,
+        )
+
+        if (
+            len(traders) >= self.config.min_comparable_traders
+            and len(events) >= self.config.min_comparable_events
+            and confidence >= self.config.min_confidence
+        ):
+            evidence = EvidenceClass.PRECEDENTED
+            rationale = "Existe un precedente comparable suficientemente amplio."
+        else:
+            evidence = EvidenceClass.INSUFFICIENT
+            rationale = "Existe precedente, pero no alcanza la evidencia mínima."
+
+        return BenchmarkAssessment(
+            evidence_class=evidence,
+            comparable_traders=len(traders),
+            comparable_events=len(events),
+            confidence=confidence,
+            benchmark_score=benchmark_score,
+            rationale=rationale,
+        )
+
+
+# ============================================================================
+# RIESGO
+# ============================================================================
+
+
+class RiskEngine:
+    def __init__(self, config: RiskConfig) -> None:
+        self.config = config
+        self.config.validate()
+
+    def kill_switch_reason(self, account: AccountState) -> Optional[str]:
+        if account.equity <= account.protected_floor:
+            return "equity_at_or_below_protected_floor"
+        if account.daily_pnl_pct <= -self.config.daily_loss_limit_pct:
+            return "daily_loss_limit"
+        if account.trades_today >= self.config.max_trades_per_day:
+            return "max_trades_per_day"
+        if account.consecutive_losses >= self.config.max_consecutive_losses:
+            return "max_consecutive_losses"
+        return None
+
+    def _available_operating_cash(self, account: AccountState) -> float:
+        # Cash-only deliberado. Nunca usamos buying power de margen para decidir
+        # cuánto puede comprar el bot.
+        return max(0.0, min(account.cash, account.operating_capital))
+
+    def position_size(
+        self,
+        account: AccountState,
+        snapshot: MarketSnapshot,
+        evidence: EvidenceClass,
+        signal_confidence: float,
+    ) -> float:
+        operating = account.operating_capital
+        if operating <= 0:
+            return 0.0
+
+        available_cash = self._available_operating_cash(account)
+        if available_cash <= 0:
+            return 0.0
+
+        base_pct = self.config.max_position_pct
+        if evidence == EvidenceClass.NOVEL:
+            base_pct = min(base_pct, self.config.novel_risk_budget_pct)
+        elif evidence == EvidenceClass.INSUFFICIENT:
+            base_pct = min(base_pct, self.config.novel_risk_budget_pct * 1.5)
+
+        confidence_multiplier = clamp(signal_confidence, 0.25, 1.0)
+        max_notional = operating * base_pct * confidence_multiplier
+        remaining_exposure = max(
+            0.0,
+            operating * self.config.max_total_exposure_pct - account.total_exposure,
+        )
+        notional = min(max_notional, remaining_exposure, available_cash)
+        if snapshot.price <= 0:
+            return 0.0
+        return max(0.0, notional / snapshot.price)
+
+    def prices_for_long(self, entry_price: float) -> Tuple[float, float]:
+        stop = entry_price * (1.0 - self.config.stop_loss_pct)
+        take_profit = entry_price * (1.0 + self.config.take_profit_pct)
+        return stop, take_profit
+
+
+# ============================================================================
+# DECISIÓN
+# ============================================================================
 
 
 @dataclass(frozen=True)
 class Decision:
     decision_id: str
     timestamp: str
+    status: DecisionStatus
+    evidence_class: EvidenceClass
     symbol: str
     side: Side
-    status: DecisionStatus
-    score: float
-    risk_fraction: float
     quantity: float
     entry_price: float
     stop_price: Optional[float]
     take_profit_price: Optional[float]
-    evidence_class: EvidenceClass
+    combined_score: float
+    signal_score: float
+    benchmark_score: float
     benchmark_confidence: float
-    benchmark_mean_return: float
-    rationale: Dict[str, Any]
-
-
-# ============================================================================
-# BENCHMARK ENGINE
-# ============================================================================
-
-
-class BenchmarkRepository(Protocol):
-    def events(self) -> Sequence[BenchmarkEvent]:
-        ...
-
-
-@dataclass
-class InMemoryBenchmarkRepository:
-    _events: List[BenchmarkEvent] = field(default_factory=list)
-
-    def events(self) -> Sequence[BenchmarkEvent]:
-        return tuple(self._events)
-
-    def add(self, event: BenchmarkEvent) -> None:
-        self._events.append(event)
-
-
-class BenchmarkEngine:
-    """
-    Usa traders exitosos como referencia estadística, no como autoridad.
-
-    Si existe suficiente evidencia comparable, clasifica PRECEDENTED.
-    Si no existe, clasifica NOVEL o INSUFFICIENT y deja que el motor de riesgo
-    decida cuánto riesgo adicional puede asumir.
-    """
-
-    def __init__(self, repo: BenchmarkRepository, config: TraderBenchmarkConfig):
-        config.validate()
-        self.repo = repo
-        self.config = config
-
-    @staticmethod
-    def _similarity(snapshot: MarketSnapshot, event: BenchmarkEvent) -> float:
-        """Similitud simple y determinista; se reemplazará por el modelo real."""
-        if snapshot.symbol != event.symbol:
-            return 0.0
-        signature = snapshot.features.get("setup_signature")
-        if signature is not None and str(signature) == event.setup_signature:
-            return 1.0
-        return 0.0
-
-    def assess(self, snapshot: MarketSnapshot, signal: StrategySignal) -> BenchmarkAssessment:
-        candidates = [
-            e for e in self.repo.events()
-            if e.symbol == snapshot.symbol and e.side == signal.side
-        ]
-
-        comparable = [
-            e for e in candidates
-            if self._similarity(snapshot, e) >= 0.99
-        ]
-
-        traders = len({e.trader_id for e in comparable})
-        events = len(comparable)
-
-        if events == 0:
-            return BenchmarkAssessment(
-                evidence_class=EvidenceClass.NOVEL,
-                comparable_traders=0,
-                comparable_events=0,
-                confidence=0.0,
-                historical_mean_return=0.0,
-                historical_win_rate=0.0,
-                agreement_rate=0.0,
-                reason="No existe precedente comparable para este setup.",
-            )
-
-        returns = [e.outcome_return for e in comparable]
-        mean_return = sum(returns) / len(returns)
-        win_rate = sum(1 for r in returns if r > 0) / len(returns)
-        agreement = sum(1 for e in comparable if e.side == signal.side) / len(comparable)
-
-        trader_factor = min(1.0, traders / self.config.min_comparable_traders)
-        event_factor = min(1.0, events / self.config.min_comparable_events)
-        confidence = trader_factor * event_factor
-
-        if traders >= self.config.min_comparable_traders and events >= self.config.min_comparable_events and confidence >= self.config.min_confidence:
-            evidence = EvidenceClass.PRECEDENTED
-            reason = "Existe suficiente evidencia comparable de traders de referencia."
-        else:
-            evidence = EvidenceClass.INSUFFICIENT
-            reason = "Existe precedente, pero no suficiente evidencia para tratarlo como referencia robusta."
-
-        return BenchmarkAssessment(
-            evidence_class=evidence,
-            comparable_traders=traders,
-            comparable_events=events,
-            confidence=confidence,
-            historical_mean_return=mean_return,
-            historical_win_rate=win_rate,
-            agreement_rate=agreement,
-            reason=reason,
-        )
-
-
-# ============================================================================
-# RISK ENGINE
-# ============================================================================
-
-
-class RiskEngine:
-    def __init__(self, config: RiskConfig):
-        config.validate()
-        self.config = config
-
-    def refresh_kill_switch(self, account: AccountState) -> None:
-        if account.equity <= account.protected_floor:
-            account.halted = True
-            account.halt_reason = "Equity alcanzó el piso protegido."
-            return
-        if account.daily_loss_pct >= self.config.daily_loss_limit_pct:
-            account.halted = True
-            account.halt_reason = "Límite de pérdida diaria alcanzado."
-            return
-        if account.consecutive_losses >= self.config.max_consecutive_losses:
-            account.halted = True
-            account.halt_reason = "Máximo de pérdidas consecutivas alcanzado."
-            return
-        if account.trades_today >= self.config.max_trades_per_day:
-            account.halted = True
-            account.halt_reason = "Máximo de operaciones diarias alcanzado."
-
-    def max_trade_notional(self, account: AccountState, novel: bool) -> float:
-        operational = account.operational_equity
-        if operational <= 0:
-            return 0.0
-
-        base = operational * self.config.max_position_pct
-        if novel:
-            base = min(base, operational * self.config.novel_risk_budget_pct)
-        exposure_remaining = max(
-            0.0,
-            operational * self.config.max_total_exposure_pct - account.exposure,
-        )
-        return max(0.0, min(base, exposure_remaining))
-
-    def approve(
-        self,
-        account: AccountState,
-        signal: StrategySignal,
-        benchmark: BenchmarkAssessment,
-        price: float,
-    ) -> Tuple[DecisionStatus, float, str]:
-        self.refresh_kill_switch(account)
-        if account.halted:
-            return DecisionStatus.KILL_SWITCH, 0.0, account.halt_reason
-
-        if signal.side == Side.HOLD:
-            return DecisionStatus.REJECTED, 0.0, "Señal HOLD."
-
-        if signal.score < self.config.min_signal_score:
-            return DecisionStatus.REJECTED, 0.0, "Score de señal inferior al mínimo."
-
-        if signal.confidence < self.config.min_signal_score:
-            return DecisionStatus.REJECTED, 0.0, "Confianza de señal inferior al mínimo."
-
-        if benchmark.evidence_class == EvidenceClass.PRECEDENTED:
-            if benchmark.confidence < self.config.min_benchmark_confidence:
-                return DecisionStatus.REJECTED, 0.0, "Benchmark comparable pero con confianza insuficiente."
-            return DecisionStatus.APPROVED, self.config.max_position_pct, "Señal respaldada por precedente comparable."
-
-        if benchmark.evidence_class == EvidenceClass.NOVEL:
-            return DecisionStatus.NOVEL_RISK, self.config.novel_risk_budget_pct, "Setup novedoso: riesgo reducido y explícitamente limitado."
-
-        return DecisionStatus.NOVEL_RISK, self.config.novel_risk_budget_pct, "Precedente insuficiente: se trata como oportunidad de riesgo reducido."
-
-    def build_order_parameters(
-        self,
-        account: AccountState,
-        signal: StrategySignal,
-        price: float,
-        novel: bool,
-    ) -> Tuple[float, float, float]:
-        notional = self.max_trade_notional(account, novel)
-        if notional <= 0 or price <= 0:
-            return 0.0, 0.0, 0.0
-
-        quantity = notional / price
-        if signal.side == Side.BUY:
-            stop = price * (1.0 - self.config.stop_loss_pct)
-            take = price * (1.0 + self.config.take_profit_pct)
-        elif signal.side == Side.SELL:
-            stop = price * (1.0 + self.config.stop_loss_pct)
-            take = price * (1.0 - self.config.take_profit_pct)
-        else:
-            return 0.0, 0.0, 0.0
-        return quantity, stop, take
-
-
-# ============================================================================
-# DECISION ENGINE
-# ============================================================================
+    reason: str
 
 
 class DecisionEngine:
     def __init__(
         self,
-        risk: RiskEngine,
-        benchmark: BenchmarkEngine,
-        benchmark_config: TraderBenchmarkConfig,
-    ):
-        self.risk = risk
-        self.benchmark = benchmark
-        self.benchmark_config = benchmark_config
+        risk_engine: RiskEngine,
+        benchmark_engine: BenchmarkEngine,
+    ) -> None:
+        self.risk_engine = risk_engine
+        self.benchmark_engine = benchmark_engine
 
     def evaluate(
         self,
@@ -545,81 +529,120 @@ class DecisionEngine:
         snapshot.validate()
         signal.validate()
 
-        assessment = self.benchmark.assess(snapshot, signal)
-        status, _, status_reason = self.risk.approve(
-            account, signal, assessment, snapshot.price
-        )
-
-        novel = assessment.evidence_class != EvidenceClass.PRECEDENTED
-        quantity, stop, take = self.risk.build_order_parameters(
-            account, signal, snapshot.price, novel
-        )
-
-        benchmark_component = clamp(
-            assessment.confidence * (0.5 + 0.5 * clamp(assessment.historical_win_rate, 0, 1)),
-            0.0,
-            1.0,
-        )
-        if assessment.evidence_class == EvidenceClass.NOVEL:
-            benchmark_component = 1.0 - self.benchmark_config.novelty_penalty
-        elif assessment.evidence_class == EvidenceClass.INSUFFICIENT:
-            benchmark_component *= 0.5
-
-        combined_score = clamp(
-            (1.0 - self.benchmark_config.benchmark_weight) * signal.score
-            + self.benchmark_config.benchmark_weight * benchmark_component,
-            0.0,
-            1.0,
-        )
-
-        if status in {DecisionStatus.APPROVED, DecisionStatus.NOVEL_RISK} and quantity <= 0:
-            status = DecisionStatus.REJECTED
-            status_reason = "El motor de riesgo no permitió tamaño de posición."
-
         decision_id = stable_id(
-            "dec",
+            "decision",
             {
                 "symbol": snapshot.symbol,
                 "timestamp": snapshot.timestamp,
-                "side": signal.side.value,
+                "price": snapshot.price,
                 "strategy": signal.strategy_id,
-                "score": signal.score,
             },
         )
 
-        rationale = {
-            "strategy_id": signal.strategy_id,
-            "signal_score": signal.score,
-            "signal_confidence": signal.confidence,
-            "expected_return": signal.expected_return,
-            "benchmark_reason": assessment.reason,
-            "benchmark_traders": assessment.comparable_traders,
-            "benchmark_events": assessment.comparable_events,
-            "benchmark_confidence": assessment.confidence,
-            "benchmark_mean_return": assessment.historical_mean_return,
-            "benchmark_win_rate": assessment.historical_win_rate,
-            "benchmark_agreement": assessment.agreement_rate,
-            "status_reason": status_reason,
-            "combined_score": combined_score,
-            "novel": novel,
-        }
+        kill_reason = self.risk_engine.kill_switch_reason(account)
+        if kill_reason:
+            return Decision(
+                decision_id=decision_id,
+                timestamp=utc_now(),
+                status=DecisionStatus.KILL_SWITCH,
+                evidence_class=EvidenceClass.INSUFFICIENT,
+                symbol=snapshot.symbol,
+                side=Side.HOLD,
+                quantity=0.0,
+                entry_price=snapshot.price,
+                stop_price=None,
+                take_profit_price=None,
+                combined_score=0.0,
+                signal_score=signal.score,
+                benchmark_score=0.0,
+                benchmark_confidence=0.0,
+                reason=kill_reason,
+            )
+
+        if signal.side != Side.BUY:
+            return Decision(
+                decision_id=decision_id,
+                timestamp=utc_now(),
+                status=DecisionStatus.REJECTED,
+                evidence_class=EvidenceClass.INSUFFICIENT,
+                symbol=snapshot.symbol,
+                side=Side.HOLD,
+                quantity=0.0,
+                entry_price=snapshot.price,
+                stop_price=None,
+                take_profit_price=None,
+                combined_score=0.0,
+                signal_score=signal.score,
+                benchmark_score=0.0,
+                benchmark_confidence=0.0,
+                reason="La configuración inicial es LONG-ONLY.",
+            )
+
+        assessment = self.benchmark_engine.assess(signal)
+
+        if assessment.evidence_class == EvidenceClass.INSUFFICIENT:
+            evidence_class = EvidenceClass.NOVEL
+            benchmark_score = 0.0
+            benchmark_confidence = 0.0
+            combined_score = signal.score * (1.0 - self.benchmark_engine.config.novelty_penalty)
+            status = DecisionStatus.NOVEL_RISK
+            reason = "No hay precedente suficiente; se aplica presupuesto de riesgo de novedad."
+        else:
+            evidence_class = assessment.evidence_class
+            benchmark_score = assessment.benchmark_score
+            benchmark_confidence = assessment.confidence
+            weight = self.benchmark_engine.config.benchmark_weight
+            combined_score = (1.0 - weight) * signal.score + weight * benchmark_score
+            status = DecisionStatus.APPROVED
+            reason = assessment.rationale
+
+            if signal.confidence < self.risk_engine.config.min_signal_score:
+                status = DecisionStatus.REJECTED
+                reason = "Confianza/señal insuficiente."
+            elif combined_score < self.risk_engine.config.min_signal_score:
+                status = DecisionStatus.REJECTED
+                reason = "Score combinado insuficiente."
+            elif (
+                evidence_class == EvidenceClass.PRECEDENTED
+                and benchmark_confidence < self.risk_engine.config.min_benchmark_confidence
+            ):
+                status = DecisionStatus.REJECTED
+                reason = "Benchmark comparable con confianza insuficiente."
+
+        quantity = self.risk_engine.position_size(
+            account,
+            snapshot,
+            evidence_class,
+            signal.confidence,
+        )
+
+        if quantity <= 0:
+            status = DecisionStatus.REJECTED
+            reason = "No existe capital operativo disponible para abrir la posición."
+
+        stop_price, take_profit_price = self.risk_engine.prices_for_long(snapshot.price)
+
+        if status == DecisionStatus.REJECTED:
+            quantity = 0.0
+            stop_price = None
+            take_profit_price = None
 
         return Decision(
             decision_id=decision_id,
             timestamp=utc_now(),
-            symbol=snapshot.symbol,
-            side=signal.side,
             status=status,
-            score=combined_score,
-            risk_fraction=self.risk.config.novel_risk_budget_pct if novel else self.risk.config.max_position_pct,
-            quantity=quantity if status in {DecisionStatus.APPROVED, DecisionStatus.NOVEL_RISK} else 0.0,
+            evidence_class=evidence_class,
+            symbol=snapshot.symbol,
+            side=Side.BUY if quantity > 0 else Side.HOLD,
+            quantity=quantity,
             entry_price=snapshot.price,
-            stop_price=stop if status in {DecisionStatus.APPROVED, DecisionStatus.NOVEL_RISK} else None,
-            take_profit_price=take if status in {DecisionStatus.APPROVED, DecisionStatus.NOVEL_RISK} else None,
-            evidence_class=assessment.evidence_class,
-            benchmark_confidence=assessment.confidence,
-            benchmark_mean_return=assessment.historical_mean_return,
-            rationale=rationale,
+            stop_price=stop_price,
+            take_profit_price=take_profit_price,
+            combined_score=combined_score,
+            signal_score=signal.score,
+            benchmark_score=benchmark_score,
+            benchmark_confidence=benchmark_confidence,
+            reason=reason,
         )
 
 
@@ -634,11 +657,11 @@ class ExecutionOrder:
     symbol: str
     side: Side
     quantity: float
-    price: float
+    order_type: str
+    entry_price: float
     stop_price: Optional[float]
     take_profit_price: Optional[float]
     mode: ExecutionMode
-    timestamp: str
 
 
 class ExecutionAdapter(Protocol):
@@ -647,17 +670,9 @@ class ExecutionAdapter(Protocol):
 
 
 class PaperExecutionAdapter:
-    """Simulador mínimo y determinista. Nunca toca un broker."""
-
-    def __init__(self) -> None:
-        self.orders: List[ExecutionOrder] = []
-
     def submit(self, order: ExecutionOrder) -> Dict[str, Any]:
         if order.mode != ExecutionMode.PAPER:
-            raise ValueError("PaperExecutionAdapter solo acepta PAPER")
-        if order.quantity <= 0:
-            raise ValueError("quantity debe ser > 0")
-        self.orders.append(order)
+            raise RuntimeError("PaperExecutionAdapter solo acepta PAPER")
         return {
             "accepted": True,
             "mode": order.mode.value,
@@ -665,52 +680,187 @@ class PaperExecutionAdapter:
             "symbol": order.symbol,
             "side": order.side.value,
             "quantity": order.quantity,
-            "price": order.price,
-            "timestamp": order.timestamp,
+            "order_type": order.order_type,
+            "entry_price": order.entry_price,
+            "stop_price": order.stop_price,
+            "take_profit_price": order.take_profit_price,
+            "timestamp": utc_now(),
+        }
+
+
+class AlpacaExecutionAdapter:
+    """Adaptador opcional para alpaca-py.
+
+    Por seguridad:
+    - PAPER es el default.
+    - LIVE requiere ALPACA_LIVE_ENABLED=true.
+    - No envía SELL SHORT.
+    - Envía bracket orders para BUY.
+    - El quantity recibido ya fue calculado por nuestro RiskEngine usando cash,
+      no buying power de margen.
+    """
+
+    def __init__(self, api_key: str, api_secret: str, mode: ExecutionMode = ExecutionMode.PAPER) -> None:
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.mode = mode
+
+        if self.mode == ExecutionMode.LIVE and os.getenv("ALPACA_LIVE_ENABLED", "false").lower() != "true":
+            raise RuntimeError("LIVE está bloqueado. Define ALPACA_LIVE_ENABLED=true explícitamente.")
+
+        try:
+            from alpaca.trading.client import TradingClient
+            self._TradingClient = TradingClient
+        except ImportError as exc:
+            raise RuntimeError("Falta alpaca-py. Instala: pip install alpaca-py") from exc
+
+        self.client = TradingClient(
+            self.api_key,
+            self.api_secret,
+            paper=self.mode == ExecutionMode.PAPER,
+        )
+
+    def submit(self, order: ExecutionOrder) -> Dict[str, Any]:
+        if order.mode != self.mode:
+            raise RuntimeError("El modo de la orden no coincide con el adaptador Alpaca")
+        if order.side != Side.BUY:
+            raise RuntimeError("Rocket Trader v0.2 solo permite BUY/LONG")
+        if order.quantity <= 0:
+            raise ValueError("quantity debe ser > 0")
+        if order.stop_price is None or order.take_profit_price is None:
+            raise ValueError("Toda entrada debe llevar stop y take profit")
+
+        from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
+        from alpaca.trading.requests import (
+            MarketOrderRequest,
+            StopLossRequest,
+            TakeProfitRequest,
+        )
+
+        request = MarketOrderRequest(
+            symbol=order.symbol,
+            qty=order.quantity,
+            side=OrderSide.BUY,
+            time_in_force=TimeInForce.DAY,
+            order_class=OrderClass.BRACKET,
+            take_profit=TakeProfitRequest(limit_price=round(order.take_profit_price, 2)),
+            stop_loss=StopLossRequest(stop_price=round(order.stop_price, 2)),
+            client_order_id=order.client_order_id,
+        )
+
+        result = self.client.submit_order(order_data=request)
+        return {
+            "accepted": True,
+            "mode": self.mode.value,
+            "order_id": str(result.id),
+            "client_order_id": order.client_order_id,
+            "symbol": order.symbol,
+            "status": str(result.status),
         }
 
 
 # ============================================================================
-# AUDITORÍA / PERSISTENCIA
+# DISTRIBUCIÓN MENSUAL DE UTILIDADES
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class DistributionPlan:
+    period: str
+    distributable_profit: float
+    reserve_amount: float
+    reinvestment_amount: float
+    personal_amount: float
+
+
+class ProfitAllocator:
+    """Calcula el reparto; no mueve dinero por sí mismo."""
+
+    def __init__(self, config: ProfitDistributionConfig) -> None:
+        self.config = config
+        self.config.validate()
+
+    def plan(self, distributable_profit: float, period: Optional[str] = None) -> DistributionPlan:
+        if distributable_profit < 0:
+            raise ValueError("No se distribuyen pérdidas como utilidades")
+        amount = float(distributable_profit)
+        reserve = amount * self.config.reserve_pct
+        reinvestment = amount * self.config.reinvestment_pct
+        personal = amount * self.config.personal_pct
+        # Evita pérdida por redondeos en centavos.
+        personal = amount - reserve - reinvestment
+        return DistributionPlan(
+            period=period or month_key(),
+            distributable_profit=amount,
+            reserve_amount=round(reserve, 2),
+            reinvestment_amount=round(reinvestment, 2),
+            personal_amount=round(personal, 2),
+        )
+
+
+class MoneyTransferAdapter(Protocol):
+    def transfer(self, amount: float, destination: str, reference: str) -> Dict[str, Any]:
+        ...
+
+
+class DisabledMoneyTransferAdapter:
+    """Bloquea transferencias reales hasta implementar y validar el rail bancario."""
+
+    def transfer(self, amount: float, destination: str, reference: str) -> Dict[str, Any]:
+        raise RuntimeError(
+            "Transferencias automáticas reales están deshabilitadas en esta fase. "
+            "El plan se calcula y audita, pero no se mueve dinero."
+        )
+
+
+# ============================================================================
+# AUDITORÍA
 # ============================================================================
 
 
 class AuditLog:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str = "data/rocket_trader_audit.jsonl") -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def append(self, event_type: str, payload: Dict[str, Any]) -> None:
+    def write(self, event_type: str, payload: Dict[str, Any]) -> None:
         record = {
             "timestamp": utc_now(),
             "event_type": event_type,
             "payload": payload,
         }
         with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+            fh.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
 # ============================================================================
-# ORQUESTADOR SEGURO
+# CORE
 # ============================================================================
 
 
 class RocketTraderCore:
-    """Orquestador: datos -> señal -> benchmark -> riesgo -> decisión -> ejecución."""
-
     def __init__(
         self,
         risk_config: RiskConfig,
         benchmark_config: TraderBenchmarkConfig,
+        distribution_config: Optional[ProfitDistributionConfig] = None,
         benchmark_repository: Optional[BenchmarkRepository] = None,
         execution_adapter: Optional[ExecutionAdapter] = None,
-        audit_path: str | Path = "data/rocket_trader_audit.jsonl",
-    ):
-        self.risk = RiskEngine(risk_config)
-        repo = benchmark_repository or InMemoryBenchmarkRepository()
-        self.benchmark = BenchmarkEngine(repo, benchmark_config)
-        self.decisions = DecisionEngine(self.risk, self.benchmark, benchmark_config)
-        self.execution = execution_adapter or PaperExecutionAdapter()
+        audit_path: str = "data/rocket_trader_audit.jsonl",
+    ) -> None:
+        self.risk_engine = RiskEngine(risk_config)
+        self.benchmark_engine = BenchmarkEngine(
+            benchmark_config,
+            benchmark_repository or InMemoryBenchmarkRepository(),
+        )
+        self.decision_engine = DecisionEngine(
+            self.risk_engine,
+            self.benchmark_engine,
+        )
+        self.profit_allocator = ProfitAllocator(
+            distribution_config or ProfitDistributionConfig()
+        )
+        self.execution_adapter = execution_adapter or PaperExecutionAdapter()
         self.audit = AuditLog(audit_path)
 
     def evaluate_and_maybe_execute(
@@ -718,35 +868,39 @@ class RocketTraderCore:
         account: AccountState,
         snapshot: MarketSnapshot,
         signal: StrategySignal,
-        execute: bool = False,
+        execute: bool = True,
     ) -> Decision:
-        decision = self.decisions.evaluate(account, snapshot, signal)
-        self.audit.append("DECISION", dataclasses.asdict(decision))
+        decision = self.decision_engine.evaluate(account, snapshot, signal)
+        self.audit.write("decision", dataclasses.asdict(decision))
 
-        if not execute:
-            return decision
+        if execute and decision.quantity > 0 and decision.status in {
+            DecisionStatus.APPROVED,
+            DecisionStatus.NOVEL_RISK,
+        }:
+            order = ExecutionOrder(
+                client_order_id=stable_id("order", decision.decision_id),
+                symbol=decision.symbol,
+                side=decision.side,
+                quantity=decision.quantity,
+                order_type="MARKET_BRACKET",
+                entry_price=decision.entry_price,
+                stop_price=decision.stop_price,
+                take_profit_price=decision.take_profit_price,
+                mode=ExecutionMode.PAPER,
+            )
+            result = self.execution_adapter.submit(order)
+            self.audit.write("execution", result)
 
-        if decision.status not in {DecisionStatus.APPROVED, DecisionStatus.NOVEL_RISK}:
-            return decision
-
-        order = ExecutionOrder(
-            client_order_id=str(uuid.uuid4()),
-            symbol=decision.symbol,
-            side=decision.side,
-            quantity=decision.quantity,
-            price=decision.entry_price,
-            stop_price=decision.stop_price,
-            take_profit_price=decision.take_profit_price,
-            mode=ExecutionMode.PAPER,
-            timestamp=utc_now(),
-        )
-        result = self.execution.submit(order)
-        self.audit.append("PAPER_EXECUTION", result)
         return decision
+
+    def monthly_distribution_plan(self, distributable_profit: float, period: Optional[str] = None) -> DistributionPlan:
+        plan = self.profit_allocator.plan(distributable_profit, period)
+        self.audit.write("distribution_plan", dataclasses.asdict(plan))
+        return plan
 
 
 # ============================================================================
-# EJEMPLO EJECUTABLE / SELF-TEST
+# CONFIGURACIÓN DEMO
 # ============================================================================
 
 
@@ -754,7 +908,8 @@ def build_demo_core() -> RocketTraderCore:
     risk_config = RiskConfig(
         initial_capital=1000.0,
         permanent_floor=0.0,
-        reserve_cash=0.0,
+        allow_short=False,
+        allow_margin=False,
         max_position_pct=0.25,
         max_total_exposure_pct=0.80,
         max_loss_per_trade_pct=0.02,
@@ -777,13 +932,26 @@ def build_demo_core() -> RocketTraderCore:
         benchmark_weight=0.25,
     )
 
+    distribution_config = ProfitDistributionConfig(
+        reserve_pct=0.10,
+        reinvestment_pct=0.70,
+        personal_pct=0.20,
+        frequency="MONTHLY",
+    )
+
     return RocketTraderCore(
         risk_config=risk_config,
         benchmark_config=benchmark_config,
+        distribution_config=distribution_config,
         benchmark_repository=InMemoryBenchmarkRepository(),
         execution_adapter=PaperExecutionAdapter(),
         audit_path="data/rocket_trader_audit.jsonl",
     )
+
+
+# ============================================================================
+# SELF-TEST
+# ============================================================================
 
 
 def self_test() -> Dict[str, Any]:
@@ -799,7 +967,6 @@ def self_test() -> Dict[str, Any]:
         timestamp=utc_now(),
         price=100.0,
         volume=1000.0,
-        features={"setup_signature": "NOVEL_SETUP_A"},
     )
 
     signal = StrategySignal(
@@ -810,6 +977,7 @@ def self_test() -> Dict[str, Any]:
         confidence=0.80,
         rationale={"demo_signal": 1.0},
         strategy_id="demo",
+        setup_signature="NOVEL_SETUP_A",
     )
 
     decision = core.evaluate_and_maybe_execute(
@@ -826,14 +994,36 @@ def self_test() -> Dict[str, Any]:
     assert decision.stop_price == 98.0
     assert decision.take_profit_price == 104.0
 
+    plan = core.monthly_distribution_plan(1000.0, "2026-09")
+    assert plan.reserve_amount == 100.0
+    assert plan.reinvestment_amount == 700.0
+    assert plan.personal_amount == 200.0
+
+    # Kill switch por piso.
+    floor_account = AccountState(
+        equity=500.0,
+        cash=500.0,
+        protected_floor=500.0,
+    )
+    floor_decision = core.evaluate_and_maybe_execute(
+        account=floor_account,
+        snapshot=snapshot,
+        signal=signal,
+        execute=False,
+    )
+    assert floor_decision.status == DecisionStatus.KILL_SWITCH
+
     return {
         "ok": True,
-        "decision_id": decision.decision_id,
-        "status": decision.status.value,
-        "evidence_class": decision.evidence_class.value,
-        "quantity": decision.quantity,
-        "stop_price": decision.stop_price,
-        "take_profit_price": decision.take_profit_price,
+        "decision": {
+            "status": decision.status.value,
+            "evidence_class": decision.evidence_class.value,
+            "quantity": decision.quantity,
+            "stop_price": decision.stop_price,
+            "take_profit_price": decision.take_profit_price,
+        },
+        "monthly_distribution": dataclasses.asdict(plan),
+        "floor_kill_switch": floor_decision.status.value,
     }
 
 
