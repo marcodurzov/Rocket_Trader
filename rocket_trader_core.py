@@ -191,6 +191,9 @@ class TraderBenchmarkConfig:
 
 @dataclass(frozen=True)
 class ProfitDistributionConfig:
+    # Hasta $100,000 MXN de capital operativo: 100% de la utilidad se reinvierte.
+    # A partir de $100,000 MXN: 70% reinversión / 20% personal / 10% reserva.
+    threshold_mxn: float = 100_000.0
     reserve_pct: float = 0.10
     reinvestment_pct: float = 0.70
     personal_pct: float = 0.20
@@ -198,6 +201,8 @@ class ProfitDistributionConfig:
 
     def validate(self) -> None:
         values = (self.reserve_pct, self.reinvestment_pct, self.personal_pct)
+        if self.threshold_mxn <= 0:
+            raise ValueError("threshold_mxn debe ser > 0")
         if any(x < 0 for x in values):
             raise ValueError("Los porcentajes de distribución no pueden ser negativos")
         if not math.isclose(sum(values), 1.0, abs_tol=1e-9):
@@ -780,15 +785,40 @@ class ProfitAllocator:
         self.config = config
         self.config.validate()
 
-    def plan(self, distributable_profit: float, period: Optional[str] = None) -> DistributionPlan:
+    def plan(
+        self,
+        distributable_profit: float,
+        operating_capital: float = 0.0,
+        period: Optional[str] = None,
+    ) -> DistributionPlan:
+        """Calcula automáticamente la distribución mensual por nivel de capital.
+
+        Regla:
+        - Si el capital operativo al inicio del período es menor a $100,000,
+          la utilidad necesaria para llegar al umbral se reinvierte al 100%.
+        - La utilidad que exceda ese umbral se reparte 70/20/10.
+        """
         if distributable_profit < 0:
             raise ValueError("No se distribuyen pérdidas como utilidades")
+        if operating_capital < 0:
+            raise ValueError("operating_capital no puede ser negativo")
+
         amount = float(distributable_profit)
-        reserve = amount * self.config.reserve_pct
-        reinvestment = amount * self.config.reinvestment_pct
-        personal = amount * self.config.personal_pct
-        # Evita pérdida por redondeos en centavos.
+        capital = float(operating_capital)
+        threshold = self.config.threshold_mxn
+
+        # Parte necesaria para llevar el capital operativo hasta el umbral.
+        growth_needed = max(0.0, threshold - capital)
+        full_reinvestment = min(amount, growth_needed)
+        post_threshold_profit = max(0.0, amount - full_reinvestment)
+
+        reserve = post_threshold_profit * self.config.reserve_pct
+        reinvestment = full_reinvestment + (post_threshold_profit * self.config.reinvestment_pct)
+        personal = post_threshold_profit * self.config.personal_pct
+
+        # Ajuste final para que la suma sea exactamente la utilidad distribuible.
         personal = amount - reserve - reinvestment
+
         return DistributionPlan(
             period=period or month_key(),
             distributable_profit=amount,
@@ -893,8 +923,17 @@ class RocketTraderCore:
 
         return decision
 
-    def monthly_distribution_plan(self, distributable_profit: float, period: Optional[str] = None) -> DistributionPlan:
-        plan = self.profit_allocator.plan(distributable_profit, period)
+    def monthly_distribution_plan(
+        self,
+        distributable_profit: float,
+        operating_capital: float = 0.0,
+        period: Optional[str] = None,
+    ) -> DistributionPlan:
+        plan = self.profit_allocator.plan(
+            distributable_profit,
+            operating_capital=operating_capital,
+            period=period,
+        )
         self.audit.write("distribution_plan", dataclasses.asdict(plan))
         return plan
 
@@ -933,6 +972,7 @@ def build_demo_core() -> RocketTraderCore:
     )
 
     distribution_config = ProfitDistributionConfig(
+        threshold_mxn=100_000.0,
         reserve_pct=0.10,
         reinvestment_pct=0.70,
         personal_pct=0.20,
@@ -994,10 +1034,23 @@ def self_test() -> Dict[str, Any]:
     assert decision.stop_price == 98.0
     assert decision.take_profit_price == 104.0
 
-    plan = core.monthly_distribution_plan(1000.0, "2026-09")
-    assert plan.reserve_amount == 100.0
-    assert plan.reinvestment_amount == 700.0
-    assert plan.personal_amount == 200.0
+    # Hasta $100,000: 100% reinversión.
+    plan = core.monthly_distribution_plan(1000.0, operating_capital=1000.0, period="2026-09")
+    assert plan.reserve_amount == 0.0
+    assert plan.reinvestment_amount == 1000.0
+    assert plan.personal_amount == 0.0
+
+    # Cruce del umbral: primero completa $100,000 y solo el excedente usa 70/20/10.
+    cross = core.monthly_distribution_plan(10_000.0, operating_capital=95_000.0, period="2026-09")
+    assert cross.reserve_amount == 500.0
+    assert cross.reinvestment_amount == 8_500.0
+    assert cross.personal_amount == 1_000.0
+
+    # Por encima de $100,000: 70/20/10.
+    mature = core.monthly_distribution_plan(10_000.0, operating_capital=100_000.0, period="2026-09")
+    assert mature.reserve_amount == 1_000.0
+    assert mature.reinvestment_amount == 7_000.0
+    assert mature.personal_amount == 2_000.0
 
     # Kill switch por piso.
     floor_account = AccountState(
