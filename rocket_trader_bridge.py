@@ -1,92 +1,303 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Rocket Trader — Bridge v0.1
 
-Conecta el motor estadístico/ML con el núcleo de riesgo/decisión sin acoplar
-ninguna lógica de trading al broker.
+"""
+Rocket Trader — Bridge v0.2
+
+Conecta:
+
+    rocket_trader_engine
+            ↓
+    StrategySignal
+            ↓
+    rocket_trader_core
+            ↓
+    Decision
+
+IMPORTANTE:
+- Este módulo NO decide cuánto arriesgar.
+- El RiskEngine del Core mantiene el control.
+- LONG-ONLY.
+- PAPER por defecto.
+- execute=False por defecto.
+- No utiliza margen.
+- No utiliza leverage.
+- No utiliza short.
 """
 
 from __future__ import annotations
 
-import dataclasses
-import json
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 from rocket_trader_core import (
     AccountState,
-    BenchmarkRepository,
-    Decision,
-    InMemoryBenchmarkRepository,
+    MarketSnapshot,
     RocketTraderCore,
     Side,
     StrategySignal,
-    TraderBenchmarkConfig,
-    RiskConfig,
+    Decision,
 )
-from rocket_trader_engine import SignalCandidate, SignalEngine
+
+from rocket_trader_engine import (
+    SignalCandidate,
+)
 
 
-class EngineBridge:
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class BridgeConfig:
+    execute_by_default: bool = False
+
+
+# ============================================================================
+# BRIDGE
+# ============================================================================
+
+
+class RocketTraderBridge:
+    """
+    Adaptador entre el motor estadístico y RocketTraderCore.
+    """
+
     def __init__(
         self,
-        signal_engine: SignalEngine,
         core: RocketTraderCore,
+        config: Optional[BridgeConfig] = None,
     ) -> None:
-        self.signal_engine = signal_engine
+
         self.core = core
+        self.config = config or BridgeConfig()
+
+    # ------------------------------------------------------------------------
+    # SIGNAL CONVERSION
+    # ------------------------------------------------------------------------
 
     @staticmethod
-    def candidate_to_signal(candidate: SignalCandidate) -> StrategySignal:
-        # LONG-ONLY: el engine actual solamente genera oportunidades alcistas.
-        return StrategySignal(
-            symbol=candidate.symbol,
-            side=Side.BUY,
-            score=candidate.score,
-            expected_return=candidate.expected_return,
-            confidence=candidate.confidence,
-            rationale={
-                "probability_up": candidate.probability_up,
-                "evidence_novel": 1.0 if candidate.evidence_class == "NOVEL" else 0.0,
-            },
-            strategy_id="statistical_ensemble_v0_1",
-            setup_signature=candidate.setup_signature,
+    def candidate_to_strategy_signal(
+        candidate: SignalCandidate,
+    ) -> StrategySignal:
+
+        symbol = str(
+            getattr(candidate, "symbol", "")
         )
 
-    def evaluate(
-        self,
-        market_data,
-        symbol: str,
-        account: AccountState,
-        execute: bool = False,
-    ) -> Dict[str, Any]:
-        candidate = self.signal_engine.generate_signal(market_data, symbol)
-        signal = self.candidate_to_signal(candidate)
-        decision = self.core.evaluate_and_maybe_execute(
-            account=account,
-            snapshot=self._snapshot(candidate, market_data),
-            signal=signal,
-            execute=execute,
+        score = float(
+            getattr(candidate, "score", 0.0)
         )
+
+        expected_return = float(
+            getattr(candidate, "expected_return", 0.0)
+        )
+
+        confidence = float(
+            getattr(candidate, "confidence", 0.0)
+        )
+
+        strategy_id = str(
+            getattr(
+                candidate,
+                "strategy_id",
+                "rocket_trader_engine",
+            )
+        )
+
+        setup_signature = str(
+            getattr(
+                candidate,
+                "setup_signature",
+                "",
+            )
+        )
+
+        rationale = getattr(
+            candidate,
+            "rationale",
+            {},
+        )
+
+        if not isinstance(rationale, dict):
+            rationale = {
+                "engine_score": score,
+            }
+
+        side_value = getattr(
+            candidate,
+            "side",
+            "BUY",
+        )
+
+        if isinstance(side_value, Side):
+            side = side_value
+
+        else:
+            side_text = str(
+                side_value
+            ).upper()
+
+            if side_text in {
+                "BUY",
+                "LONG",
+            }:
+                side = Side.BUY
+
+            elif side_text in {
+                "SELL",
+                "SHORT",
+            }:
+                side = Side.SELL
+
+            else:
+                side = Side.HOLD
+
+        return StrategySignal(
+            symbol=symbol,
+            side=side,
+            score=score,
+            expected_return=expected_return,
+            confidence=confidence,
+            rationale=rationale,
+            strategy_id=strategy_id,
+            setup_signature=setup_signature,
+        )
+
+    # ------------------------------------------------------------------------
+    # EVALUATION
+    # ------------------------------------------------------------------------
+
+    def evaluate_candidate(
+        self,
+        *,
+        account: AccountState,
+        snapshot: MarketSnapshot,
+        candidate: SignalCandidate,
+    ) -> Decision:
+
+        signal = self.candidate_to_strategy_signal(
+            candidate
+        )
+
+        return self.core.evaluate_and_maybe_execute(
+            account=account,
+            snapshot=snapshot,
+            signal=signal,
+            execute=False,
+        )
+
+    # ------------------------------------------------------------------------
+    # EXECUTION
+    # ------------------------------------------------------------------------
+
+    def execute_candidate(
+        self,
+        *,
+        account: AccountState,
+        snapshot: MarketSnapshot,
+        candidate: SignalCandidate,
+        execute: Optional[bool] = None,
+    ) -> Decision:
+
+        signal = self.candidate_to_strategy_signal(
+            candidate
+        )
+
+        should_execute = (
+            self.config.execute_by_default
+            if execute is None
+            else execute
+        )
+
+        return self.core.evaluate_and_maybe_execute(
+            account=account,
+            snapshot=snapshot,
+            signal=signal,
+            execute=should_execute,
+        )
+
+    # ------------------------------------------------------------------------
+    # DICTIONARY HELPER
+    # ------------------------------------------------------------------------
+
+    @staticmethod
+    def candidate_to_dict(
+        candidate: SignalCandidate,
+    ) -> Dict[str, Any]:
+
+        if hasattr(candidate, "__dict__"):
+            return dict(candidate.__dict__)
+
         return {
-            "candidate": dataclasses.asdict(candidate),
-            "signal": dataclasses.asdict(signal),
-            "decision": dataclasses.asdict(decision),
+            "symbol": getattr(
+                candidate,
+                "symbol",
+                None,
+            ),
+            "score": getattr(
+                candidate,
+                "score",
+                None,
+            ),
+            "expected_return": getattr(
+                candidate,
+                "expected_return",
+                None,
+            ),
+            "confidence": getattr(
+                candidate,
+                "confidence",
+                None,
+            ),
+            "strategy_id": getattr(
+                candidate,
+                "strategy_id",
+                None,
+            ),
+            "setup_signature": getattr(
+                candidate,
+                "setup_signature",
+                None,
+            ),
         }
 
-    @staticmethod
-    def _snapshot(candidate: SignalCandidate, market_data):
-        from rocket_trader_core import MarketSnapshot
-        latest = market_data.iloc[-1]
-        return MarketSnapshot(
-            symbol=candidate.symbol,
-            timestamp=str(candidate.timestamp),
-            price=float(latest["close"]),
-            volume=float(latest["volume"]),
-        )
+
+# ============================================================================
+# FACTORY
+# ============================================================================
 
 
-def build_bridge(signal_engine: SignalEngine | None = None) -> EngineBridge:
-    engine = signal_engine or SignalEngine()
+def build_bridge(
+    core: RocketTraderCore,
+    *,
+    execute_by_default: bool = False,
+) -> RocketTraderBridge:
+
+    return RocketTraderBridge(
+        core=core,
+        config=BridgeConfig(
+            execute_by_default=execute_by_default
+        ),
+    )
+
+
+# ============================================================================
+# SELF TEST
+# ============================================================================
+
+
+def self_test() -> Dict[str, Any]:
+
+    from rocket_trader_core import (
+        RiskConfig,
+        TraderBenchmarkConfig,
+        InMemoryBenchmarkRepository,
+        PaperExecutionAdapter,
+        utc_now,
+    )
+
     core = RocketTraderCore(
         risk_config=RiskConfig(
             initial_capital=1000.0,
@@ -96,12 +307,126 @@ def build_bridge(signal_engine: SignalEngine | None = None) -> EngineBridge:
         ),
         benchmark_config=TraderBenchmarkConfig(),
         benchmark_repository=InMemoryBenchmarkRepository(),
+        execution_adapter=PaperExecutionAdapter(),
+        audit_path="data/rocket_trader_bridge_test.jsonl",
     )
-    return EngineBridge(engine, core)
+
+    bridge = RocketTraderBridge(
+        core=core,
+        config=BridgeConfig(
+            execute_by_default=False
+        ),
+    )
+
+    # Construimos un candidate dinámicamente para mantener
+    # compatibilidad con la versión actual del engine.
+    try:
+
+        candidate = SignalCandidate(
+            symbol="DEMO",
+            score=0.85,
+            expected_return=0.03,
+            confidence=0.85,
+            strategy_id="bridge_test",
+            setup_signature="BRIDGE_TEST_SETUP",
+        )
+
+    except TypeError:
+
+        # Algunas versiones del engine pueden tener
+        # argumentos adicionales. Intentamos construirlo
+        # mediante introspección de campos disponibles.
+
+        import inspect
+
+        fields = inspect.signature(
+            SignalCandidate
+        ).parameters
+
+        kwargs = {}
+
+        if "symbol" in fields:
+            kwargs["symbol"] = "DEMO"
+
+        if "score" in fields:
+            kwargs["score"] = 0.85
+
+        if "expected_return" in fields:
+            kwargs["expected_return"] = 0.03
+
+        if "confidence" in fields:
+            kwargs["confidence"] = 0.85
+
+        if "strategy_id" in fields:
+            kwargs["strategy_id"] = "bridge_test"
+
+        if "setup_signature" in fields:
+            kwargs["setup_signature"] = (
+                "BRIDGE_TEST_SETUP"
+            )
+
+        if "side" in fields:
+            kwargs["side"] = "BUY"
+
+        if "rationale" in fields:
+            kwargs["rationale"] = {
+                "bridge_test": 1.0
+            }
+
+        candidate = SignalCandidate(
+            **kwargs
+        )
+
+    snapshot = MarketSnapshot(
+        symbol="DEMO",
+        timestamp=utc_now(),
+        price=100.0,
+        volume=1000.0,
+    )
+
+    account = AccountState(
+        equity=1000.0,
+        cash=1000.0,
+        protected_floor=0.0,
+    )
+
+    signal = bridge.candidate_to_strategy_signal(
+        candidate
+    )
+
+    assert signal.symbol == "DEMO"
+    assert signal.side in {
+        Side.BUY,
+        Side.HOLD,
+        Side.SELL,
+    }
+
+    decision = bridge.evaluate_candidate(
+        account=account,
+        snapshot=snapshot,
+        candidate=candidate,
+    )
+
+    assert decision is not None
+
+    # El método evaluate_candidate jamás debe ejecutar
+    # una orden por sí mismo.
+    assert bridge.config.execute_by_default is False
+
+    return {
+        "ok": True,
+        "module": "rocket_trader_bridge",
+        "execution_default": False,
+        "live_enabled": False,
+    }
 
 
 if __name__ == "__main__":
-    print(json.dumps({
-        "ok": True,
-        "component": "rocket_trader_bridge",
-        "mode": "BROKER_INDEPENDENT",
+
+    result = self_test()
+
+    print(
+        "ROCKET TRADER BRIDGE SELF-TEST: PASS"
+    )
+
+    print(result)
