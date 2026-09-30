@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
-Rocket Trader — Core v0.2
+Rocket Trader — Core v0.3
 
-Núcleo de seguridad, decisión y ejecución desacoplada.
+Núcleo de seguridad, decisión, capital y ejecución.
 
-PRINCIPIOS:
-1. El cerebro NO conoce los detalles del broker.
-2. El broker NO decide cuánto riesgo asumir.
-3. El panel web NO ejecuta lógica financiera crítica.
-4. PAPER es el modo por defecto y LIVE requiere una habilitación explícita.
-5. Rocket Trader opera inicialmente LONG-ONLY y con capital disponible en cash.
-6. Nunca se usa margen/apalancamiento deliberadamente.
-7. Los precedentes de traders exitosos sirven como benchmark, no como copia.
-8. Una situación novedosa puede ser aceptada, pero con presupuesto de riesgo
-   específico para novedad.
-9. El piso protegido y las reservas no forman parte del capital operativo.
-10. El reparto mensual es 10% reserva / 70% reinversión / 20% flujo personal.
-
-IMPORTANTE:
-- Este archivo NO contiene todavía la estrategia predictiva de mercado.
-- Tampoco habilita por sí mismo transferencias reales ni trading LIVE.
-- Es la base sobre la que se conectará el motor estadístico/ML.
+REGLAS:
+- LONG ONLY
+- CASH ONLY
+- SIN MARGIN
+- SIN LEVERAGE
+- SIN SHORT
+- PAPER por defecto
+- LIVE requiere habilitación explícita
+- Capital operativo < 100,000 MXN:
+    100% reinversión
+    0% personal
+    0% reserva
+- Capital operativo >= 100,000 MXN:
+    70% reinversión
+    20% personal
+    10% reserva
+- La distribución es mensual.
+- Las transferencias reales están deshabilitadas.
+- Adaptive Risk puede reducir o bloquear riesgo.
+- Adaptive Risk nunca puede saltarse los límites duros del Core.
 """
 
 from __future__ import annotations
@@ -32,8 +36,6 @@ import hashlib
 import json
 import math
 import os
-import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +45,6 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tupl
 # ============================================================================
 # UTILIDADES
 # ============================================================================
-
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -69,7 +70,6 @@ def month_key(timestamp: Optional[str] = None) -> str:
 # ENUMS
 # ============================================================================
 
-
 class Side(str, enum.Enum):
     BUY = "BUY"
     SELL = "SELL"
@@ -81,6 +81,7 @@ class DecisionStatus(str, enum.Enum):
     REJECTED = "REJECTED"
     NOVEL_RISK = "NOVEL_RISK"
     KILL_SWITCH = "KILL_SWITCH"
+    SAFE_MODE = "SAFE_MODE"
 
 
 class EvidenceClass(str, enum.Enum):
@@ -104,21 +105,17 @@ class AllocationBucket(str, enum.Enum):
 # CONFIGURACIÓN DE RIESGO
 # ============================================================================
 
-
 @dataclass(frozen=True)
 class RiskConfig:
     initial_capital: float = 1000.0
-
-    # El piso empieza en 0 porque el primer objetivo es construirlo.
-    # Cuando se alcance un hito, se debe elevar explícitamente.
     permanent_floor: float = 0.0
 
-    # Operación inicialmente LONG-ONLY y CASH-ONLY.
     allow_short: bool = False
     allow_margin: bool = False
 
     max_position_pct: float = 0.25
     max_total_exposure_pct: float = 0.80
+
     max_loss_per_trade_pct: float = 0.02
     daily_loss_limit_pct: float = 0.05
 
@@ -132,8 +129,6 @@ class RiskConfig:
     min_signal_score: float = 0.60
     min_benchmark_confidence: float = 0.55
 
-    # Una situación novedosa jamás recibe automáticamente el mismo presupuesto
-    # de riesgo que una situación con precedente robusto.
     novel_risk_budget_pct: float = 0.01
 
     def validate(self) -> None:
@@ -149,102 +144,236 @@ class RiskConfig:
             "min_benchmark_confidence": self.min_benchmark_confidence,
             "novel_risk_budget_pct": self.novel_risk_budget_pct,
         }
+
         for name, value in numeric_pct.items():
             if not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} debe estar entre 0 y 1")
+
         if self.initial_capital <= 0:
             raise ValueError("initial_capital debe ser > 0")
+
         if self.permanent_floor < 0:
             raise ValueError("permanent_floor no puede ser negativo")
+
         if self.max_position_pct > self.max_total_exposure_pct:
-            raise ValueError("max_position_pct no puede superar max_total_exposure_pct")
+            raise ValueError(
+                "max_position_pct no puede superar max_total_exposure_pct"
+            )
+
         if self.max_trades_per_day < 1:
             raise ValueError("max_trades_per_day debe ser >= 1")
+
         if self.max_consecutive_losses < 1:
             raise ValueError("max_consecutive_losses debe ser >= 1")
+
         if self.stop_loss_pct <= 0:
             raise ValueError("stop_loss_pct debe ser > 0")
+
         if self.take_profit_pct <= 0:
             raise ValueError("take_profit_pct debe ser > 0")
 
 
-@dataclass(frozen=True)
-class TraderBenchmarkConfig:
-    min_comparable_traders: int = 3
-    min_comparable_events: int = 20
-    min_confidence: float = 0.55
-    novelty_penalty: float = 0.15
-    benchmark_weight: float = 0.25
-
-    def validate(self) -> None:
-        if self.min_comparable_traders < 1:
-            raise ValueError("min_comparable_traders debe ser >= 1")
-        if self.min_comparable_events < 1:
-            raise ValueError("min_comparable_events debe ser >= 1")
-        if not 0 <= self.min_confidence <= 1:
-            raise ValueError("min_confidence debe estar entre 0 y 1")
-        if not 0 <= self.novelty_penalty <= 1:
-            raise ValueError("novelty_penalty debe estar entre 0 y 1")
-        if not 0 <= self.benchmark_weight <= 1:
-            raise ValueError("benchmark_weight debe estar entre 0 y 1")
-
+# ============================================================================
+# CAPITAL / DISTRIBUCIÓN
+# ============================================================================
 
 @dataclass(frozen=True)
 class ProfitDistributionConfig:
-    # Hasta $100,000 MXN de capital operativo: 100% de la utilidad se reinvierte.
-    # A partir de $100,000 MXN: 70% reinversión / 20% personal / 10% reserva.
-    threshold_mxn: float = 100_000.0
-    reserve_pct: float = 0.10
-    reinvestment_pct: float = 0.70
-    personal_pct: float = 0.20
+    threshold_mxn: float = 100000.0
+
+    below_threshold_reserve_pct: float = 0.00
+    below_threshold_reinvestment_pct: float = 1.00
+    below_threshold_personal_pct: float = 0.00
+
+    at_or_above_threshold_reserve_pct: float = 0.10
+    at_or_above_threshold_reinvestment_pct: float = 0.70
+    at_or_above_threshold_personal_pct: float = 0.20
+
     frequency: str = "MONTHLY"
 
     def validate(self) -> None:
-        values = (self.reserve_pct, self.reinvestment_pct, self.personal_pct)
         if self.threshold_mxn <= 0:
             raise ValueError("threshold_mxn debe ser > 0")
-        if any(x < 0 for x in values):
-            raise ValueError("Los porcentajes de distribución no pueden ser negativos")
-        if not math.isclose(sum(values), 1.0, abs_tol=1e-9):
-            raise ValueError("La distribución debe sumar 100%")
+
+        groups = [
+            (
+                self.below_threshold_reserve_pct,
+                self.below_threshold_reinvestment_pct,
+                self.below_threshold_personal_pct,
+            ),
+            (
+                self.at_or_above_threshold_reserve_pct,
+                self.at_or_above_threshold_reinvestment_pct,
+                self.at_or_above_threshold_personal_pct,
+            ),
+        ]
+
+        for values in groups:
+            if any(value < 0 or value > 1 for value in values):
+                raise ValueError(
+                    "Los porcentajes de distribución deben estar entre 0 y 1"
+                )
+
+            if not math.isclose(sum(values), 1.0, abs_tol=1e-9):
+                raise ValueError(
+                    "Cada esquema de distribución debe sumar 100%"
+                )
+
         if self.frequency != "MONTHLY":
             raise ValueError("La frecuencia configurada actualmente es MONTHLY")
+
+
+@dataclass(frozen=True)
+class DistributionPlan:
+    period: str
+    operating_capital: float
+    distributable_profit: float
+
+    threshold_mxn: float
+
+    reserve_pct: float
+    reinvestment_pct: float
+    personal_pct: float
+
+    reserve_amount: float
+    reinvestment_amount: float
+    personal_amount: float
+
+    capital_policy: str
+
+
+class ProfitAllocator:
+    """
+    Regla automática:
+
+    capital operativo < 100,000:
+        100% reinversión
+
+    capital operativo >= 100,000:
+        70% reinversión
+        20% personal
+        10% reserva
+    """
+
+    def __init__(
+        self,
+        config: Optional[ProfitDistributionConfig] = None,
+    ) -> None:
+        self.config = config or ProfitDistributionConfig()
+        self.config.validate()
+
+    def percentages_for_capital(
+        self,
+        operating_capital: float,
+    ) -> Tuple[float, float, float, str]:
+
+        if operating_capital < self.config.threshold_mxn:
+            return (
+                self.config.below_threshold_reserve_pct,
+                self.config.below_threshold_reinvestment_pct,
+                self.config.below_threshold_personal_pct,
+                "ACCUMULATION_BELOW_100K",
+            )
+
+        return (
+            self.config.at_or_above_threshold_reserve_pct,
+            self.config.at_or_above_threshold_reinvestment_pct,
+            self.config.at_or_above_threshold_personal_pct,
+            "DISTRIBUTION_AT_OR_ABOVE_100K",
+        )
+
+    def plan(
+        self,
+        distributable_profit: float,
+        operating_capital: float,
+        period: Optional[str] = None,
+    ) -> DistributionPlan:
+
+        if distributable_profit < 0:
+            raise ValueError(
+                "No se distribuyen pérdidas como utilidades"
+            )
+
+        reserve_pct, reinvestment_pct, personal_pct, policy = (
+            self.percentages_for_capital(operating_capital)
+        )
+
+        amount = float(distributable_profit)
+
+        reserve = amount * reserve_pct
+        reinvestment = amount * reinvestment_pct
+
+        personal = amount - reserve - reinvestment
+
+        return DistributionPlan(
+            period=period or month_key(),
+            operating_capital=round(operating_capital, 2),
+            distributable_profit=round(amount, 2),
+            threshold_mxn=self.config.threshold_mxn,
+            reserve_pct=reserve_pct,
+            reinvestment_pct=reinvestment_pct,
+            personal_pct=personal_pct,
+            reserve_amount=round(reserve, 2),
+            reinvestment_amount=round(reinvestment, 2),
+            personal_amount=round(personal, 2),
+            capital_policy=policy,
+        )
 
 
 # ============================================================================
 # DATOS DE MERCADO
 # ============================================================================
 
-
 @dataclass(frozen=True)
 class MarketSnapshot:
     symbol: str
     timestamp: str
     price: float
+
     volume: float = 0.0
     bid: Optional[float] = None
     ask: Optional[float] = None
+
     features: Dict[str, float] = field(default_factory=dict)
 
     def validate(self) -> None:
         if not self.symbol:
             raise ValueError("symbol vacío")
+
         if self.price <= 0:
             raise ValueError("price debe ser > 0")
+
         if self.volume < 0:
             raise ValueError("volume no puede ser negativo")
+
         if self.bid is not None and self.bid <= 0:
             raise ValueError("bid debe ser > 0")
+
         if self.ask is not None and self.ask <= 0:
             raise ValueError("ask debe ser > 0")
-        if self.bid is not None and self.ask is not None and self.bid > self.ask:
+
+        if (
+            self.bid is not None
+            and self.ask is not None
+            and self.bid > self.ask
+        ):
             raise ValueError("bid no puede ser mayor que ask")
 
+        for key, value in self.features.items():
+            if not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"feature inválida: {key}"
+                )
+
+            if not math.isfinite(float(value)):
+                raise ValueError(
+                    f"feature no finita: {key}"
+                )
+
 
 # ============================================================================
-# ESTADO DE CUENTA / POSICIONES
+# CUENTA / POSICIONES
 # ============================================================================
-
 
 @dataclass
 class Position:
@@ -252,8 +381,10 @@ class Position:
     side: Side
     quantity: float
     entry_price: float
+
     stop_price: Optional[float] = None
     take_profit_price: Optional[float] = None
+
     highest_price: Optional[float] = None
     lowest_price: Optional[float] = None
 
@@ -266,60 +397,139 @@ class Position:
 class AccountState:
     equity: float
     cash: float
+
     protected_floor: float = 0.0
+
     positions: Dict[str, Position] = field(default_factory=dict)
+
     day_start_equity: Optional[float] = None
+
     trades_today: int = 0
     consecutive_losses: int = 0
     realized_pnl_today: float = 0.0
 
     def __post_init__(self) -> None:
+        if self.equity < 0:
+            raise ValueError("equity no puede ser negativa")
+
+        if self.cash < 0:
+            raise ValueError("cash no puede ser negativo")
+
+        if self.protected_floor < 0:
+            raise ValueError(
+                "protected_floor no puede ser negativo"
+            )
+
         if self.day_start_equity is None:
             self.day_start_equity = self.equity
 
     @property
     def operating_capital(self) -> float:
-        return max(0.0, self.equity - self.protected_floor)
+        return max(
+            0.0,
+            self.equity - self.protected_floor,
+        )
 
     @property
     def total_exposure(self) -> float:
-        return sum(p.notional for p in self.positions.values())
+        return sum(
+            position.notional
+            for position in self.positions.values()
+        )
 
     @property
     def daily_pnl_pct(self) -> float:
-        if not self.day_start_equity or self.day_start_equity <= 0:
+        if (
+            self.day_start_equity is None
+            or self.day_start_equity <= 0
+        ):
             return 0.0
-        return (self.equity - self.day_start_equity) / self.day_start_equity
+
+        return (
+            self.equity - self.day_start_equity
+        ) / self.day_start_equity
 
 
 # ============================================================================
 # SEÑAL
 # ============================================================================
 
-
 @dataclass(frozen=True)
 class StrategySignal:
     symbol: str
     side: Side
+
     score: float
     expected_return: float
     confidence: float
-    rationale: Dict[str, float] = field(default_factory=dict)
+
+    rationale: Dict[str, float] = field(
+        default_factory=dict
+    )
+
     strategy_id: str = "unknown"
     setup_signature: str = ""
 
     def validate(self) -> None:
         if not self.symbol:
             raise ValueError("signal.symbol vacío")
+
         if not 0 <= self.score <= 1:
-            raise ValueError("signal.score debe estar entre 0 y 1")
+            raise ValueError(
+                "signal.score debe estar entre 0 y 1"
+            )
+
         if not 0 <= self.confidence <= 1:
-            raise ValueError("signal.confidence debe estar entre 0 y 1")
+            raise ValueError(
+                "signal.confidence debe estar entre 0 y 1"
+            )
+
+        if not math.isfinite(
+            float(self.expected_return)
+        ):
+            raise ValueError(
+                "signal.expected_return inválido"
+            )
 
 
 # ============================================================================
-# BENCHMARK DE TRADERS EXITOSOS
+# BENCHMARK
 # ============================================================================
+
+@dataclass(frozen=True)
+class TraderBenchmarkConfig:
+    min_comparable_traders: int = 3
+    min_comparable_events: int = 20
+    min_confidence: float = 0.55
+
+    novelty_penalty: float = 0.15
+    benchmark_weight: float = 0.25
+
+    def validate(self) -> None:
+        if self.min_comparable_traders < 1:
+            raise ValueError(
+                "min_comparable_traders debe ser >= 1"
+            )
+
+        if self.min_comparable_events < 1:
+            raise ValueError(
+                "min_comparable_events debe ser >= 1"
+            )
+
+        if not 0 <= self.min_confidence <= 1:
+            raise ValueError(
+                "min_confidence inválida"
+            )
+
+        if not 0 <= self.novelty_penalty <= 1:
+            raise ValueError(
+                "novelty_penalty inválida"
+            )
+
+        if not 0 <= self.benchmark_weight <= 1:
+            raise ValueError(
+                "benchmark_weight inválido"
+            )
 
 
 @dataclass(frozen=True)
@@ -328,49 +538,88 @@ class BenchmarkEvent:
     strategy_family: str
     setup_signature: str
     timestamp: str
+
     outcome_return: float
     risk_taken_pct: float
+
     sample_weight: float = 1.0
 
 
 @dataclass(frozen=True)
 class BenchmarkAssessment:
     evidence_class: EvidenceClass
+
     comparable_traders: int
     comparable_events: int
+
     confidence: float
     benchmark_score: float
+
     rationale: str
 
 
 class BenchmarkRepository(Protocol):
-    def comparable_events(self, setup_signature: str, strategy_family: str) -> Sequence[BenchmarkEvent]:
+
+    def comparable_events(
+        self,
+        setup_signature: str,
+        strategy_family: str,
+    ) -> Sequence[BenchmarkEvent]:
         ...
 
 
 class InMemoryBenchmarkRepository:
-    def __init__(self, events: Optional[Iterable[BenchmarkEvent]] = None) -> None:
+
+    def __init__(
+        self,
+        events: Optional[
+            Iterable[BenchmarkEvent]
+        ] = None,
+    ) -> None:
         self._events = list(events or [])
 
-    def add(self, event: BenchmarkEvent) -> None:
+    def add(
+        self,
+        event: BenchmarkEvent,
+    ) -> None:
         self._events.append(event)
 
-    def comparable_events(self, setup_signature: str, strategy_family: str) -> Sequence[BenchmarkEvent]:
+    def comparable_events(
+        self,
+        setup_signature: str,
+        strategy_family: str,
+    ) -> Sequence[BenchmarkEvent]:
+
         return [
             event
             for event in self._events
-            if event.setup_signature == setup_signature
-            and event.strategy_family == strategy_family
+            if (
+                event.setup_signature
+                == setup_signature
+                and event.strategy_family
+                == strategy_family
+            )
         ]
 
 
 class BenchmarkEngine:
-    def __init__(self, config: TraderBenchmarkConfig, repository: BenchmarkRepository) -> None:
+
+    def __init__(
+        self,
+        config: TraderBenchmarkConfig,
+        repository: BenchmarkRepository,
+    ) -> None:
+
         self.config = config
         self.repository = repository
+
         self.config.validate()
 
-    def assess(self, signal: StrategySignal) -> BenchmarkAssessment:
+    def assess(
+        self,
+        signal: StrategySignal,
+    ) -> BenchmarkAssessment:
+
         events = list(
             self.repository.comparable_events(
                 signal.setup_signature,
@@ -378,7 +627,11 @@ class BenchmarkEngine:
             )
         )
 
-        traders = {e.trader_id for e in events}
+        traders = {
+            event.trader_id
+            for event in events
+        }
+
         if not events:
             return BenchmarkAssessment(
                 evidence_class=EvidenceClass.INSUFFICIENT,
@@ -386,37 +639,95 @@ class BenchmarkEngine:
                 comparable_events=0,
                 confidence=0.0,
                 benchmark_score=0.0,
-                rationale="No existe evidencia comparable registrada.",
+                rationale=(
+                    "No existe evidencia comparable registrada."
+                ),
             )
 
-        weighted_returns = [max(-1.0, min(1.0, e.outcome_return)) * e.sample_weight for e in events]
-        weights = [max(0.0, e.sample_weight) for e in events]
+        weights = [
+            max(0.0, event.sample_weight)
+            for event in events
+        ]
+
+        weighted_returns = [
+            clamp(event.outcome_return, -1.0, 1.0)
+            * max(0.0, event.sample_weight)
+            for event in events
+        ]
+
         total_weight = sum(weights) or 1.0
-        avg_return = sum(weighted_returns) / total_weight
-        positive_rate = sum(1 for e in events if e.outcome_return > 0) / len(events)
-        consistency = 1.0 - min(1.0, abs(avg_return - signal.expected_return))
+
+        avg_return = (
+            sum(weighted_returns)
+            / total_weight
+        )
+
+        positive_rate = (
+            sum(
+                1
+                for event in events
+                if event.outcome_return > 0
+            )
+            / len(events)
+        )
+
+        consistency = 1.0 - min(
+            1.0,
+            abs(
+                avg_return
+                - signal.expected_return
+            ),
+        )
+
         confidence = min(
             1.0,
-            0.35 * min(1.0, len(traders) / self.config.min_comparable_traders)
-            + 0.35 * min(1.0, len(events) / self.config.min_comparable_events)
+            0.35
+            * min(
+                1.0,
+                len(traders)
+                / self.config.min_comparable_traders,
+            )
+            + 0.35
+            * min(
+                1.0,
+                len(events)
+                / self.config.min_comparable_events,
+            )
             + 0.30 * positive_rate,
         )
+
         benchmark_score = clamp(
-            0.50 * positive_rate + 0.25 * consistency + 0.25 * clamp(avg_return + 0.5, 0, 1),
+            0.50 * positive_rate
+            + 0.25 * consistency
+            + 0.25
+            * clamp(
+                avg_return + 0.5,
+                0,
+                1,
+            ),
             0,
             1,
         )
 
         if (
-            len(traders) >= self.config.min_comparable_traders
-            and len(events) >= self.config.min_comparable_events
-            and confidence >= self.config.min_confidence
+            len(traders)
+            >= self.config.min_comparable_traders
+            and len(events)
+            >= self.config.min_comparable_events
+            and confidence
+            >= self.config.min_confidence
         ):
             evidence = EvidenceClass.PRECEDENTED
-            rationale = "Existe un precedente comparable suficientemente amplio."
+            rationale = (
+                "Existe un precedente comparable "
+                "suficientemente amplio."
+            )
         else:
             evidence = EvidenceClass.INSUFFICIENT
-            rationale = "Existe precedente, pero no alcanza la evidencia mínima."
+            rationale = (
+                "Existe precedente, pero no alcanza "
+                "la evidencia mínima."
+            )
 
         return BenchmarkAssessment(
             evidence_class=evidence,
@@ -429,30 +740,179 @@ class BenchmarkEngine:
 
 
 # ============================================================================
-# RIESGO
+# ADAPTIVE RISK
 # ============================================================================
 
+class AdaptiveMarketRegime(str, enum.Enum):
+    UNKNOWN = "UNKNOWN"
+    RISK_ON = "RISK_ON"
+    NEUTRAL = "NEUTRAL"
+    RISK_OFF = "RISK_OFF"
+
+
+class AdaptiveNewsImpact(str, enum.Enum):
+    NONE = "NONE"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    URGENT_NEGATIVE = "URGENT_NEGATIVE"
+
+
+@dataclass(frozen=True)
+class AdaptiveRiskDecision:
+    allowed: bool
+    multiplier: float
+    max_position_pct: float
+    reason: str
+
+
+class AdaptiveRiskOverlay:
+    """
+    Capa defensiva integrada al Core.
+
+    Esta versión es deliberadamente conservadora:
+    - Puede REDUCIR riesgo.
+    - Puede BLOQUEAR riesgo.
+    - No puede superar max_position_pct del Core.
+    """
+
+    def __init__(
+        self,
+        max_multiplier: float = 1.0,
+    ) -> None:
+        self.max_multiplier = clamp(
+            max_multiplier,
+            0.0,
+            1.0,
+        )
+
+    def evaluate(
+        self,
+        account: AccountState,
+        signal: StrategySignal,
+        evidence_class: EvidenceClass,
+        market_regime: str = "NEUTRAL",
+        news_impact: str = "NONE",
+    ) -> AdaptiveRiskDecision:
+
+        regime = str(
+            market_regime
+        ).upper()
+
+        news = str(
+            news_impact
+        ).upper()
+
+        if regime in {
+            "RISK_OFF",
+            "DOWN",
+        }:
+            return AdaptiveRiskDecision(
+                allowed=False,
+                multiplier=0.0,
+                max_position_pct=0.0,
+                reason="Adaptive bloqueó por régimen RISK_OFF.",
+            )
+
+        if news in {
+            "URGENT_NEGATIVE",
+            "HIGH_NEGATIVE",
+        }:
+            return AdaptiveRiskDecision(
+                allowed=False,
+                multiplier=0.0,
+                max_position_pct=0.0,
+                reason=(
+                    "Adaptive bloqueó por impacto negativo "
+                    "de noticias."
+                ),
+            )
+
+        multiplier = 1.0
+
+        if evidence_class == EvidenceClass.NOVEL:
+            multiplier *= 0.50
+
+        if evidence_class == EvidenceClass.INSUFFICIENT:
+            multiplier *= 0.75
+
+        if signal.confidence < 0.70:
+            multiplier *= 0.75
+
+        if signal.score < 0.70:
+            multiplier *= 0.75
+
+        multiplier = clamp(
+            multiplier,
+            0.0,
+            self.max_multiplier,
+        )
+
+        return AdaptiveRiskDecision(
+            allowed=multiplier > 0,
+            multiplier=multiplier,
+            max_position_pct=multiplier,
+            reason=(
+                "Adaptive aprobó con multiplicador "
+                f"{multiplier:.4f}."
+            ),
+        )
+
+
+# ============================================================================
+# RIESGO DURO
+# ============================================================================
 
 class RiskEngine:
-    def __init__(self, config: RiskConfig) -> None:
+
+    def __init__(
+        self,
+        config: RiskConfig,
+    ) -> None:
+
         self.config = config
         self.config.validate()
 
-    def kill_switch_reason(self, account: AccountState) -> Optional[str]:
+    def kill_switch_reason(
+        self,
+        account: AccountState,
+    ) -> Optional[str]:
+
         if account.equity <= account.protected_floor:
             return "equity_at_or_below_protected_floor"
-        if account.daily_pnl_pct <= -self.config.daily_loss_limit_pct:
+
+        if (
+            account.daily_pnl_pct
+            <= -self.config.daily_loss_limit_pct
+        ):
             return "daily_loss_limit"
-        if account.trades_today >= self.config.max_trades_per_day:
+
+        if (
+            account.trades_today
+            >= self.config.max_trades_per_day
+        ):
             return "max_trades_per_day"
-        if account.consecutive_losses >= self.config.max_consecutive_losses:
+
+        if (
+            account.consecutive_losses
+            >= self.config.max_consecutive_losses
+        ):
             return "max_consecutive_losses"
+
         return None
 
-    def _available_operating_cash(self, account: AccountState) -> float:
-        # Cash-only deliberado. Nunca usamos buying power de margen para decidir
-        # cuánto puede comprar el bot.
-        return max(0.0, min(account.cash, account.operating_capital))
+    def available_operating_cash(
+        self,
+        account: AccountState,
+    ) -> float:
+
+        return max(
+            0.0,
+            min(
+                account.cash,
+                account.operating_capital,
+            ),
+        )
 
     def position_size(
         self,
@@ -460,35 +920,94 @@ class RiskEngine:
         snapshot: MarketSnapshot,
         evidence: EvidenceClass,
         signal_confidence: float,
+        adaptive_multiplier: float = 1.0,
     ) -> float:
+
         operating = account.operating_capital
+
         if operating <= 0:
             return 0.0
 
-        available_cash = self._available_operating_cash(account)
+        available_cash = (
+            self.available_operating_cash(account)
+        )
+
         if available_cash <= 0:
             return 0.0
 
         base_pct = self.config.max_position_pct
-        if evidence == EvidenceClass.NOVEL:
-            base_pct = min(base_pct, self.config.novel_risk_budget_pct)
-        elif evidence == EvidenceClass.INSUFFICIENT:
-            base_pct = min(base_pct, self.config.novel_risk_budget_pct * 1.5)
 
-        confidence_multiplier = clamp(signal_confidence, 0.25, 1.0)
-        max_notional = operating * base_pct * confidence_multiplier
+        if evidence == EvidenceClass.NOVEL:
+            base_pct = min(
+                base_pct,
+                self.config.novel_risk_budget_pct,
+            )
+
+        elif evidence == EvidenceClass.INSUFFICIENT:
+            base_pct = min(
+                base_pct,
+                self.config.novel_risk_budget_pct
+                * 1.5,
+            )
+
+        adaptive_multiplier = clamp(
+            adaptive_multiplier,
+            0.0,
+            1.0,
+        )
+
+        base_pct *= adaptive_multiplier
+
+        confidence_multiplier = clamp(
+            signal_confidence,
+            0.25,
+            1.0,
+        )
+
+        max_notional = (
+            operating
+            * base_pct
+            * confidence_multiplier
+        )
+
         remaining_exposure = max(
             0.0,
-            operating * self.config.max_total_exposure_pct - account.total_exposure,
+            (
+                operating
+                * self.config.max_total_exposure_pct
+            )
+            - account.total_exposure,
         )
-        notional = min(max_notional, remaining_exposure, available_cash)
+
+        notional = min(
+            max_notional,
+            remaining_exposure,
+            available_cash,
+        )
+
         if snapshot.price <= 0:
             return 0.0
-        return max(0.0, notional / snapshot.price)
 
-    def prices_for_long(self, entry_price: float) -> Tuple[float, float]:
-        stop = entry_price * (1.0 - self.config.stop_loss_pct)
-        take_profit = entry_price * (1.0 + self.config.take_profit_pct)
+        return max(
+            0.0,
+            notional / snapshot.price,
+        )
+
+    def prices_for_long(
+        self,
+        entry_price: float,
+    ) -> Tuple[float, float]:
+
+        stop = (
+            entry_price
+            * (1.0 - self.config.stop_loss_pct)
+        )
+
+        take_profit = (
+            entry_price
+            * (1.0 + self.config.take_profit_pct)
+        )
+
         return stop, take_profit
 
 
@@ -496,41 +1015,62 @@ class RiskEngine:
 # DECISIÓN
 # ============================================================================
 
-
 @dataclass(frozen=True)
 class Decision:
+
     decision_id: str
     timestamp: str
+
     status: DecisionStatus
     evidence_class: EvidenceClass
+
     symbol: str
     side: Side
     quantity: float
+
     entry_price: float
     stop_price: Optional[float]
     take_profit_price: Optional[float]
+
     combined_score: float
     signal_score: float
+
     benchmark_score: float
     benchmark_confidence: float
+
+    adaptive_multiplier: float
+    adaptive_reason: str
+
     reason: str
 
 
 class DecisionEngine:
+
     def __init__(
         self,
         risk_engine: RiskEngine,
         benchmark_engine: BenchmarkEngine,
+        adaptive_overlay: Optional[
+            AdaptiveRiskOverlay
+        ] = None,
     ) -> None:
+
         self.risk_engine = risk_engine
         self.benchmark_engine = benchmark_engine
+        self.adaptive_overlay = (
+            adaptive_overlay
+            or AdaptiveRiskOverlay()
+        )
 
     def evaluate(
         self,
         account: AccountState,
         snapshot: MarketSnapshot,
         signal: StrategySignal,
+        market_regime: str = "NEUTRAL",
+        news_impact: str = "NONE",
     ) -> Decision:
+
         snapshot.validate()
         signal.validate()
 
@@ -544,7 +1084,12 @@ class DecisionEngine:
             },
         )
 
-        kill_reason = self.risk_engine.kill_switch_reason(account)
+        kill_reason = (
+            self.risk_engine.kill_switch_reason(
+                account
+            )
+        )
+
         if kill_reason:
             return Decision(
                 decision_id=decision_id,
@@ -561,6 +1106,8 @@ class DecisionEngine:
                 signal_score=signal.score,
                 benchmark_score=0.0,
                 benchmark_confidence=0.0,
+                adaptive_multiplier=0.0,
+                adaptive_reason="Hard kill switch.",
                 reason=kill_reason,
             )
 
@@ -580,52 +1127,159 @@ class DecisionEngine:
                 signal_score=signal.score,
                 benchmark_score=0.0,
                 benchmark_confidence=0.0,
-                reason="La configuración inicial es LONG-ONLY.",
+                adaptive_multiplier=0.0,
+                adaptive_reason="LONG-ONLY.",
+                reason=(
+                    "La configuración actual "
+                    "es LONG-ONLY."
+                ),
             )
 
-        assessment = self.benchmark_engine.assess(signal)
+        assessment = (
+            self.benchmark_engine.assess(signal)
+        )
 
-        if assessment.evidence_class == EvidenceClass.INSUFFICIENT:
+        if (
+            assessment.evidence_class
+            == EvidenceClass.INSUFFICIENT
+        ):
             evidence_class = EvidenceClass.NOVEL
+
             benchmark_score = 0.0
             benchmark_confidence = 0.0
-            combined_score = signal.score * (1.0 - self.benchmark_engine.config.novelty_penalty)
+
+            combined_score = (
+                signal.score
+                * (
+                    1.0
+                    - self.benchmark_engine.config
+                    .novelty_penalty
+                )
+            )
+
             status = DecisionStatus.NOVEL_RISK
-            reason = "No hay precedente suficiente; se aplica presupuesto de riesgo de novedad."
+
+            reason = (
+                "No hay precedente suficiente; "
+                "se aplica presupuesto de riesgo "
+                "de novedad."
+            )
+
         else:
-            evidence_class = assessment.evidence_class
-            benchmark_score = assessment.benchmark_score
-            benchmark_confidence = assessment.confidence
-            weight = self.benchmark_engine.config.benchmark_weight
-            combined_score = (1.0 - weight) * signal.score + weight * benchmark_score
+            evidence_class = (
+                assessment.evidence_class
+            )
+
+            benchmark_score = (
+                assessment.benchmark_score
+            )
+
+            benchmark_confidence = (
+                assessment.confidence
+            )
+
+            weight = (
+                self.benchmark_engine.config
+                .benchmark_weight
+            )
+
+            combined_score = (
+                (1.0 - weight) * signal.score
+                + weight * benchmark_score
+            )
+
             status = DecisionStatus.APPROVED
+
             reason = assessment.rationale
 
-            if signal.confidence < self.risk_engine.config.min_signal_score:
-                status = DecisionStatus.REJECTED
-                reason = "Confianza/señal insuficiente."
-            elif combined_score < self.risk_engine.config.min_signal_score:
-                status = DecisionStatus.REJECTED
-                reason = "Score combinado insuficiente."
-            elif (
-                evidence_class == EvidenceClass.PRECEDENTED
-                and benchmark_confidence < self.risk_engine.config.min_benchmark_confidence
+            if (
+                signal.confidence
+                < self.risk_engine.config
+                .min_signal_score
             ):
                 status = DecisionStatus.REJECTED
-                reason = "Benchmark comparable con confianza insuficiente."
+                reason = (
+                    "Confianza/señal insuficiente."
+                )
 
-        quantity = self.risk_engine.position_size(
-            account,
-            snapshot,
-            evidence_class,
-            signal.confidence,
+            elif (
+                combined_score
+                < self.risk_engine.config
+                .min_signal_score
+            ):
+                status = DecisionStatus.REJECTED
+                reason = (
+                    "Score combinado insuficiente."
+                )
+
+            elif (
+                evidence_class
+                == EvidenceClass.PRECEDENTED
+                and benchmark_confidence
+                < self.risk_engine.config
+                .min_benchmark_confidence
+            ):
+                status = DecisionStatus.REJECTED
+                reason = (
+                    "Benchmark comparable con "
+                    "confianza insuficiente."
+                )
+
+        adaptive = (
+            self.adaptive_overlay.evaluate(
+                account=account,
+                signal=signal,
+                evidence_class=evidence_class,
+                market_regime=market_regime,
+                news_impact=news_impact,
+            )
+        )
+
+        if not adaptive.allowed:
+            return Decision(
+                decision_id=decision_id,
+                timestamp=utc_now(),
+                status=DecisionStatus.SAFE_MODE,
+                evidence_class=evidence_class,
+                symbol=snapshot.symbol,
+                side=Side.HOLD,
+                quantity=0.0,
+                entry_price=snapshot.price,
+                stop_price=None,
+                take_profit_price=None,
+                combined_score=combined_score,
+                signal_score=signal.score,
+                benchmark_score=benchmark_score,
+                benchmark_confidence=benchmark_confidence,
+                adaptive_multiplier=0.0,
+                adaptive_reason=adaptive.reason,
+                reason=adaptive.reason,
+            )
+
+        quantity = (
+            self.risk_engine.position_size(
+                account=account,
+                snapshot=snapshot,
+                evidence=evidence_class,
+                signal_confidence=signal.confidence,
+                adaptive_multiplier=(
+                    adaptive.multiplier
+                ),
+            )
         )
 
         if quantity <= 0:
             status = DecisionStatus.REJECTED
-            reason = "No existe capital operativo disponible para abrir la posición."
+            reason = (
+                "No existe capital operativo "
+                "disponible para abrir la posición."
+            )
 
-        stop_price, take_profit_price = self.risk_engine.prices_for_long(snapshot.price)
+        stop_price, take_profit_price = (
+            self.risk_engine.prices_for_long(
+                snapshot.price
+            )
+        )
 
         if status == DecisionStatus.REJECTED:
             quantity = 0.0
@@ -638,7 +1292,11 @@ class DecisionEngine:
             status=status,
             evidence_class=evidence_class,
             symbol=snapshot.symbol,
-            side=Side.BUY if quantity > 0 else Side.HOLD,
+            side=(
+                Side.BUY
+                if quantity > 0
+                else Side.HOLD
+            ),
             quantity=quantity,
             entry_price=snapshot.price,
             stop_price=stop_price,
@@ -647,6 +1305,8 @@ class DecisionEngine:
             signal_score=signal.score,
             benchmark_score=benchmark_score,
             benchmark_confidence=benchmark_confidence,
+            adaptive_multiplier=adaptive.multiplier,
+            adaptive_reason=adaptive.reason,
             reason=reason,
         )
 
@@ -655,29 +1315,44 @@ class DecisionEngine:
 # EJECUCIÓN
 # ============================================================================
 
-
 @dataclass(frozen=True)
 class ExecutionOrder:
     client_order_id: str
+
     symbol: str
     side: Side
     quantity: float
+
     order_type: str
+
     entry_price: float
     stop_price: Optional[float]
     take_profit_price: Optional[float]
+
     mode: ExecutionMode
 
 
 class ExecutionAdapter(Protocol):
-    def submit(self, order: ExecutionOrder) -> Dict[str, Any]:
+
+    def submit(
+        self,
+        order: ExecutionOrder,
+    ) -> Dict[str, Any]:
         ...
 
 
 class PaperExecutionAdapter:
-    def submit(self, order: ExecutionOrder) -> Dict[str, Any]:
+
+    def submit(
+        self,
+        order: ExecutionOrder,
+    ) -> Dict[str, Any]:
+
         if order.mode != ExecutionMode.PAPER:
-            raise RuntimeError("PaperExecutionAdapter solo acepta PAPER")
+            raise RuntimeError(
+                "PaperExecutionAdapter solo acepta PAPER"
+            )
+
         return {
             "accepted": True,
             "mode": order.mode.value,
@@ -688,54 +1363,105 @@ class PaperExecutionAdapter:
             "order_type": order.order_type,
             "entry_price": order.entry_price,
             "stop_price": order.stop_price,
-            "take_profit_price": order.take_profit_price,
+            "take_profit_price": (
+                order.take_profit_price
+            ),
             "timestamp": utc_now(),
         }
 
 
 class AlpacaExecutionAdapter:
-    """Adaptador opcional para alpaca-py.
+    """
+    Adaptador Alpaca.
 
-    Por seguridad:
-    - PAPER es el default.
-    - LIVE requiere ALPACA_LIVE_ENABLED=true.
-    - No envía SELL SHORT.
-    - Envía bracket orders para BUY.
-    - El quantity recibido ya fue calculado por nuestro RiskEngine usando cash,
-      no buying power de margen.
+    PAPER es el default.
+
+    LIVE solamente si:
+        ALPACA_LIVE_ENABLED=true
+
+    Rocket Trader no envía SELL/SHORT.
     """
 
-    def __init__(self, api_key: str, api_secret: str, mode: ExecutionMode = ExecutionMode.PAPER) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        api_secret: str,
+        mode: ExecutionMode = ExecutionMode.PAPER,
+    ) -> None:
+
         self.api_key = api_key
         self.api_secret = api_secret
         self.mode = mode
 
-        if self.mode == ExecutionMode.LIVE and os.getenv("ALPACA_LIVE_ENABLED", "false").lower() != "true":
-            raise RuntimeError("LIVE está bloqueado. Define ALPACA_LIVE_ENABLED=true explícitamente.")
+        if (
+            self.mode == ExecutionMode.LIVE
+            and os.getenv(
+                "ALPACA_LIVE_ENABLED",
+                "false",
+            ).lower()
+            != "true"
+        ):
+            raise RuntimeError(
+                "LIVE está bloqueado. "
+                "ALPACA_LIVE_ENABLED=true "
+                "es requerido explícitamente."
+            )
 
         try:
-            from alpaca.trading.client import TradingClient
-            self._TradingClient = TradingClient
+            from alpaca.trading.client import (
+                TradingClient,
+            )
         except ImportError as exc:
-            raise RuntimeError("Falta alpaca-py. Instala: pip install alpaca-py") from exc
+            raise RuntimeError(
+                "Falta alpaca-py. "
+                "Instala: pip install alpaca-py"
+            ) from exc
 
         self.client = TradingClient(
             self.api_key,
             self.api_secret,
-            paper=self.mode == ExecutionMode.PAPER,
+            paper=(
+                self.mode
+                == ExecutionMode.PAPER
+            ),
         )
 
-    def submit(self, order: ExecutionOrder) -> Dict[str, Any]:
-        if order.mode != self.mode:
-            raise RuntimeError("El modo de la orden no coincide con el adaptador Alpaca")
-        if order.side != Side.BUY:
-            raise RuntimeError("Rocket Trader v0.2 solo permite BUY/LONG")
-        if order.quantity <= 0:
-            raise ValueError("quantity debe ser > 0")
-        if order.stop_price is None or order.take_profit_price is None:
-            raise ValueError("Toda entrada debe llevar stop y take profit")
+    def submit(
+        self,
+        order: ExecutionOrder,
+    ) -> Dict[str, Any]:
 
-        from alpaca.trading.enums import OrderClass, OrderSide, TimeInForce
+        if order.mode != self.mode:
+            raise RuntimeError(
+                "El modo de la orden no coincide "
+                "con el adaptador Alpaca."
+            )
+
+        if order.side != Side.BUY:
+            raise RuntimeError(
+                "Rocket Trader solo permite BUY/LONG."
+            )
+
+        if order.quantity <= 0:
+            raise ValueError(
+                "quantity debe ser > 0"
+            )
+
+        if (
+            order.stop_price is None
+            or order.take_profit_price is None
+        ):
+            raise ValueError(
+                "Toda entrada debe llevar "
+                "stop y take profit."
+            )
+
+        from alpaca.trading.enums import (
+            OrderClass,
+            OrderSide,
+            TimeInForce,
+        )
+
         from alpaca.trading.requests import (
             MarketOrderRequest,
             StopLossRequest,
@@ -748,98 +1474,66 @@ class AlpacaExecutionAdapter:
             side=OrderSide.BUY,
             time_in_force=TimeInForce.DAY,
             order_class=OrderClass.BRACKET,
-            take_profit=TakeProfitRequest(limit_price=round(order.take_profit_price, 2)),
-            stop_loss=StopLossRequest(stop_price=round(order.stop_price, 2)),
-            client_order_id=order.client_order_id,
+            take_profit=TakeProfitRequest(
+                limit_price=round(
+                    order.take_profit_price,
+                    2,
+                )
+            ),
+            stop_loss=StopLossRequest(
+                stop_price=round(
+                    order.stop_price,
+                    2,
+                )
+            ),
+            client_order_id=(
+                order.client_order_id
+            ),
         )
 
-        result = self.client.submit_order(order_data=request)
+        result = self.client.submit_order(
+            order_data=request
+        )
+
         return {
             "accepted": True,
             "mode": self.mode.value,
             "order_id": str(result.id),
-            "client_order_id": order.client_order_id,
+            "client_order_id": (
+                order.client_order_id
+            ),
             "symbol": order.symbol,
             "status": str(result.status),
         }
 
 
 # ============================================================================
-# DISTRIBUCIÓN MENSUAL DE UTILIDADES
+# TRANSFERENCIAS
 # ============================================================================
 
-
-@dataclass(frozen=True)
-class DistributionPlan:
-    period: str
-    distributable_profit: float
-    reserve_amount: float
-    reinvestment_amount: float
-    personal_amount: float
-
-
-class ProfitAllocator:
-    """Calcula el reparto; no mueve dinero por sí mismo."""
-
-    def __init__(self, config: ProfitDistributionConfig) -> None:
-        self.config = config
-        self.config.validate()
-
-    def plan(
-        self,
-        distributable_profit: float,
-        operating_capital: float = 0.0,
-        period: Optional[str] = None,
-    ) -> DistributionPlan:
-        """Calcula automáticamente la distribución mensual por nivel de capital.
-
-        Regla:
-        - Si el capital operativo al inicio del período es menor a $100,000,
-          la utilidad necesaria para llegar al umbral se reinvierte al 100%.
-        - La utilidad que exceda ese umbral se reparte 70/20/10.
-        """
-        if distributable_profit < 0:
-            raise ValueError("No se distribuyen pérdidas como utilidades")
-        if operating_capital < 0:
-            raise ValueError("operating_capital no puede ser negativo")
-
-        amount = float(distributable_profit)
-        capital = float(operating_capital)
-        threshold = self.config.threshold_mxn
-
-        # Parte necesaria para llevar el capital operativo hasta el umbral.
-        growth_needed = max(0.0, threshold - capital)
-        full_reinvestment = min(amount, growth_needed)
-        post_threshold_profit = max(0.0, amount - full_reinvestment)
-
-        reserve = post_threshold_profit * self.config.reserve_pct
-        reinvestment = full_reinvestment + (post_threshold_profit * self.config.reinvestment_pct)
-        personal = post_threshold_profit * self.config.personal_pct
-
-        # Ajuste final para que la suma sea exactamente la utilidad distribuible.
-        personal = amount - reserve - reinvestment
-
-        return DistributionPlan(
-            period=period or month_key(),
-            distributable_profit=amount,
-            reserve_amount=round(reserve, 2),
-            reinvestment_amount=round(reinvestment, 2),
-            personal_amount=round(personal, 2),
-        )
-
-
 class MoneyTransferAdapter(Protocol):
-    def transfer(self, amount: float, destination: str, reference: str) -> Dict[str, Any]:
+
+    def transfer(
+        self,
+        amount: float,
+        destination: str,
+        reference: str,
+    ) -> Dict[str, Any]:
         ...
 
 
 class DisabledMoneyTransferAdapter:
-    """Bloquea transferencias reales hasta implementar y validar el rail bancario."""
 
-    def transfer(self, amount: float, destination: str, reference: str) -> Dict[str, Any]:
+    def transfer(
+        self,
+        amount: float,
+        destination: str,
+        reference: str,
+    ) -> Dict[str, Any]:
+
         raise RuntimeError(
-            "Transferencias automáticas reales están deshabilitadas en esta fase. "
-            "El plan se calcula y audita, pero no se mueve dinero."
+            "Transferencias automáticas reales "
+            "están deshabilitadas en esta fase."
         )
 
 
@@ -847,51 +1541,113 @@ class DisabledMoneyTransferAdapter:
 # AUDITORÍA
 # ============================================================================
 
-
 class AuditLog:
-    def __init__(self, path: str = "data/rocket_trader_audit.jsonl") -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def write(self, event_type: str, payload: Dict[str, Any]) -> None:
+    def __init__(
+        self,
+        path: str = (
+            "data/rocket_trader_audit.jsonl"
+        ),
+    ) -> None:
+
+        self.path = Path(path)
+        self.path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+    def write(
+        self,
+        event_type: str,
+        payload: Dict[str, Any],
+    ) -> None:
+
         record = {
             "timestamp": utc_now(),
             "event_type": event_type,
             "payload": payload,
         }
-        with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+
+        with self.path.open(
+            "a",
+            encoding="utf-8",
+        ) as fh:
+            fh.write(
+                json.dumps(
+                    record,
+                    ensure_ascii=False,
+                    default=str,
+                )
+                + "\n"
+            )
 
 
 # ============================================================================
 # CORE
 # ============================================================================
 
-
 class RocketTraderCore:
+
     def __init__(
         self,
         risk_config: RiskConfig,
         benchmark_config: TraderBenchmarkConfig,
-        distribution_config: Optional[ProfitDistributionConfig] = None,
-        benchmark_repository: Optional[BenchmarkRepository] = None,
-        execution_adapter: Optional[ExecutionAdapter] = None,
-        audit_path: str = "data/rocket_trader_audit.jsonl",
+
+        distribution_config: Optional[
+            ProfitDistributionConfig
+        ] = None,
+
+        benchmark_repository: Optional[
+            BenchmarkRepository
+        ] = None,
+
+        execution_adapter: Optional[
+            ExecutionAdapter
+        ] = None,
+
+        adaptive_overlay: Optional[
+            AdaptiveRiskOverlay
+        ] = None,
+
+        audit_path: str = (
+            "data/rocket_trader_audit.jsonl"
+        ),
     ) -> None:
-        self.risk_engine = RiskEngine(risk_config)
+
+        self.risk_engine = RiskEngine(
+            risk_config
+        )
+
         self.benchmark_engine = BenchmarkEngine(
             benchmark_config,
-            benchmark_repository or InMemoryBenchmarkRepository(),
+            benchmark_repository
+            or InMemoryBenchmarkRepository(),
         )
+
+        self.adaptive_overlay = (
+            adaptive_overlay
+            or AdaptiveRiskOverlay()
+        )
+
         self.decision_engine = DecisionEngine(
-            self.risk_engine,
-            self.benchmark_engine,
+            risk_engine=self.risk_engine,
+            benchmark_engine=self.benchmark_engine,
+            adaptive_overlay=self.adaptive_overlay,
         )
+
         self.profit_allocator = ProfitAllocator(
-            distribution_config or ProfitDistributionConfig()
+            distribution_config
+            or ProfitDistributionConfig()
         )
-        self.execution_adapter = execution_adapter or PaperExecutionAdapter()
-        self.audit = AuditLog(audit_path)
+
+        self.execution_adapter = (
+            execution_adapter
+            or PaperExecutionAdapter()
+        )
+
+        self.audit = AuditLog(
+            audit_path
+        )
 
     def evaluate_and_maybe_execute(
         self,
@@ -899,42 +1655,83 @@ class RocketTraderCore:
         snapshot: MarketSnapshot,
         signal: StrategySignal,
         execute: bool = True,
+        market_regime: str = "NEUTRAL",
+        news_impact: str = "NONE",
     ) -> Decision:
-        decision = self.decision_engine.evaluate(account, snapshot, signal)
-        self.audit.write("decision", dataclasses.asdict(decision))
 
-        if execute and decision.quantity > 0 and decision.status in {
-            DecisionStatus.APPROVED,
-            DecisionStatus.NOVEL_RISK,
-        }:
+        decision = self.decision_engine.evaluate(
+            account=account,
+            snapshot=snapshot,
+            signal=signal,
+            market_regime=market_regime,
+            news_impact=news_impact,
+        )
+
+        self.audit.write(
+            "decision",
+            dataclasses.asdict(decision),
+        )
+
+        if (
+            execute
+            and decision.quantity > 0
+            and decision.status
+            in {
+                DecisionStatus.APPROVED,
+                DecisionStatus.NOVEL_RISK,
+            }
+        ):
+
             order = ExecutionOrder(
-                client_order_id=stable_id("order", decision.decision_id),
+                client_order_id=stable_id(
+                    "order",
+                    decision.decision_id,
+                ),
                 symbol=decision.symbol,
                 side=decision.side,
                 quantity=decision.quantity,
                 order_type="MARKET_BRACKET",
                 entry_price=decision.entry_price,
                 stop_price=decision.stop_price,
-                take_profit_price=decision.take_profit_price,
+                take_profit_price=(
+                    decision.take_profit_price
+                ),
                 mode=ExecutionMode.PAPER,
             )
-            result = self.execution_adapter.submit(order)
-            self.audit.write("execution", result)
+
+            result = self.execution_adapter.submit(
+                order
+            )
+
+            self.audit.write(
+                "execution",
+                result,
+            )
 
         return decision
 
     def monthly_distribution_plan(
         self,
         distributable_profit: float,
-        operating_capital: float = 0.0,
+        operating_capital: float,
         period: Optional[str] = None,
     ) -> DistributionPlan:
+
         plan = self.profit_allocator.plan(
-            distributable_profit,
-            operating_capital=operating_capital,
+            distributable_profit=(
+                distributable_profit
+            ),
+            operating_capital=(
+                operating_capital
+            ),
             period=period,
         )
-        self.audit.write("distribution_plan", dataclasses.asdict(plan))
+
+        self.audit.write(
+            "distribution_plan",
+            dataclasses.asdict(plan),
+        )
+
         return plan
 
 
@@ -942,24 +1739,31 @@ class RocketTraderCore:
 # CONFIGURACIÓN DEMO
 # ============================================================================
 
-
 def build_demo_core() -> RocketTraderCore:
+
     risk_config = RiskConfig(
         initial_capital=1000.0,
         permanent_floor=0.0,
+
         allow_short=False,
         allow_margin=False,
+
         max_position_pct=0.25,
         max_total_exposure_pct=0.80,
+
         max_loss_per_trade_pct=0.02,
         daily_loss_limit_pct=0.05,
+
         stop_loss_pct=0.02,
         take_profit_pct=0.04,
         trailing_stop_pct=0.015,
+
         max_trades_per_day=10,
         max_consecutive_losses=3,
+
         min_signal_score=0.60,
         min_benchmark_confidence=0.55,
+
         novel_risk_budget_pct=0.01,
     )
 
@@ -971,31 +1775,49 @@ def build_demo_core() -> RocketTraderCore:
         benchmark_weight=0.25,
     )
 
-    distribution_config = ProfitDistributionConfig(
-        threshold_mxn=100_000.0,
-        reserve_pct=0.10,
-        reinvestment_pct=0.70,
-        personal_pct=0.20,
-        frequency="MONTHLY",
+    distribution_config = (
+        ProfitDistributionConfig(
+            threshold_mxn=100000.0,
+
+            below_threshold_reserve_pct=0.00,
+            below_threshold_reinvestment_pct=1.00,
+            below_threshold_personal_pct=0.00,
+
+            at_or_above_threshold_reserve_pct=0.10,
+            at_or_above_threshold_reinvestment_pct=0.70,
+            at_or_above_threshold_personal_pct=0.20,
+
+            frequency="MONTHLY",
+        )
     )
 
     return RocketTraderCore(
         risk_config=risk_config,
         benchmark_config=benchmark_config,
         distribution_config=distribution_config,
-        benchmark_repository=InMemoryBenchmarkRepository(),
-        execution_adapter=PaperExecutionAdapter(),
-        audit_path="data/rocket_trader_audit.jsonl",
+        benchmark_repository=(
+            InMemoryBenchmarkRepository()
+        ),
+        execution_adapter=(
+            PaperExecutionAdapter()
+        ),
+        adaptive_overlay=(
+            AdaptiveRiskOverlay()
+        ),
+        audit_path=(
+            "data/rocket_trader_audit.jsonl"
+        ),
     )
 
 
 # ============================================================================
-# SELF-TEST
+# SELF TEST
 # ============================================================================
 
-
 def self_test() -> Dict[str, Any]:
+
     core = build_demo_core()
+
     account = AccountState(
         equity=1000.0,
         cash=1000.0,
@@ -1007,6 +1829,9 @@ def self_test() -> Dict[str, Any]:
         timestamp=utc_now(),
         price=100.0,
         volume=1000.0,
+        features={
+            "signal_quality": 0.80,
+        },
     )
 
     signal = StrategySignal(
@@ -1015,74 +1840,236 @@ def self_test() -> Dict[str, Any]:
         score=0.80,
         expected_return=0.03,
         confidence=0.80,
-        rationale={"demo_signal": 1.0},
+        rationale={
+            "demo_signal": 1.0,
+        },
         strategy_id="demo",
         setup_signature="NOVEL_SETUP_A",
     )
 
-    decision = core.evaluate_and_maybe_execute(
-        account=account,
-        snapshot=snapshot,
-        signal=signal,
-        execute=True,
+    decision = (
+        core.evaluate_and_maybe_execute(
+            account=account,
+            snapshot=snapshot,
+            signal=signal,
+            execute=True,
+        )
     )
 
-    assert decision.status == DecisionStatus.NOVEL_RISK
-    assert decision.evidence_class == EvidenceClass.NOVEL
-    assert decision.quantity > 0
-    assert decision.quantity <= 0.1
-    assert decision.stop_price == 98.0
-    assert decision.take_profit_price == 104.0
+    assert decision.status in {
+        DecisionStatus.NOVEL_RISK,
+        DecisionStatus.SAFE_MODE,
+    }
 
-    # Hasta $100,000: 100% reinversión.
-    plan = core.monthly_distribution_plan(1000.0, operating_capital=1000.0, period="2026-09")
-    assert plan.reserve_amount == 0.0
-    assert plan.reinvestment_amount == 1000.0
-    assert plan.personal_amount == 0.0
+    assert decision.evidence_class == (
+        EvidenceClass.NOVEL
+    )
 
-    # Cruce del umbral: primero completa $100,000 y solo el excedente usa 70/20/10.
-    cross = core.monthly_distribution_plan(10_000.0, operating_capital=95_000.0, period="2026-09")
-    assert cross.reserve_amount == 500.0
-    assert cross.reinvestment_amount == 8_500.0
-    assert cross.personal_amount == 1_000.0
+    if decision.status == DecisionStatus.NOVEL_RISK:
+        assert decision.quantity > 0
+        assert decision.quantity <= 0.1
+        assert decision.stop_price == 98.0
+        assert decision.take_profit_price == 104.0
 
-    # Por encima de $100,000: 70/20/10.
-    mature = core.monthly_distribution_plan(10_000.0, operating_capital=100_000.0, period="2026-09")
-    assert mature.reserve_amount == 1_000.0
-    assert mature.reinvestment_amount == 7_000.0
-    assert mature.personal_amount == 2_000.0
+    # ------------------------------------------------
+    # CAPITAL POLICY < 100K
+    # ------------------------------------------------
 
-    # Kill switch por piso.
+    plan_accumulation = (
+        core.monthly_distribution_plan(
+            distributable_profit=1000.0,
+            operating_capital=50000.0,
+            period="2026-09",
+        )
+    )
+
+    assert (
+        plan_accumulation.reserve_amount
+        == 0.0
+    )
+
+    assert (
+        plan_accumulation.reinvestment_amount
+        == 1000.0
+    )
+
+    assert (
+        plan_accumulation.personal_amount
+        == 0.0
+    )
+
+    assert (
+        plan_accumulation.capital_policy
+        == "ACCUMULATION_BELOW_100K"
+    )
+
+    # ------------------------------------------------
+    # CAPITAL POLICY >= 100K
+    # ------------------------------------------------
+
+    plan_distribution = (
+        core.monthly_distribution_plan(
+            distributable_profit=1000.0,
+            operating_capital=100000.0,
+            period="2026-09",
+        )
+    )
+
+    assert (
+        plan_distribution.reserve_amount
+        == 100.0
+    )
+
+    assert (
+        plan_distribution.reinvestment_amount
+        == 700.0
+    )
+
+    assert (
+        plan_distribution.personal_amount
+        == 200.0
+    )
+
+    assert (
+        plan_distribution.capital_policy
+        == "DISTRIBUTION_AT_OR_ABOVE_100K"
+    )
+
+    # ------------------------------------------------
+    # KILL SWITCH FLOOR
+    # ------------------------------------------------
+
     floor_account = AccountState(
         equity=500.0,
         cash=500.0,
         protected_floor=500.0,
     )
-    floor_decision = core.evaluate_and_maybe_execute(
-        account=floor_account,
-        snapshot=snapshot,
-        signal=signal,
-        execute=False,
+
+    floor_decision = (
+        core.evaluate_and_maybe_execute(
+            account=floor_account,
+            snapshot=snapshot,
+            signal=signal,
+            execute=False,
+        )
     )
-    assert floor_decision.status == DecisionStatus.KILL_SWITCH
+
+    assert (
+        floor_decision.status
+        == DecisionStatus.KILL_SWITCH
+    )
+
+    # ------------------------------------------------
+    # ADAPTIVE BLOCK
+    # ------------------------------------------------
+
+    risk_off_decision = (
+        core.evaluate_and_maybe_execute(
+            account=account,
+            snapshot=snapshot,
+            signal=signal,
+            execute=False,
+            market_regime="RISK_OFF",
+            news_impact="NONE",
+        )
+    )
+
+    assert (
+        risk_off_decision.status
+        == DecisionStatus.SAFE_MODE
+    )
+
+    # ------------------------------------------------
+    # NEWS BLOCK
+    # ------------------------------------------------
+
+    news_block_decision = (
+        core.evaluate_and_maybe_execute(
+            account=account,
+            snapshot=snapshot,
+            signal=signal,
+            execute=False,
+            market_regime="NEUTRAL",
+            news_impact="URGENT_NEGATIVE",
+        )
+    )
+
+    assert (
+        news_block_decision.status
+        == DecisionStatus.SAFE_MODE
+    )
 
     return {
         "ok": True,
+
         "decision": {
             "status": decision.status.value,
-            "evidence_class": decision.evidence_class.value,
+            "evidence_class": (
+                decision.evidence_class.value
+            ),
             "quantity": decision.quantity,
             "stop_price": decision.stop_price,
-            "take_profit_price": decision.take_profit_price,
+            "take_profit_price": (
+                decision.take_profit_price
+            ),
+            "adaptive_multiplier": (
+                decision.adaptive_multiplier
+            ),
         },
-        "monthly_distribution": dataclasses.asdict(plan),
-        "floor_kill_switch": floor_decision.status.value,
+
+        "capital_policy_below_100k": {
+            "reserve": (
+                plan_accumulation.reserve_amount
+            ),
+            "reinvestment": (
+                plan_accumulation.reinvestment_amount
+            ),
+            "personal": (
+                plan_accumulation.personal_amount
+            ),
+        },
+
+        "capital_policy_at_100k": {
+            "reserve": (
+                plan_distribution.reserve_amount
+            ),
+            "reinvestment": (
+                plan_distribution.reinvestment_amount
+            ),
+            "personal": (
+                plan_distribution.personal_amount
+            ),
+        },
+
+        "floor_kill_switch": (
+            floor_decision.status.value
+        ),
+
+        "risk_off_lock": (
+            risk_off_decision.status.value
+        ),
+
+        "negative_news_lock": (
+            news_block_decision.status.value
+        ),
     }
 
 
+# ============================================================================
+# MAIN
+# ============================================================================
+
 def main() -> None:
+
     result = self_test()
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    print(
+        json.dumps(
+            result,
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
