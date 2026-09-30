@@ -1,0 +1,36 @@
+name: Rocket Trader - Alpaca Paper Market Data Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  alpaca-paper-market-data:
+    name: Verify Alpaca Paper account and market data
+    runs-on: ubuntu-latest
+
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+
+    steps:
+      - name: Checkout Rocket Trader
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-alpaca.txt
+
+      - name: Install Alpaca dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-alpaca.txt
+
+      - name: Verify Alpaca Paper account and market data
+        run: python alpaca_market_data_test.py
