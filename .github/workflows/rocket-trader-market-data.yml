@@ -1,0 +1,36 @@
+name: Rocket Trader - Market Data Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  market-data-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-alpaca.txt
+
+      - name: Verify Market Data Layer
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          python rocket_trader_market_data_test.py
+
+      - name: Verify one live market-data poll
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          python rocket_trader_market_data.py --once --symbols SPY QQQ
