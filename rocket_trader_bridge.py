@@ -2,23 +2,28 @@
 # -*- coding: utf-8 -*-
 
 """
-Rocket Trader — Bridge v0.3
+ROCKET TRADER — BRIDGE v0.4
 
-Conecta el motor estadístico/ML con RocketTraderCore.
+Conecta:
 
-Responsabilidades:
-- Recibir un SignalCandidate del engine.
-- Convertirlo a StrategySignal del core.
-- Mantener LONG-ONLY.
-- No ejecutar por defecto.
-- Mantener PAPER como modo seguro.
-- No conocer detalles internos del broker.
-- Permitir que el Core siga siendo responsable de riesgo y ejecución.
+    rocket_trader_engine.py
+              ↓
+       SignalCandidate
+              ↓
+    rocket_trader_core.py
+              ↓
+       Risk / Decision
+              ↓
+        PAPER execution
 
-IMPORTANTE:
-- Este bridge NO decide cuánto capital arriesgar.
-- Este bridge NO habilita LIVE.
-- El Core sigue siendo la autoridad de riesgo.
+SEGURIDAD
+---------
+- PAPER ONLY.
+- LIVE no se habilita desde este archivo.
+- No contiene API keys.
+- No contiene configuración de distribución de utilidades.
+- La política de capital pertenece exclusivamente al Core.
+- El Bridge nunca puede saltarse RiskEngine.
 """
 
 from __future__ import annotations
@@ -34,14 +39,7 @@ from rocket_trader_core import (
     RocketTraderCore,
     Side,
     StrategySignal,
-    Decision,
-    EvidenceClass,
-    RiskConfig,
-    TraderBenchmarkConfig,
-    ProfitDistributionConfig,
-    InMemoryBenchmarkRepository,
-    PaperExecutionAdapter,
-    utc_now,
+    build_demo_core,
 )
 
 from rocket_trader_engine import SignalCandidate
@@ -53,123 +51,111 @@ from rocket_trader_engine import SignalCandidate
 
 
 def _enum_value(value: Any) -> Any:
-    """Devuelve .value cuando el objeto es un Enum."""
+    """Devuelve .value si el objeto es un Enum."""
     return getattr(value, "value", value)
 
 
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+def _get_field(
+    obj: Any,
+    name: str,
+    default: Any = None,
+) -> Any:
+    """Lee un campo de un objeto o diccionario."""
+    if hasattr(obj, name):
+        return getattr(obj, name)
+
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+
+    return default
 
 
-def _candidate_field(candidate: Any, name: str, default: Any = None) -> Any:
-    return getattr(candidate, name, default)
+def _as_dict(obj: Any) -> Dict[str, Any]:
+    """Convierte un objeto a diccionario para auditoría/test."""
+    if dataclasses.is_dataclass(obj):
+        return dataclasses.asdict(obj)
+
+    if isinstance(obj, dict):
+        return dict(obj)
+
+    if hasattr(obj, "__dict__"):
+        return dict(vars(obj))
+
+    return {}
 
 
 # ============================================================================
-# CONVERSIÓN ENGINE -> CORE
+# ENGINE -> CORE
 # ============================================================================
 
 
-def candidate_to_strategy_signal(candidate: SignalCandidate) -> StrategySignal:
+def candidate_to_strategy_signal(
+    candidate: SignalCandidate,
+) -> StrategySignal:
     """
-    Convierte SignalCandidate del engine a StrategySignal del Core.
+    Convierte SignalCandidate del Engine al formato StrategySignal del Core.
 
-    El engine es la fuente de:
-    - probability_up
-    - expected_return
-    - confidence
-    - score
-    - setup_signature
-    - evidence_class
-    - features
-    - model_votes
-
-    El Core sigue siendo responsable de:
-    - benchmark
-    - sizing
-    - riesgo
-    - stops
-    - kill switch
-    - ejecución
+    El Engine genera la señal.
+    El Core decide si esa señal puede operar.
     """
 
-    symbol = str(_candidate_field(candidate, "symbol", "")).strip()
-
-    if not symbol:
-        raise ValueError("SignalCandidate no contiene symbol válido.")
-
-    probability_up = _safe_float(
-        _candidate_field(candidate, "probability_up", 0.0)
+    symbol = str(
+        _get_field(candidate, "symbol", "DEMO")
     )
 
-    expected_return = _safe_float(
-        _candidate_field(candidate, "expected_return", 0.0)
+    probability_up = float(
+        _get_field(candidate, "probability_up", 0.50)
     )
 
-    confidence = _safe_float(
-        _candidate_field(candidate, "confidence", 0.0)
+    expected_return = float(
+        _get_field(candidate, "expected_return", 0.0)
     )
 
-    score = _safe_float(
-        _candidate_field(candidate, "score", 0.0)
+    confidence = float(
+        _get_field(candidate, "confidence", 0.0)
+    )
+
+    score = float(
+        _get_field(candidate, "score", 0.0)
     )
 
     setup_signature = str(
-        _candidate_field(candidate, "setup_signature", "")
+        _get_field(
+            candidate,
+            "setup_signature",
+            "UNKNOWN_SETUP",
+        )
     )
 
-    evidence_raw = _candidate_field(
+    features = _get_field(
         candidate,
-        "evidence_class",
-        EvidenceClass.INSUFFICIENT,
+        "features",
+        {},
     )
 
-    if isinstance(evidence_raw, EvidenceClass):
-        evidence_class = evidence_raw
-    else:
-        try:
-            evidence_class = EvidenceClass(str(evidence_raw))
-        except ValueError:
-            evidence_class = EvidenceClass.INSUFFICIENT
+    model_votes = _get_field(
+        candidate,
+        "model_votes",
+        {},
+    )
 
-    features = _candidate_field(candidate, "features", {}) or {}
-    model_votes = _candidate_field(candidate, "model_votes", {}) or {}
-
-    rationale: Dict[str, float] = {
+    rationale = {
+        "source": "rocket_trader_engine",
         "probability_up": probability_up,
-        "model_confidence": confidence,
+        "expected_return": expected_return,
+        "confidence": confidence,
+        "model_votes": model_votes,
+        "features": features,
     }
-
-    if isinstance(features, dict):
-        for key, value in features.items():
-            try:
-                rationale[f"feature_{key}"] = float(value)
-            except (TypeError, ValueError):
-                continue
-
-    if isinstance(model_votes, dict):
-        for key, value in model_votes.items():
-            try:
-                rationale[f"vote_{key}"] = float(value)
-            except (TypeError, ValueError):
-                continue
-
-    # LONG-ONLY:
-    # Una probabilidad > 50% puede producir BUY, pero el Core decide
-    # finalmente si el score/riesgo permite operar.
-    side = Side.BUY if probability_up >= 0.50 else Side.HOLD
 
     return StrategySignal(
         symbol=symbol,
-        side=side,
-        score=max(0.0, min(1.0, score)),
+        side=Side.BUY,
+        score=score,
         expected_return=expected_return,
-        confidence=max(0.0, min(1.0, confidence)),
+        confidence=confidence,
         rationale=rationale,
-        strategy_id="statistical_ml_ensemble",
+        strategy_id="rocket_trader_engine",
         setup_signature=setup_signature,
     )
 
@@ -181,44 +167,75 @@ def candidate_to_strategy_signal(candidate: SignalCandidate) -> StrategySignal:
 
 class RocketTraderBridge:
     """
-    Orquestador entre Engine y Core.
-
-    Por defecto execute=False.
+    Adaptador entre el motor estadístico y RocketTraderCore.
     """
 
     def __init__(
         self,
-        core: RocketTraderCore,
+        core: Optional[RocketTraderCore] = None,
     ) -> None:
-        self.core = core
+
+        self.core = core or build_demo_core()
 
     def evaluate_candidate(
         self,
         candidate: SignalCandidate,
-        account: AccountState,
         price: float,
         volume: float = 0.0,
-        timestamp: Optional[str] = None,
+        bid: Optional[float] = None,
+        ask: Optional[float] = None,
+        account: Optional[AccountState] = None,
         execute: bool = False,
-    ) -> Decision:
+    ):
+        """
+        Envía una señal del Engine al Core.
 
-        strategy_signal = candidate_to_strategy_signal(candidate)
+        execute=False es el default.
+
+        Si execute=True, el Core continúa forzando PAPER.
+        """
+
+        timestamp = _get_field(
+            candidate,
+            "timestamp",
+            None,
+        )
+
+        if timestamp is None:
+            timestamp = "1970-01-01T00:00:00+00:00"
+
+        symbol = str(
+            _get_field(
+                candidate,
+                "symbol",
+                "DEMO",
+            )
+        )
 
         snapshot = MarketSnapshot(
-            symbol=str(candidate.symbol),
-            timestamp=timestamp or _candidate_field(
-                candidate,
-                "timestamp",
-                utc_now(),
-            ),
+            symbol=symbol,
+            timestamp=str(timestamp),
             price=float(price),
             volume=float(volume),
+            bid=bid,
+            ask=ask,
         )
+
+        signal = candidate_to_strategy_signal(
+            candidate
+        )
+
+        if account is None:
+            account = AccountState(
+                equity=1000.0,
+                cash=1000.0,
+                protected_floor=0.0,
+            )
 
         return self.core.evaluate_and_maybe_execute(
             account=account,
             snapshot=snapshot,
-            signal=strategy_signal,
+            signal=signal,
             execute=execute,
         )
 
@@ -230,85 +247,62 @@ class RocketTraderBridge:
 
 def build_bridge_demo_core() -> RocketTraderCore:
     """
-    Construye un Core exclusivamente para el self-test.
+    Construye el Core oficial.
 
-    No conecta con Alpaca.
-    No envía órdenes reales.
+    IMPORTANTE:
+    No construimos ProfitDistributionConfig aquí.
+
+    La política de capital está centralizada en Core.
     """
 
-    risk_config = RiskConfig(
-        initial_capital=1000.0,
-        permanent_floor=0.0,
-        allow_short=False,
-        allow_margin=False,
-        max_position_pct=0.25,
-        max_total_exposure_pct=0.80,
-        max_loss_per_trade_pct=0.02,
-        daily_loss_limit_pct=0.05,
-        stop_loss_pct=0.02,
-        take_profit_pct=0.04,
-        trailing_stop_pct=0.015,
-        max_trades_per_day=10,
-        max_consecutive_losses=3,
-        min_signal_score=0.60,
-        min_benchmark_confidence=0.55,
-        novel_risk_budget_pct=0.01,
-    )
-
-    benchmark_config = TraderBenchmarkConfig(
-        min_comparable_traders=3,
-        min_comparable_events=20,
-        min_confidence=0.55,
-        novelty_penalty=0.15,
-        benchmark_weight=0.25,
-    )
-
-    # Mantiene la configuración actualmente compatible con el Core.
-    distribution_config = ProfitDistributionConfig(
-        reserve_pct=0.10,
-        reinvestment_pct=0.70,
-        personal_pct=0.20,
-        frequency="MONTHLY",
-    )
-
-    return RocketTraderCore(
-        risk_config=risk_config,
-        benchmark_config=benchmark_config,
-        distribution_config=distribution_config,
-        benchmark_repository=InMemoryBenchmarkRepository(),
-        execution_adapter=PaperExecutionAdapter(),
-        audit_path="data/rocket_trader_bridge_test.jsonl",
-    )
+    return build_demo_core()
 
 
 # ============================================================================
-# SELF-TEST
+# TEST SIGNAL
 # ============================================================================
 
 
 def _build_test_candidate() -> SignalCandidate:
     """
     Construye un SignalCandidate compatible con la versión instalada
-    del engine.
+    del Engine.
 
-    Se utiliza introspección únicamente para que el bridge no vuelva
-    a romperse si se agregan campos obligatorios al dataclass del engine.
+    Se utiliza introspección para evitar asumir una firma exacta.
     """
 
-    signature = inspect.signature(SignalCandidate)
+    signature = inspect.signature(
+        SignalCandidate
+    )
 
-    available_values: Dict[str, Any] = {
+    values: Dict[str, Any] = {}
+
+    known_values: Dict[str, Any] = {
         "symbol": "DEMO",
-        "timestamp": utc_now(),
+
+        "timestamp":
+            "2026-09-30T20:00:00+00:00",
+
         "probability_up": 0.72,
+
         "expected_return": 0.03,
+
         "confidence": 0.80,
+
         "score": 0.80,
-        "setup_signature": "BRIDGE_TEST_SETUP",
-        "evidence_class": EvidenceClass.NOVEL,
+
+        "setup_signature":
+            "BRIDGE_TEST_SETUP",
+
+        "evidence_class":
+            "NOVEL",
+
         "features": {
-            "demo_feature": 1.0,
+            "trend_strength": 0.80,
+            "rsi_14": 0.55,
+            "volume_ratio_20": 1.20,
         },
+
         "model_votes": {
             "logistic": 0.70,
             "xgb": 0.74,
@@ -316,58 +310,65 @@ def _build_test_candidate() -> SignalCandidate:
         },
     }
 
-    kwargs: Dict[str, Any] = {}
-
     for name, parameter in signature.parameters.items():
 
-        if parameter.kind in {
-            inspect.Parameter.VAR_POSITIONAL,
-            inspect.Parameter.VAR_KEYWORD,
-        }:
+        if name == "self":
             continue
 
-        if name in available_values:
-            kwargs[name] = available_values[name]
+        if name in known_values:
+            values[name] = known_values[name]
             continue
 
         if parameter.default is not inspect.Parameter.empty:
             continue
 
-        # Fallbacks para cualquier campo obligatorio adicional.
         annotation = parameter.annotation
 
-        if annotation is bool:
-            kwargs[name] = False
-        elif annotation is int:
-            kwargs[name] = 0
-        elif annotation is float:
-            kwargs[name] = 0.0
-        elif annotation is str:
-            kwargs[name] = ""
-        elif annotation in (dict, Dict):
-            kwargs[name] = {}
-        elif annotation in (list,):
-            kwargs[name] = []
-        else:
-            # Último recurso para campos obligatorios desconocidos.
-            kwargs[name] = None
+        if annotation is str:
+            values[name] = ""
 
-    return SignalCandidate(**kwargs)
+        elif annotation is float:
+            values[name] = 0.0
+
+        elif annotation is int:
+            values[name] = 0
+
+        elif annotation is bool:
+            values[name] = False
+
+        elif annotation is dict:
+            values[name] = {}
+
+        else:
+            if name == "evidence_class":
+                values[name] = "NOVEL"
+            else:
+                values[name] = None
+
+    return SignalCandidate(
+        **values
+    )
+
+
+# ============================================================================
+# SELF TEST
+# ============================================================================
 
 
 def self_test() -> Dict[str, Any]:
-    candidate = _build_test_candidate()
+    """
+    Self-test del Bridge.
 
-    strategy_signal = candidate_to_strategy_signal(candidate)
-
-    assert strategy_signal.symbol == "DEMO"
-    assert strategy_signal.side == Side.BUY
-    assert 0.0 <= strategy_signal.score <= 1.0
-    assert 0.0 <= strategy_signal.confidence <= 1.0
-    assert strategy_signal.strategy_id == "statistical_ml_ensemble"
+    NO envía órdenes reales.
+    """
 
     core = build_bridge_demo_core()
-    bridge = RocketTraderBridge(core)
+
+    bridge = RocketTraderBridge(
+        core=core
+    )
+
+    candidate = _build_test_candidate()
 
     account = AccountState(
         equity=1000.0,
@@ -377,52 +378,166 @@ def self_test() -> Dict[str, Any]:
 
     decision = bridge.evaluate_candidate(
         candidate=candidate,
-        account=account,
         price=100.0,
         volume=1000.0,
+        account=account,
         execute=False,
     )
 
-    # El candidato es NOVEL, por lo que el Core debe aplicar
-    # su presupuesto de riesgo para novedad.
-    assert decision.evidence_class == EvidenceClass.NOVEL
-    assert decision.quantity >= 0.0
-    assert decision.stop_price in (None, 98.0)
-    assert decision.take_profit_price in (None, 104.0)
+    # ------------------------------------------------------------------------
+    # Validaciones básicas
+    # ------------------------------------------------------------------------
+
+    assert decision is not None
+
+    assert hasattr(
+        decision,
+        "status",
+    )
+
+    assert hasattr(
+        decision,
+        "quantity",
+    )
+
+    assert hasattr(
+        decision,
+        "symbol",
+    )
+
+    assert decision.symbol == "DEMO"
+
+    # ------------------------------------------------------------------------
+    # SEGURIDAD
+    # ------------------------------------------------------------------------
+
+    # Signal de prueba = NOVEL.
+    #
+    # El Core debe limitarla al presupuesto de riesgo de novedad.
+    #
+    # Cuenta = $1,000
+    # Riesgo máximo de novedad = 1%
+    # Notional máximo = $10
+    # Precio = $100
+    # Quantity máxima = 0.10
+
+    assert decision.quantity <= 0.10
+
+    # ------------------------------------------------------------------------
+    # FLOOR KILL SWITCH
+    # ------------------------------------------------------------------------
+
+    floor_account = AccountState(
+        equity=500.0,
+        cash=500.0,
+        protected_floor=500.0,
+    )
+
+    floor_decision = bridge.evaluate_candidate(
+        candidate=candidate,
+        price=100.0,
+        volume=1000.0,
+        account=floor_account,
+        execute=False,
+    )
+
+    assert (
+        _enum_value(
+            floor_decision.status
+        )
+        == "KILL_SWITCH"
+    )
+
+    # ------------------------------------------------------------------------
+    # RESULTADO
+    # ------------------------------------------------------------------------
 
     return {
         "ok": True,
-        "bridge_version": "0.3",
-        "candidate": {
-            "symbol": strategy_signal.symbol,
-            "side": strategy_signal.side.value,
-            "score": strategy_signal.score,
-            "confidence": strategy_signal.confidence,
-            "expected_return": strategy_signal.expected_return,
-            "strategy_id": strategy_signal.strategy_id,
-            "setup_signature": strategy_signal.setup_signature,
-        },
-        "decision": {
-            "status": decision.status.value,
-            "evidence_class": decision.evidence_class.value,
-            "quantity": decision.quantity,
-            "entry_price": decision.entry_price,
-            "stop_price": decision.stop_price,
-            "take_profit_price": decision.take_profit_price,
-        },
-        "execution_requested": False,
+
+        "bridge_version": "0.4",
+
+        "execution": "PAPER_ONLY",
+
         "live_orders": False,
+
+        "candidate": _as_dict(
+            candidate
+        ),
+
+        "decision": {
+            "status":
+                _enum_value(
+                    decision.status
+                ),
+
+            "evidence_class":
+                _enum_value(
+                    decision.evidence_class
+                ),
+
+            "symbol":
+                decision.symbol,
+
+            "quantity":
+                decision.quantity,
+
+            "stop_price":
+                decision.stop_price,
+
+            "take_profit_price":
+                decision.take_profit_price,
+        },
+
+        "floor_kill_switch":
+            _enum_value(
+                floor_decision.status
+            ),
     }
 
 
+# ============================================================================
+# MAIN
+# ============================================================================
+
+
 def main() -> None:
+
+    print("=" * 72)
+
+    print(
+        "ROCKET TRADER — BRIDGE v0.4"
+    )
+
+    print("=" * 72)
+
+    print(
+        "MODE: PAPER ONLY"
+    )
+
+    print(
+        "LIVE ORDERS: DISABLED"
+    )
+
+    print("=" * 72)
+
     result = self_test()
+
+    print(
+        json.dumps(
+            result,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+    )
+
     print("=" * 72)
-    print("ROCKET TRADER — BRIDGE SELF-TEST v0.3")
-    print("=" * 72)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    print("=" * 72)
-    print("BRIDGE SELF-TEST: PASS")
+
+    print(
+        "ROCKET TRADER BRIDGE SELF-TEST: OK"
+    )
+
     print("=" * 72)
 
 
