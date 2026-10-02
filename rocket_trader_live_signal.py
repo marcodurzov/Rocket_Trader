@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 """
-Rocket Trader — Live Signal Pipeline v0.2
+Rocket Trader — Live Signal Pipeline v0.3
 
 FLUJO:
 
     Alpaca IEX
         ↓
-    Market Data
+    Market Data REAL
         ↓
     pandas OHLCV
         ↓
@@ -20,35 +20,30 @@ FLUJO:
         ↓
     diagnóstico de señal
 
-SEGURIDAD:
+IMPORTANTE:
 
 - MARKET DATA: REAL
 - SIGNALS: ENABLED
 - ORDERS: DISABLED
-- Este módulo NO importa TradingClient.
-- Este módulo NO envía órdenes.
+- Este módulo NO coloca órdenes.
+- Este módulo NO usa TradingClient.
 - Este módulo NO modifica posiciones.
-- Este módulo NO habilita LIVE trading.
-
-IMPORTANTE:
-La integración con FeatureEngine y SignalEngine se realiza mediante
-introspección controlada para utilizar la API realmente disponible en
-rocket_trader_engine.py y evitar asumir métodos que no existen.
+- Este módulo únicamente obtiene datos reales y genera señales
+  mediante el Statistical / ML Engine existente.
 """
 
 from __future__ import annotations
 
-import inspect
-import json
-import math
+import dataclasses
 import os
-from dataclasses import asdict, is_dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List
 
 import pandas as pd
 
 from rocket_trader_engine import (
+    EngineConfig,
     FeatureEngine,
+    MarketDataValidator,
     SignalCandidate,
     SignalEngine,
 )
@@ -59,154 +54,48 @@ from rocket_trader_market_data import (
 )
 
 
-# ============================================================================
-# CONFIG
-# ============================================================================
+PIPELINE_VERSION = "0.3"
 
 DEFAULT_SYMBOLS = ("SPY", "QQQ")
-DEFAULT_BAR_LIMIT = 300
+
+# Se solicitan suficientes minutos para que, aun con mercado
+# cerrado/fines de semana/horarios no negociables, exista
+# historial suficiente para entrenar el modelo.
+DEFAULT_MINUTES = 1200
+
+MIN_RAW_BARS = 400
+
+ORDERS_ENABLED = False
 
 
-# ============================================================================
-# UTILIDADES
-# ============================================================================
-
-
-def _public_methods(obj: Any) -> List[str]:
-    """
-    Devuelve métodos públicos de una instancia.
-    """
-    methods: List[str] = []
-
-    for name in dir(obj):
-        if name.startswith("_"):
-            continue
-
-        try:
-            value = getattr(obj, name)
-        except Exception:
-            continue
-
-        if callable(value):
-            methods.append(name)
-
-    return sorted(methods)
-
-
-def _safe_repr(value: Any, max_length: int = 1200) -> str:
-    """
-    Representación segura para logs.
-    """
-    try:
-        if is_dataclass(value):
-            text = repr(asdict(value))
-        elif hasattr(value, "model_dump"):
-            text = repr(value.model_dump())
-        elif hasattr(value, "__dict__"):
-            text = repr(vars(value))
-        else:
-            text = repr(value)
-    except Exception:
-        text = repr(value)
-
-    if len(text) > max_length:
-        return text[:max_length] + "...<truncated>"
-
-    return text
-
-
-def _is_dataframe_like(value: Any) -> bool:
-    return isinstance(value, pd.DataFrame)
-
-
-def _is_series_like(value: Any) -> bool:
-    return isinstance(value, pd.Series)
-
-
-def _is_numeric_matrix(value: Any) -> bool:
-    """
-    Determina si el resultado parece una matriz numérica.
-    """
-    if value is None:
-        return False
-
-    try:
-        if hasattr(value, "shape") and len(value.shape) >= 1:
-            return True
-
-        if isinstance(value, (list, tuple)) and value:
-            first = value[0]
-
-            if isinstance(first, (list, tuple)):
-                float(first[0])
-                return True
-
-            float(first)
-            return True
-    except Exception:
-        return False
-
-    return False
-
-
-def _looks_like_signal(value: Any) -> bool:
-    """
-    Determina si un objeto parece SignalCandidate.
-    """
-    if value is None:
-        return False
-
-    if isinstance(value, SignalCandidate):
-        return True
-
-    names = set()
-
-    try:
-        names.update(vars(value).keys())
-    except Exception:
-        pass
-
-    names.update(
-        name
-        for name in dir(value)
-        if not name.startswith("_")
-    )
-
-    signal_fields = {
-        "symbol",
-        "side",
-        "score",
-        "confidence",
-        "probability_up",
-        "expected_return",
-        "evidence_class",
-        "strategy_id",
-    }
-
-    return len(names.intersection(signal_fields)) >= 2
-
-
-# ============================================================================
-# MARKET DATA → DATAFRAME
-# ============================================================================
+def _print_header() -> None:
+    print("=" * 72)
+    print("ROCKET TRADER — LIVE SIGNAL PIPELINE v0.3")
+    print("=" * 72)
+    print("MARKET DATA: REAL")
+    print("FEATURE ENGINE: REAL")
+    print("SIGNALS: ENABLED")
+    print("ORDERS: DISABLED")
+    print("=" * 72)
 
 
 def bars_to_dataframe(
-    bars: Sequence[MarketBar],
+    bars: List[MarketBar],
 ) -> pd.DataFrame:
     """
-    Convierte MarketBar → DataFrame OHLCV.
+    Convierte las MarketBar reales de Alpaca a un DataFrame
+    compatible con MarketDataValidator / FeatureEngine.
     """
 
     if not bars:
-        raise RuntimeError("No se recibieron barras de mercado.")
+        raise ValueError("Alpaca no devolvió barras de mercado.")
 
     rows: List[Dict[str, Any]] = []
 
     for bar in bars:
         rows.append(
             {
-                "timestamp": pd.Timestamp(bar.timestamp),
+                "timestamp": bar.timestamp,
                 "open": float(bar.open),
                 "high": float(bar.high),
                 "low": float(bar.low),
@@ -217,763 +106,475 @@ def bars_to_dataframe(
 
     frame = pd.DataFrame(rows)
 
-    if frame.empty:
-        raise RuntimeError("El DataFrame de mercado está vacío.")
-
-    frame = frame.sort_values("timestamp")
-    frame = frame.drop_duplicates(subset=["timestamp"])
-    frame = frame.set_index("timestamp")
-
-    numeric_columns = [
-        "open",
-        "high",
-        "low",
-        "close",
-        "volume",
-    ]
-
-    for column in numeric_columns:
-        frame[column] = pd.to_numeric(
-            frame[column],
-            errors="coerce",
-        )
-
-    frame = frame.dropna(subset=numeric_columns)
-
-    if len(frame) < 60:
-        raise RuntimeError(
-            f"Datos insuficientes para señal: {len(frame)} barras."
-        )
+    frame = MarketDataValidator.normalize(frame)
 
     return frame
 
 
-# ============================================================================
-# MARKET DATA
-# ============================================================================
+def build_engine_config() -> EngineConfig:
+    """
+    Configuración operacional del SignalEngine.
+
+    Se mantiene alineada con el Engine real.
+    """
+
+    config = EngineConfig(
+        horizon_bars=5,
+        target_return=0.004,
+        min_history_bars=100,
+        training_stride=5,
+        max_training_rows=1200,
+        validation_fraction=0.20,
+        min_training_rows=300,
+        probability_threshold=0.58,
+        novelty_distance_threshold=2.5,
+        max_candidate_risk_pct=0.01,
+    )
+
+    config.validate()
+
+    return config
+
+
+def build_signal_engine() -> SignalEngine:
+    """
+    Construye el SignalEngine real de Rocket Trader.
+    """
+
+    config = build_engine_config()
+
+    return SignalEngine(config)
 
 
 def build_real_market_frame(
     client: AlpacaMarketDataClient,
     symbol: str,
-    limit: int = DEFAULT_BAR_LIMIT,
+    minutes: int = DEFAULT_MINUTES,
 ) -> pd.DataFrame:
     """
-    Descarga datos reales de Alpaca y los convierte a OHLCV.
+    Obtiene datos reales de Alpaca y los convierte al formato
+    esperado por FeatureEngine / SignalEngine.
     """
 
     bars = client.get_recent_bars(
         symbol=symbol,
-        limit=limit,
+        minutes=minutes,
     )
+
+    if len(bars) < MIN_RAW_BARS:
+        raise RuntimeError(
+            f"{symbol}: historial insuficiente. "
+            f"Se recibieron {len(bars)} barras; "
+            f"mínimo requerido: {MIN_RAW_BARS}."
+        )
 
     frame = bars_to_dataframe(bars)
 
-    if frame.empty:
+    if len(frame) < MIN_RAW_BARS:
         raise RuntimeError(
-            f"No hay datos reales disponibles para {symbol}."
+            f"{symbol}: DataFrame insuficiente después de normalización: "
+            f"{len(frame)} barras."
         )
 
     return frame
 
 
-# ============================================================================
-# FEATURE ENGINE
-# ============================================================================
-
-
-def build_feature_engine() -> FeatureEngine:
-    """
-    Construye FeatureEngine usando su constructor REAL.
-
-    Primero intenta constructor sin argumentos.
-    Si requiere configuración obligatoria, genera un error explícito.
-    """
-
-    try:
-        return FeatureEngine()
-    except TypeError as exc:
-        raise RuntimeError(
-            "FeatureEngine requiere argumentos en su constructor y "
-            "la integración automática no puede inferirlos de forma segura. "
-            f"Firma encontrada: {inspect.signature(FeatureEngine)}"
-        ) from exc
-
-
-def _candidate_feature_method_names() -> Tuple[str, ...]:
-    """
-    Orden de preferencia para métodos de generación de features.
-
-    El método realmente existente en FeatureEngine será seleccionado
-    dinámicamente.
-    """
-
-    return (
-        "transform",
-        "transform_features",
-        "build_features",
-        "create_features",
-        "compute_features",
-        "generate_features",
-        "engineer_features",
-        "make_features",
-        "features",
-        "build",
-        "compute",
-        "generate",
-        "engineer",
-        "make",
-        "fit_transform",
-    )
-
-
-def _call_feature_method(
-    method: Any,
+def inspect_features(
     frame: pd.DataFrame,
-) -> Any:
+) -> Dict[str, Any]:
     """
-    Ejecuta un método de FeatureEngine respetando su firma.
+    Ejecuta FeatureEngine REAL y devuelve diagnóstico.
     """
 
-    signature = inspect.signature(method)
+    features = FeatureEngine.build(frame)
 
-    parameters = list(signature.parameters.values())
-
-    positional_required = [
-        p
-        for p in parameters
-        if p.name != "self"
-        and p.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        )
-        and p.default is inspect.Parameter.empty
+    required_columns = [
+        "ret_1",
+        "ret_3",
+        "ret_5",
+        "ret_10",
+        "ret_20",
+        "vol_5",
+        "vol_10",
+        "vol_20",
+        "atr_pct",
+        "rsi_14",
+        "macd_norm",
+        "macd_signal_norm",
+        "macd_hist_norm",
+        "bb_position",
+        "bb_width",
+        "volume_ratio_20",
+        "volume_z_20",
+        "high_break_20",
+        "low_break_20",
+        "trend_strength",
+        "drawdown_20",
     ]
 
-    if len(positional_required) == 0:
-        return method()
+    missing = [
+        column
+        for column in required_columns
+        if column not in features.columns
+    ]
 
-    if len(positional_required) == 1:
-        return method(frame)
+    if missing:
+        raise RuntimeError(
+            f"FeatureEngine no produjo las features esperadas: {missing}"
+        )
 
-    parameter_names = {
-        p.name.lower()
-        for p in parameters
-        if p.name != "self"
+    latest = features.iloc[-1]
+
+    return {
+        "rows": int(len(features)),
+        "columns": int(len(features.columns)),
+        "latest_timestamp": str(latest["timestamp"]),
+        "latest_close": float(latest["close"]),
+        "feature_columns_present": len(required_columns),
+        "features": {
+            column: (
+                float(latest[column])
+                if pd.notna(latest[column])
+                else None
+            )
+            for column in required_columns
+        },
     }
-
-    frame_names = (
-        "data",
-        "df",
-        "frame",
-        "dataset",
-        "ohlcv",
-        "prices",
-        "market_data",
-    )
-
-    for name in frame_names:
-        if name in parameter_names:
-            return method(**{name: frame})
-
-    raise RuntimeError(
-        "No se pudo determinar cómo pasar el DataFrame a "
-        f"{method.__name__}{signature}"
-    )
-
-
-def generate_features(
-    feature_engine: FeatureEngine,
-    frame: pd.DataFrame,
-) -> Any:
-    """
-    Ejecuta el FeatureEngine real.
-
-    No presupone que exista transform().
-    """
-
-    available = _public_methods(feature_engine)
-
-    preferred = [
-        name
-        for name in _candidate_feature_method_names()
-        if name in available
-    ]
-
-    if not preferred:
-        raise RuntimeError(
-            "FeatureEngine no expone un método de generación de features "
-            "compatible.\n"
-            f"Métodos públicos disponibles: {available}"
-        )
-
-    errors: List[str] = []
-
-    for method_name in preferred:
-        method = getattr(feature_engine, method_name)
-
-        try:
-            result = _call_feature_method(
-                method,
-                frame,
-            )
-
-            if result is None:
-                errors.append(
-                    f"{method_name}: devolvió None"
-                )
-                continue
-
-            return result
-
-        except Exception as exc:
-            errors.append(
-                f"{method_name}: {type(exc).__name__}: {exc}"
-            )
-
-    raise RuntimeError(
-        "Todos los métodos candidatos de FeatureEngine fallaron.\n"
-        + "\n".join(errors)
-    )
-
-
-# ============================================================================
-# SIGNAL ENGINE
-# ============================================================================
-
-
-def build_signal_engine(
-    feature_engine: Optional[FeatureEngine] = None,
-) -> SignalEngine:
-    """
-    Construye SignalEngine usando introspección de su constructor.
-    """
-
-    signature = inspect.signature(SignalEngine)
-    parameters = list(signature.parameters.values())
-
-    required = [
-        p
-        for p in parameters
-        if p.name != "self"
-        and p.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        )
-        and p.default is inspect.Parameter.empty
-    ]
-
-    if not required:
-        return SignalEngine()
-
-    kwargs: Dict[str, Any] = {}
-
-    for parameter in required:
-        name = parameter.name.lower()
-
-        if name in {
-            "feature_engine",
-            "features",
-            "feature",
-        }:
-            if feature_engine is None:
-                raise RuntimeError(
-                    "SignalEngine requiere FeatureEngine."
-                )
-
-            kwargs[parameter.name] = feature_engine
-            continue
-
-        raise RuntimeError(
-            "SignalEngine requiere un argumento que no puede inferirse "
-            f"de forma segura: '{parameter.name}'. "
-            f"Firma: {signature}"
-        )
-
-    return SignalEngine(**kwargs)
-
-
-# ============================================================================
-# SIGNAL GENERATION
-# ============================================================================
-
-
-def _signal_method_names(
-    signal_engine: SignalEngine,
-) -> List[str]:
-    """
-    Obtiene métodos candidatos del SignalEngine.
-    """
-
-    preferred = (
-        "generate_signal",
-        "generate",
-        "predict_signal",
-        "predict",
-        "score",
-        "evaluate",
-        "infer",
-    )
-
-    available = _public_methods(signal_engine)
-
-    return [
-        name
-        for name in preferred
-        if name in available
-    ]
-
-
-def _call_signal_method(
-    method: Any,
-    symbol: str,
-    frame: pd.DataFrame,
-    features: Any,
-) -> Any:
-    """
-    Llama SignalEngine respetando la firma real.
-    """
-
-    signature = inspect.signature(method)
-
-    parameters = [
-        p
-        for p in signature.parameters.values()
-        if p.name != "self"
-    ]
-
-    kwargs: Dict[str, Any] = {}
-
-    for parameter in parameters:
-        name = parameter.name.lower()
-
-        if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
-            continue
-
-        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
-            continue
-
-        if name in {
-            "symbol",
-            "ticker",
-            "asset",
-        }:
-            kwargs[parameter.name] = symbol
-            continue
-
-        if name in {
-            "data",
-            "df",
-            "frame",
-            "dataset",
-            "ohlcv",
-            "prices",
-            "market_data",
-        }:
-            kwargs[parameter.name] = frame
-            continue
-
-        if name in {
-            "features",
-            "feature_data",
-            "feature_frame",
-            "x",
-        }:
-            kwargs[parameter.name] = features
-            continue
-
-        if (
-            parameter.default is inspect.Parameter.empty
-            and parameter.kind
-            in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            )
-        ):
-            raise RuntimeError(
-                f"No se pudo inferir argumento obligatorio "
-                f"'{parameter.name}' para {method.__name__}{signature}"
-            )
-
-    return method(**kwargs)
-
-
-def _normalize_signal(
-    raw_signal: Any,
-    symbol: str,
-) -> Any:
-    """
-    Normaliza/valida mínimamente la señal.
-
-    No inventa valores financieros.
-    """
-
-    if raw_signal is None:
-        raise RuntimeError(
-            f"SignalEngine devolvió None para {symbol}."
-        )
-
-    if _looks_like_signal(raw_signal):
-        return raw_signal
-
-    if isinstance(raw_signal, dict):
-        return raw_signal
-
-    if isinstance(raw_signal, tuple):
-        return raw_signal
-
-    raise RuntimeError(
-        "SignalEngine devolvió un objeto no reconocido: "
-        f"{type(raw_signal).__name__} — {_safe_repr(raw_signal)}"
-    )
 
 
 def generate_signal(
-    symbol: str,
     frame: pd.DataFrame,
-    feature_engine: FeatureEngine,
-    signal_engine: SignalEngine,
-) -> Tuple[Any, Any]:
+    symbol: str,
+) -> SignalCandidate:
     """
-    Ejecuta:
+    Entrena el SignalEngine REAL con el historial disponible
+    y genera una SignalCandidate REAL sobre la última barra.
 
-        OHLCV → FeatureEngine → SignalEngine
-
-    Devuelve:
-
-        (features, signal)
+    No coloca órdenes.
     """
 
-    features = generate_features(
-        feature_engine=feature_engine,
-        frame=frame,
-    )
-
-    methods = _signal_method_names(signal_engine)
-
-    if not methods:
-        raise RuntimeError(
-            "SignalEngine no expone ningún método compatible.\n"
-            f"Métodos públicos disponibles: "
-            f"{_public_methods(signal_engine)}"
+    if frame is None or frame.empty:
+        raise ValueError(
+            f"{symbol}: market frame vacío."
         )
 
-    errors: List[str] = []
+    engine = build_signal_engine()
 
-    for method_name in methods:
-        method = getattr(signal_engine, method_name)
+    training = engine.train(frame)
 
-        try:
-            raw_signal = _call_signal_method(
-                method=method,
-                symbol=symbol,
-                frame=frame,
-                features=features,
-            )
+    if not engine.trained:
+        raise RuntimeError(
+            f"{symbol}: SignalEngine no quedó entrenado."
+        )
 
-            signal = _normalize_signal(
-                raw_signal,
-                symbol,
-            )
-
-            return features, signal
-
-        except Exception as exc:
-            errors.append(
-                f"{method_name}: "
-                f"{type(exc).__name__}: {exc}"
-            )
-
-    raise RuntimeError(
-        "Todos los métodos candidatos de SignalEngine fallaron.\n"
-        + "\n".join(errors)
+    signal = engine.generate_signal(
+        frame,
+        symbol,
     )
 
+    if not isinstance(signal, SignalCandidate):
+        raise TypeError(
+            f"{symbol}: generate_signal devolvió "
+            f"{type(signal).__name__}; "
+            f"se esperaba SignalCandidate."
+        )
 
-# ============================================================================
-# SIGNAL INSPECTION
-# ============================================================================
+    print("")
+    print(f"[{symbol}] ENGINE TRAINING")
+    print(f"  rows: {training['rows']}")
+    print(f"  positive_rate: {training['positive_rate']:.6f}")
+    print(f"  fingerprint: {training['fingerprint']}")
+    print(f"  models: {training['models']}")
+    print(f"  weights: {training['weights']}")
+
+    return signal
 
 
-def inspect_signal(
-    signal: Any,
+def signal_to_dict(
+    signal: SignalCandidate,
 ) -> Dict[str, Any]:
     """
-    Convierte una señal en estructura serializable para diagnóstico.
+    Convierte SignalCandidate a un diccionario serializable.
     """
 
-    if is_dataclass(signal):
-        return asdict(signal)
-
-    if hasattr(signal, "model_dump"):
-        try:
-            return signal.model_dump()
-        except Exception:
-            pass
-
-    if isinstance(signal, dict):
-        return dict(signal)
-
-    if isinstance(signal, tuple):
-        return {
-            "type": "tuple",
-            "value": repr(signal),
-        }
-
-    if hasattr(signal, "__dict__"):
-        return dict(vars(signal))
-
-    return {
-        "type": type(signal).__name__,
-        "repr": repr(signal),
-    }
+    return dataclasses.asdict(signal)
 
 
-# ============================================================================
-# SYMBOL PIPELINE
-# ============================================================================
+def print_signal(
+    signal: SignalCandidate,
+) -> None:
+    """
+    Imprime el diagnóstico de la señal.
+    """
+
+    print("")
+    print("=" * 72)
+    print(f"SIGNAL DIAGNOSTIC — {signal.symbol}")
+    print("=" * 72)
+
+    print(f"timestamp:       {signal.timestamp}")
+    print(f"probability_up:  {signal.probability_up:.6f}")
+    print(f"expected_return: {signal.expected_return:.6f}")
+    print(f"confidence:      {signal.confidence:.6f}")
+    print(f"score:            {signal.score:.6f}")
+    print(f"evidence_class:  {signal.evidence_class}")
+    print(f"setup_signature: {signal.setup_signature}")
+
+    print("")
+    print("MODEL VOTES:")
+
+    for name, value in signal.model_votes.items():
+        print(
+            f"  {name}: {value:.6f}"
+        )
+
+    print("")
+    print("SELECTED FEATURES:")
+
+    for name, value in signal.features.items():
+        print(
+            f"  {name}: {value:.8f}"
+        )
+
+    print("=" * 72)
 
 
 def run_symbol(
     client: AlpacaMarketDataClient,
     symbol: str,
-    limit: int = DEFAULT_BAR_LIMIT,
+    minutes: int = DEFAULT_MINUTES,
 ) -> Dict[str, Any]:
     """
-    Pipeline completo de un símbolo.
+    Ejecuta todo el pipeline para un símbolo:
 
-    IMPORTANTE:
-    Aquí solamente se genera la señal.
-    NO se ejecutan órdenes.
+        Alpaca
+        → OHLCV
+        → FeatureEngine
+        → SignalEngine
+        → SignalCandidate
     """
 
-    symbol = symbol.upper().strip()
+    symbol = str(symbol).strip().upper()
 
     if not symbol:
-        raise ValueError("symbol vacío.")
+        raise ValueError(
+            "El símbolo no puede estar vacío."
+        )
 
-    print()
-    print("=" * 72)
-    print(f"SYMBOL: {symbol}")
-    print("=" * 72)
+    print("")
+    print("-" * 72)
+    print(f"PROCESSING SYMBOL: {symbol}")
+    print("-" * 72)
 
     frame = build_real_market_frame(
         client=client,
         symbol=symbol,
-        limit=limit,
-    )
-
-    print(f"REAL BARS: {len(frame)}")
-    print(
-        "LAST BAR:",
-        frame.index[-1].isoformat(),
-    )
-    print(
-        "LAST CLOSE:",
-        f"{float(frame['close'].iloc[-1]):.4f}",
-    )
-
-    feature_engine = build_feature_engine()
-
-    print(
-        "FEATURE ENGINE:",
-        type(feature_engine).__name__,
+        minutes=minutes,
     )
 
     print(
-        "FEATURE METHODS:",
-        _public_methods(feature_engine),
-    )
-
-    signal_engine = build_signal_engine(
-        feature_engine=feature_engine,
+        f"[{symbol}] REAL MARKET DATA: "
+        f"{len(frame)} bars"
     )
 
     print(
-        "SIGNAL ENGINE:",
-        type(signal_engine).__name__,
+        f"[{symbol}] FIRST BAR: "
+        f"{frame.iloc[0]['timestamp']}"
     )
 
     print(
-        "SIGNAL METHODS:",
-        _public_methods(signal_engine),
+        f"[{symbol}] LAST BAR: "
+        f"{frame.iloc[-1]['timestamp']}"
     )
 
-    features, signal = generate_signal(
-        symbol=symbol,
+    print(
+        f"[{symbol}] LAST CLOSE: "
+        f"{float(frame.iloc[-1]['close']):.6f}"
+    )
+
+    feature_diagnostic = inspect_features(frame)
+
+    print("")
+    print(
+        f"[{symbol}] FEATURE ENGINE: OK"
+    )
+
+    print(
+        f"[{symbol}] FEATURE ROWS: "
+        f"{feature_diagnostic['rows']}"
+    )
+
+    signal = generate_signal(
         frame=frame,
-        feature_engine=feature_engine,
-        signal_engine=signal_engine,
+        symbol=symbol,
     )
 
-    signal_dict = inspect_signal(signal)
-
-    print()
-    print("FEATURE OUTPUT TYPE:")
-    print(type(features).__name__)
-
-    if isinstance(features, pd.DataFrame):
-        print(
-            "FEATURE SHAPE:",
-            features.shape,
-        )
-        print(
-            "FEATURE COLUMNS:",
-            list(features.columns),
-        )
-
-    elif isinstance(features, pd.Series):
-        print(
-            "FEATURE SERIES LENGTH:",
-            len(features),
-        )
-
-    elif hasattr(features, "shape"):
-        print(
-            "FEATURE SHAPE:",
-            features.shape,
-        )
-
-    print()
-    print("SIGNAL:")
-    print(
-        json.dumps(
-            signal_dict,
-            indent=2,
-            ensure_ascii=False,
-            default=str,
-        )
-    )
-
-    return {
-        "ok": True,
-        "symbol": symbol,
-        "bars": len(frame),
-        "last_timestamp": frame.index[-1].isoformat(),
-        "last_close": float(frame["close"].iloc[-1]),
-        "feature_type": type(features).__name__,
-        "feature_shape": (
-            list(features.shape)
-            if hasattr(features, "shape")
-            else None
-        ),
-        "signal_type": type(signal).__name__,
-        "signal": signal_dict,
-        "orders_submitted": 0,
-    }
-
-
-# ============================================================================
-# SELF TEST
-# ============================================================================
-
-
-def self_test() -> Dict[str, Any]:
-    """
-    Prueba end-to-end:
-
-        Alpaca REAL DATA
-            ↓
-        FeatureEngine
-            ↓
-        SignalEngine
-            ↓
-        Signal
-
-    Sin órdenes.
-    """
-
-    print("=" * 72)
-    print("ROCKET TRADER — LIVE SIGNAL TEST v0.2")
-    print("=" * 72)
-    print("MARKET DATA: REAL")
-    print("FEATURE ENGINE: REAL")
-    print("SIGNALS: ENABLED")
-    print("ORDERS: DISABLED")
-    print("=" * 72)
-
-    api_key = os.getenv("ALPACA_API_KEY")
-    api_secret = os.getenv("ALPACA_SECRET_KEY")
-
-    if not api_key:
-        raise RuntimeError(
-            "Falta ALPACA_API_KEY."
-        )
-
-    if not api_secret:
-        raise RuntimeError(
-            "Falta ALPACA_SECRET_KEY."
-        )
-
-    client = AlpacaMarketDataClient(
-        api_key=api_key,
-        api_secret=api_secret,
-    )
-
-    results: List[Dict[str, Any]] = []
-
-    for symbol in DEFAULT_SYMBOLS:
-        result = run_symbol(
-            client=client,
-            symbol=symbol,
-            limit=DEFAULT_BAR_LIMIT,
-        )
-
-        results.append(result)
+    print_signal(signal)
 
     result = {
-        "ok": True,
-        "market_data": "REAL",
-        "signals": "ENABLED",
-        "orders_submitted": 0,
-        "symbols": results,
+        "symbol": symbol,
+        "bars": int(len(frame)),
+        "first_timestamp": str(frame.iloc[0]["timestamp"]),
+        "last_timestamp": str(frame.iloc[-1]["timestamp"]),
+        "last_close": float(frame.iloc[-1]["close"]),
+        "feature_diagnostic": feature_diagnostic,
+        "signal": signal_to_dict(signal),
+        "orders_enabled": False,
     }
-
-    print()
-    print("=" * 72)
-    print("LIVE SIGNAL TEST RESULT")
-    print("=" * 72)
-    print(
-        json.dumps(
-            result,
-            indent=2,
-            ensure_ascii=False,
-            default=str,
-        )
-    )
-    print("=" * 72)
 
     return result
 
 
-# ============================================================================
-# CLI
-# ============================================================================
+def self_test() -> Dict[str, Any]:
+    """
+    Test completo del Live Signal Pipeline.
+
+    Usa:
+    - credenciales reales de Alpaca
+    - market data real IEX
+    - FeatureEngine real
+    - SignalEngine real
+
+    Nunca coloca órdenes.
+    """
+
+    _print_header()
+
+    api_key = os.getenv("ALPACA_API_KEY")
+    secret_key = os.getenv("ALPACA_SECRET_KEY")
+
+    if not api_key:
+        raise RuntimeError(
+            "Falta ALPACA_API_KEY en las variables de entorno."
+        )
+
+    if not secret_key:
+        raise RuntimeError(
+            "Falta ALPACA_SECRET_KEY en las variables de entorno."
+        )
+
+    if ORDERS_ENABLED:
+        raise RuntimeError(
+            "FAIL-SAFE: ORDERS_ENABLED no puede estar activo "
+            "en Live Signal Pipeline."
+        )
+
+    client = AlpacaMarketDataClient(
+        api_key=api_key,
+        secret_key=secret_key,
+    )
+
+    results: Dict[str, Any] = {}
+
+    for symbol in DEFAULT_SYMBOLS:
+        results[symbol] = run_symbol(
+            client=client,
+            symbol=symbol,
+            minutes=DEFAULT_MINUTES,
+        )
+
+    if not results:
+        raise RuntimeError(
+            "No se generaron resultados."
+        )
+
+    for symbol, result in results.items():
+        signal = result["signal"]
+
+        probability = float(
+            signal["probability_up"]
+        )
+
+        confidence = float(
+            signal["confidence"]
+        )
+
+        score = float(
+            signal["score"]
+        )
+
+        if not 0.0 <= probability <= 1.0:
+            raise AssertionError(
+                f"{symbol}: probability_up fuera de rango."
+            )
+
+        if not 0.0 <= confidence <= 1.0:
+            raise AssertionError(
+                f"{symbol}: confidence fuera de rango."
+            )
+
+        if score < 0.0:
+            raise AssertionError(
+                f"{symbol}: score negativo."
+            )
+
+        if not signal["setup_signature"]:
+            raise AssertionError(
+                f"{symbol}: setup_signature vacío."
+            )
+
+    print("")
+    print("=" * 72)
+    print("ROCKET TRADER — LIVE SIGNAL TEST RESULT")
+    print("=" * 72)
+
+    for symbol, result in results.items():
+        signal = result["signal"]
+
+        print("")
+        print(f"{symbol}")
+        print(f"  bars:             {result['bars']}")
+        print(
+            f"  last_close:       "
+            f"{result['last_close']:.6f}"
+        )
+        print(
+            f"  probability_up:   "
+            f"{signal['probability_up']:.6f}"
+        )
+        print(
+            f"  expected_return:  "
+            f"{signal['expected_return']:.6f}"
+        )
+        print(
+            f"  confidence:       "
+            f"{signal['confidence']:.6f}"
+        )
+        print(
+            f"  score:            "
+            f"{signal['score']:.6f}"
+        )
+        print(
+            f"  evidence_class:   "
+            f"{signal['evidence_class']}"
+        )
+
+    print("")
+    print("ORDERS SUBMITTED: 0")
+    print("POSITIONS MODIFIED: 0")
+    print("MODE: SIGNAL ONLY")
+    print("=" * 72)
+
+    return {
+        "ok": True,
+        "pipeline_version": PIPELINE_VERSION,
+        "market_data": "REAL",
+        "feed": "IEX",
+        "feature_engine": "REAL",
+        "signal_engine": "REAL",
+        "orders_enabled": False,
+        "orders_submitted": 0,
+        "positions_modified": 0,
+        "symbols": results,
+    }
 
 
 def main() -> None:
     result = self_test()
 
-    if not result.get("ok"):
-        raise SystemExit(2)
-
-    if result.get("orders_submitted", 0) != 0:
-        raise SystemExit(
-            "FAIL-SAFE: se detectaron órdenes enviadas."
-        )
-
-    for symbol_result in result.get("symbols", []):
-        if symbol_result.get("orders_submitted", 0) != 0:
-            raise SystemExit(
-                "FAIL-SAFE: se detectaron órdenes enviadas "
-                f"para {symbol_result.get('symbol')}."
-            )
-
-    print()
-    print("ROCKET TRADER LIVE SIGNAL TEST: PASS")
-    print("ORDERS SUBMITTED: 0")
+    print("")
+    print("[SELF-TEST RESULT]")
+    print(result)
 
 
 if __name__ == "__main__":
