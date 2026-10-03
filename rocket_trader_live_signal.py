@@ -254,6 +254,7 @@ def run_pipeline(symbols: List[str]) -> Dict[str, Any]:
         "mode": "PAPER_ONLY",
         "orders_enabled": False,
         "order_submitted": False,
+        "orders_submitted": 0,
         "symbols_processed": [result["symbol"] for result in results],
         "results": results,
     }
