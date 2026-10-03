@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-ROCKET TRADER — MARKET DATA v0.2
+ROCKET TRADER — MARKET DATA v0.3
 
 Responsabilidad
 ---------------
@@ -252,7 +252,10 @@ class AlpacaMarketDataClient:
                 f"Error consultando historical bars de Alpaca: {exc}"
             ) from exc
 
-        bars = response.get(symbol, [])
+        try:
+            bars = response[symbol]
+        except (KeyError, TypeError, AttributeError):
+            bars = []
 
         result: List[MarketBar] = []
 
@@ -524,7 +527,7 @@ def self_test() -> Dict[str, object]:
     return {
         "ok": True,
         "module": "rocket_trader_market_data",
-        "version": "0.2",
+        "version": "0.3",
         "source": "Alpaca",
         "feed": "IEX",
         "mode": "PAPER_MARKET_DATA",
@@ -582,7 +585,7 @@ def main() -> None:
     try:
         if args.self_test:
             print("=" * 72)
-            print("ROCKET TRADER — MARKET DATA v0.2")
+            print("ROCKET TRADER — MARKET DATA v0.3")
             print("=" * 72)
             print("MODE: PAPER MARKET DATA")
             print("LIVE ORDERS: DISABLED")
