@@ -317,13 +317,14 @@ def self_test() -> Dict[str, Any]:
     assert len(normalized) == 2
 
     return {
-        "ok": True,
-        "pipeline_version": PIPELINE_VERSION,
-        "default_minutes": DEFAULT_MINUTES,
-        "fallback_minutes": FALLBACK_MINUTES,
-        "min_raw_bars": MIN_RAW_BARS,
-        "orders_enabled": False,
-    }
+    "ok": True,
+    "pipeline_version": PIPELINE_VERSION,
+    "default_minutes": DEFAULT_MINUTES,
+    "fallback_minutes": FALLBACK_MINUTES,
+    "min_raw_bars": MIN_RAW_BARS,
+    "orders_enabled": False,
+    "orders_submitted": 0,
+}
 
 
 def parse_args() -> Any:
