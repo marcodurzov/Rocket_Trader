@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-ROCKET TRADER — LIVE SIGNAL PIPELINE v0.4
+ROCKET TRADER — LIVE SIGNAL PIPELINE v0.5
 
 Flujo:
     Alpaca Market Data
@@ -14,6 +14,8 @@ Flujo:
     SignalEngine / Ensemble
         ↓
     SignalCandidate
+        ↓
+    Señal lista para evaluación de calidad/riesgo
 
 SEGURIDAD
 ---------
@@ -29,7 +31,6 @@ SEGURIDAD
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import os
 import sys
@@ -50,16 +51,10 @@ from rocket_trader_engine import (
 )
 
 
-PIPELINE_VERSION = "0.4"
+PIPELINE_VERSION = "0.5"
 
-# 1,200 minutos calendario ya produjo 401 barras reales en Market Data v0.3.
 DEFAULT_MINUTES = 1200
-
-# Si IEX devuelve menos barras de las necesarias, ampliamos automáticamente.
-FALLBACK_MINUTES = 10080  # 7 días calendario.
-
-# El Engine requiere >= 300 filas de entrenamiento.
-# Dejamos margen para warm-up de indicadores y horizonte de predicción.
+FALLBACK_MINUTES = 10080
 MIN_RAW_BARS = 400
 
 DEFAULT_SYMBOLS = ["SPY", "QQQ"]
@@ -68,7 +63,9 @@ DEFAULT_SYMBOLS = ["SPY", "QQQ"]
 def bars_to_dataframe(bars: List[MarketBar]) -> pd.DataFrame:
     """Convierte MarketBar a OHLCV DataFrame compatible con SignalEngine."""
     if not bars:
-        raise MarketDataError("No se recibieron barras para construir el DataFrame.")
+        raise MarketDataError(
+            "No se recibieron barras para construir el DataFrame."
+        )
 
     frame = pd.DataFrame(
         [
@@ -84,7 +81,14 @@ def bars_to_dataframe(bars: List[MarketBar]) -> pd.DataFrame:
         ]
     )
 
-    required = ["timestamp", "open", "high", "low", "close", "volume"]
+    required = [
+        "timestamp",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+    ]
 
     missing = [column for column in required if column not in frame.columns]
     if missing:
@@ -92,15 +96,26 @@ def bars_to_dataframe(bars: List[MarketBar]) -> pd.DataFrame:
             f"Faltan columnas requeridas para SignalEngine: {missing}"
         )
 
-    frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
+    frame["timestamp"] = pd.to_datetime(
+        frame["timestamp"],
+        utc=True,
+        errors="coerce",
+    )
 
     for column in required[1:]:
-        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        frame[column] = pd.to_numeric(
+            frame[column],
+            errors="coerce",
+        )
 
     frame = (
-        frame.dropna(subset=required)
+        frame
+        .dropna(subset=required)
         .sort_values("timestamp")
-        .drop_duplicates(subset=["timestamp"], keep="last")
+        .drop_duplicates(
+            subset=["timestamp"],
+            keep="last",
+        )
         .reset_index(drop=True)
     )
 
@@ -147,9 +162,7 @@ def fetch_training_bars(
 
 
 def build_signal_engine() -> SignalEngine:
-    """
-    Configuración alineada con el Engine actual.
-    """
+    """Configuración alineada con el Engine actual."""
     config = EngineConfig(
         horizon_bars=5,
         target_return=0.004,
@@ -175,20 +188,39 @@ def process_symbol(
     if not symbol:
         raise ValueError("El símbolo no puede estar vacío.")
 
-    bars, requested_minutes = fetch_training_bars(client, symbol)
+    bars, requested_minutes = fetch_training_bars(
+        client,
+        symbol,
+    )
 
     frame = bars_to_dataframe(bars)
 
     if len(frame) < MIN_RAW_BARS:
         raise MarketDataError(
-            f"{symbol}: después de normalizar quedaron {len(frame)} barras; "
-            f"mínimo requerido={MIN_RAW_BARS}."
+            f"{symbol}: después de normalizar quedaron "
+            f"{len(frame)} barras; mínimo requerido={MIN_RAW_BARS}."
         )
 
     engine = build_signal_engine()
 
     training = engine.train(frame)
-    signal = engine.generate_signal(frame, symbol)
+    signal = engine.generate_signal(
+        frame,
+        symbol,
+    )
+
+    latest_timestamp = pd.Timestamp(
+        frame.iloc[-1]["timestamp"]
+    ).isoformat()
+
+    latest_price = float(
+        frame.iloc[-1]["close"]
+    )
+
+    signal_dict = asdict(signal)
+
+    signal_dict["latest_price"] = latest_price
+    signal_dict["latest_timestamp"] = latest_timestamp
 
     return {
         "symbol": symbol,
@@ -197,8 +229,10 @@ def process_symbol(
         "requested_minutes": requested_minutes,
         "raw_bars_received": len(bars),
         "normalized_bars": len(frame),
+        "latest_price": latest_price,
+        "latest_timestamp": latest_timestamp,
         "training": training,
-        "signal": asdict(signal),
+        "signal": signal_dict,
         "execution": {
             "mode": "PAPER_ONLY",
             "orders_enabled": False,
@@ -207,7 +241,9 @@ def process_symbol(
     }
 
 
-def run_pipeline(symbols: List[str]) -> Dict[str, Any]:
+def run_pipeline(
+    symbols: List[str],
+) -> Dict[str, Any]:
     client = AlpacaMarketDataClient(
         api_key=os.getenv("ALPACA_API_KEY"),
         secret_key=os.getenv("ALPACA_SECRET_KEY"),
@@ -220,7 +256,11 @@ def run_pipeline(symbols: List[str]) -> Dict[str, Any]:
         print(f"PROCESSING SYMBOL: {symbol}")
         print("=" * 72)
 
-        result = process_symbol(client, symbol)
+        result = process_symbol(
+            client,
+            symbol,
+        )
+
         results.append(result)
 
         signal = result["signal"]
@@ -229,6 +269,8 @@ def run_pipeline(symbols: List[str]) -> Dict[str, Any]:
             json.dumps(
                 {
                     "symbol": symbol,
+                    "latest_price": signal["latest_price"],
+                    "latest_timestamp": signal["latest_timestamp"],
                     "probability_up": signal["probability_up"],
                     "expected_return": signal["expected_return"],
                     "confidence": signal["confidence"],
@@ -240,6 +282,7 @@ def run_pipeline(symbols: List[str]) -> Dict[str, Any]:
                     "normalized_bars": result["normalized_bars"],
                     "requested_minutes": result["requested_minutes"],
                     "orders_enabled": False,
+                    "orders_submitted": 0,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -255,7 +298,10 @@ def run_pipeline(symbols: List[str]) -> Dict[str, Any]:
         "orders_enabled": False,
         "order_submitted": False,
         "orders_submitted": 0,
-        "symbols_processed": [result["symbol"] for result in results],
+        "symbols_processed": [
+            result["symbol"]
+            for result in results
+        ],
         "results": results,
     }
 
@@ -263,9 +309,12 @@ def run_pipeline(symbols: List[str]) -> Dict[str, Any]:
 def self_test() -> Dict[str, Any]:
     """
     Self-test estructural.
-    No consulta Alpaca y no genera órdenes.
+
+    No consulta Alpaca.
+    No entrena modelos.
+    No genera órdenes.
     """
-    assert PIPELINE_VERSION == "0.4"
+    assert PIPELINE_VERSION == "0.5"
     assert DEFAULT_MINUTES >= 1200
     assert FALLBACK_MINUTES > DEFAULT_MINUTES
     assert MIN_RAW_BARS >= 400
@@ -314,17 +363,18 @@ def self_test() -> Dict[str, Any]:
         "close",
         "volume",
     ]
+
     assert len(normalized) == 2
 
     return {
-    "ok": True,
-    "pipeline_version": PIPELINE_VERSION,
-    "default_minutes": DEFAULT_MINUTES,
-    "fallback_minutes": FALLBACK_MINUTES,
-    "min_raw_bars": MIN_RAW_BARS,
-    "orders_enabled": False,
-    "orders_submitted": 0,
-}
+        "ok": True,
+        "pipeline_version": PIPELINE_VERSION,
+        "default_minutes": DEFAULT_MINUTES,
+        "fallback_minutes": FALLBACK_MINUTES,
+        "min_raw_bars": MIN_RAW_BARS,
+        "orders_enabled": False,
+        "orders_submitted": 0,
+    }
 
 
 def parse_args() -> Any:
@@ -355,7 +405,10 @@ def main() -> None:
 
     try:
         print("=" * 72)
-        print(f"ROCKET TRADER — LIVE SIGNAL PIPELINE v{PIPELINE_VERSION}")
+        print(
+            f"ROCKET TRADER — LIVE SIGNAL PIPELINE "
+            f"v{PIPELINE_VERSION}"
+        )
         print("=" * 72)
         print("MODE: PAPER ONLY")
         print("LIVE ORDERS: DISABLED")
@@ -365,22 +418,36 @@ def main() -> None:
         if args.self_test:
             result = self_test()
         else:
-            result = run_pipeline(args.symbols)
+            result = run_pipeline(
+                args.symbols
+            )
 
-        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        print(
+            json.dumps(
+                result,
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
+        )
 
         if result.get("ok"):
             print("=" * 72)
-            print("ROCKET TRADER LIVE SIGNAL PIPELINE: OK")
+            print(
+                "ROCKET TRADER LIVE SIGNAL PIPELINE: OK"
+            )
             print("=" * 72)
 
     except KeyboardInterrupt:
-        print("\nROCKET TRADER LIVE SIGNAL PIPELINE: STOPPED")
+        print(
+            "\nROCKET TRADER LIVE SIGNAL PIPELINE: STOPPED"
+        )
         return
 
     except Exception as exc:
         print(
-            f"ROCKET TRADER LIVE SIGNAL PIPELINE: FAIL: {exc}",
+            "ROCKET TRADER LIVE SIGNAL PIPELINE: FAIL: "
+            f"{exc}",
             file=sys.stderr,
         )
         raise
