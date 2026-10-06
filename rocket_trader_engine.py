@@ -597,3 +597,7 @@ def self_test() -> Dict[str, Any]:
         "signal": dataclasses.asdict(signal),
         "note": "Los datos usados son sintéticos y no representan resultados de mercado.",
     }
+
+
+if __name__ == "__main__":
+    print(json.dumps(self_test(), ensure_ascii=False, indent=2, default=str))
