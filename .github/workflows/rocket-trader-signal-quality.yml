@@ -1,0 +1,37 @@
+name: Rocket Trader - Signal Quality
+
+on:
+  workflow_dispatch:
+
+jobs:
+  signal-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-alpaca.txt
+
+      - name: Structural self-test
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          python rocket_trader_signal_quality_test.py --self-test
+
+      - name: Real Alpaca signal quality test
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          python rocket_trader_signal_quality_test.py --symbols SPY QQQ
