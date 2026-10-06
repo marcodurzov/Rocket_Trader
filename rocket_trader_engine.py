@@ -78,7 +78,7 @@ FEATURE_COLUMNS = [
 @dataclass(frozen=True)
 class EngineConfig:
     horizon_bars: int = 5
-    target_return: float = 0.004
+    target_return: float = 0.001
     min_history_bars: int = 100
     training_stride: int = 5
     max_training_rows: int = 10000
@@ -304,6 +304,11 @@ class EnsembleModel:
         self.models = {}
         self.weights = {}
 
+        # Ajuste dinámico por desbalance de clases.
+        positives = max(int(y.sum()), 1)
+        negatives = max(int(len(y) - y.sum()), 1)
+        scale_pos_weight = float(negatives / positives)
+
         # Modelo lineal: baseline interpretable.
         try:
             lr = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=SEED)
@@ -323,6 +328,7 @@ class EnsembleModel:
                     colsample_bytree=0.85,
                     objective="binary:logistic",
                     eval_metric="logloss",
+                    scale_pos_weight=scale_pos_weight,
                     random_state=SEED,
                     n_jobs=1,
                 )
@@ -342,6 +348,7 @@ class EnsembleModel:
                     subsample=0.85,
                     colsample_bytree=0.85,
                     objective="binary",
+                    class_weight="balanced",
                     random_state=SEED,
                     verbosity=-1,
                     n_jobs=1,
