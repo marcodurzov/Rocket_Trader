@@ -56,7 +56,7 @@ except Exception:
     lgb = None
 
 
-ENGINE_VERSION = "0.1"
+ENGINE_VERSION = "0.3"
 SEED = int(os.getenv("ROCKET_TRADER_SEED", "42"))
 np.random.seed(SEED)
 
@@ -297,22 +297,42 @@ class EnsembleModel:
         self.weights: Dict[str, float] = {}
         self.fitted = False
         self.reference_matrix: Optional[np.ndarray] = None
+        self.calibrator: Optional[LogisticRegression] = None
+        self.calibration_rows: int = 0
 
     def fit(self, X: pd.DataFrame, y: pd.Series) -> Dict[str, Any]:
-        X_i = self.imputer.fit_transform(X)
+        # Entrenamiento temporal: la última fracción del bloque de entrenamiento
+        # se reserva exclusivamente para calibrar las probabilidades del ensemble.
+        n = len(X)
+        calibration_size = max(100, int(n * 0.20))
+        if n - calibration_size < 100:
+            calibration_size = 0
+
+        if calibration_size:
+            X_base = X.iloc[:-calibration_size].copy()
+            y_base = y.iloc[:-calibration_size].copy()
+            X_cal = X.iloc[-calibration_size:].copy()
+            y_cal = y.iloc[-calibration_size:].copy()
+        else:
+            X_base = X.copy()
+            y_base = y.copy()
+            X_cal = None
+            y_cal = None
+
+        X_i = self.imputer.fit_transform(X_base)
         X_s = self.scaler.fit_transform(X_i)
         self.models = {}
         self.weights = {}
+        self.calibrator = None
+        self.calibration_rows = 0
 
-        # Ajuste dinámico por desbalance de clases.
-        positives = max(int(y.sum()), 1)
-        negatives = max(int(len(y) - y.sum()), 1)
+        positives = max(int(y_base.sum()), 1)
+        negatives = max(int(len(y_base) - y_base.sum()), 1)
         scale_pos_weight = float(negatives / positives)
 
-        # Modelo lineal: baseline interpretable.
         try:
             lr = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=SEED)
-            lr.fit(X_s, y)
+            lr.fit(X_s, y_base)
             self.models["logistic"] = lr
             self.weights["logistic"] = 0.20
         except Exception:
@@ -332,7 +352,7 @@ class EnsembleModel:
                     random_state=SEED,
                     n_jobs=1,
                 )
-                model.fit(X_s, y)
+                model.fit(X_s, y_base)
                 self.models["xgb"] = model
                 self.weights["xgb"] = 0.40
             except Exception:
@@ -353,7 +373,7 @@ class EnsembleModel:
                     verbosity=-1,
                     n_jobs=1,
                 )
-                model.fit(X_s, y)
+                model.fit(X_s, y_base)
                 self.models["lightgbm"] = model
                 self.weights["lightgbm"] = 0.30
             except Exception:
@@ -364,13 +384,32 @@ class EnsembleModel:
 
         total = sum(self.weights.values()) or 1.0
         self.weights = {k: v / total for k, v in self.weights.items()}
+
+        # Calibración Platt sobre un bloque cronológicamente posterior y no usado
+        # para ajustar los modelos base. Esto convierte scores de ensemble en
+        # probabilidades utilizables por Risk/Decision sin contaminar el test final.
+        if X_cal is not None and y_cal is not None and y_cal.nunique() >= 2:
+            raw_cal, _ = self._predict_raw(X_cal)
+            raw_cal = np.clip(np.asarray(raw_cal, dtype=float), 1e-6, 1.0 - 1e-6)
+            logit_cal = np.log(raw_cal / (1.0 - raw_cal)).reshape(-1, 1)
+            calibrator = LogisticRegression(max_iter=1000, random_state=SEED)
+            calibrator.fit(logit_cal, y_cal.to_numpy(dtype=int))
+            self.calibrator = calibrator
+            self.calibration_rows = len(X_cal)
+
         self.reference_matrix = X_s
         self.fitted = True
-        return {"models": list(self.models), "weights": self.weights.copy()}
+        return {
+            "models": list(self.models),
+            "weights": self.weights.copy(),
+            "probability_calibration": {
+                "method": "platt_logistic",
+                "enabled": self.calibrator is not None,
+                "rows": self.calibration_rows,
+            },
+        }
 
-    def predict_proba(self, X: pd.DataFrame) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-        if not self.fitted:
-            raise RuntimeError("Ensemble no entrenado")
+    def _predict_raw(self, X: pd.DataFrame) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         X_i = self.imputer.transform(X)
         X_s = self.scaler.transform(X_i)
         votes: Dict[str, np.ndarray] = {}
@@ -384,18 +423,27 @@ class EnsembleModel:
             combined += self.weights.get(name, 0.0) * values
         return combined, votes
 
-    def novelty_score(self, X: pd.DataFrame) -> float:
-        if self.reference_matrix is None or len(self.reference_matrix) == 0:
-            return float("inf")
-        X_s = self.scaler.transform(self.imputer.transform(X))
-        # Distancia normalizada al centro de los datos históricos. No se pretende
-        # que esto sea una probabilidad; es una señal de novedad para control de riesgo.
-        center = self.reference_matrix.mean(axis=0)
-        scale = self.reference_matrix.std(axis=0)
-        scale[scale < 1e-8] = 1.0
-        z = np.abs((X_s[0] - center) / scale)
-        return float(np.mean(z))
+    def predict_proba(self, X: pd.DataFrame) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+        if not self.fitted:
+            raise RuntimeError("Ensemble no entrenado")
+        combined, votes = self._predict_raw(X)
+        if self.calibrator is not None:
+            clipped = np.clip(combined, 1e-6, 1.0 - 1e-6)
+            logits = np.log(clipped / (1.0 - clipped)).reshape(-1, 1)
+            combined = self.calibrator.predict_proba(logits)[:, 1]
+        return np.asarray(combined, dtype=float), votes
 
+        def novelty_score(self, X: pd.DataFrame) -> float:
+            if self.reference_matrix is None or len(self.reference_matrix) == 0:
+                return float("inf")
+            X_s = self.scaler.transform(self.imputer.transform(X))
+            # Distancia normalizada al centro de los datos históricos. No se pretende
+            # que esto sea una probabilidad; es una señal de novedad para control de riesgo.
+            center = self.reference_matrix.mean(axis=0)
+            scale = self.reference_matrix.std(axis=0)
+            scale[scale < 1e-8] = 1.0
+            z = np.abs((X_s[0] - center) / scale)
+            return float(np.mean(z))
 
 class WalkForwardResearch:
     def __init__(self, config: EngineConfig) -> None:
