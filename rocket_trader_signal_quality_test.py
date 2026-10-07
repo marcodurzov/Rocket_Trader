@@ -29,7 +29,7 @@ from sklearn.metrics import (
 from rocket_trader_engine import EngineConfig, EnsembleModel, FeatureEngine, TemporalDataset
 from rocket_trader_market_data import AlpacaMarketDataClient
 
-VERSION = "0.3"
+VERSION = "0.4"
 MIN_BARS = 400
 REQUEST_MINUTES = 43200
 TEST_FRACTION = 0.20
