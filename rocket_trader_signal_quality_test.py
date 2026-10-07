@@ -29,15 +29,17 @@ from sklearn.metrics import (
 from rocket_trader_engine import EngineConfig, EnsembleModel, FeatureEngine, TemporalDataset
 from rocket_trader_market_data import AlpacaMarketDataClient
 
-VERSION = "0.2"
+VERSION = "0.3"
 MIN_BARS = 400
-REQUEST_MINUTES = 10080
+REQUEST_MINUTES = 43200
 TEST_FRACTION = 0.20
 NEAR_ZERO_THRESHOLD = 0.05
 NEAR_ONE_THRESHOLD = 0.95
 PROBABILITY_COLLAPSE_RATE = 0.95
 MIN_POSITIVE_RATE = 0.05
 MIN_NEGATIVE_RATE = 0.05
+MIN_TEST_POSITIVE_EVENTS = 10
+MIN_TEST_NEGATIVE_EVENTS = 10
 
 
 def bars_to_dataframe(bars: List[Any]) -> pd.DataFrame:
@@ -132,8 +134,12 @@ def evaluate_symbol(client: AlpacaMarketDataClient, symbol: str) -> Dict[str, An
     flags: List[str] = []
     if extreme_rate >= PROBABILITY_COLLAPSE_RATE:
         flags.append("PROBABILITY_COLLAPSE")
+    positive_events = int(y_true.sum())
+    negative_events = int(len(y_true) - positive_events)
     if test_positive_rate < MIN_POSITIVE_RATE or test_positive_rate > (1.0 - MIN_NEGATIVE_RATE):
         flags.append("TEST_CLASS_IMBALANCE")
+    if positive_events < MIN_TEST_POSITIVE_EVENTS or negative_events < MIN_TEST_NEGATIVE_EVENTS:
+        flags.append("INSUFFICIENT_TEST_EVENTS")
     if calibration["expected_calibration_error"] >= 0.15:
         flags.append("POOR_CALIBRATION")
     if brier >= 0.25:
@@ -212,7 +218,18 @@ def run(symbols: List[str]) -> Dict[str, Any]:
 
     collapse = any("PROBABILITY_COLLAPSE" in r["quality_flags"] for r in results)
     imbalance = any("TEST_CLASS_IMBALANCE" in r["quality_flags"] for r in results)
-    ok = bool(results) and not failures and not collapse and not imbalance
+    insufficient_events = any("INSUFFICIENT_TEST_EVENTS" in r["quality_flags"] for r in results)
+    hard_quality_flags = any(
+        any(flag in r["quality_flags"] for flag in (
+            "PROBABILITY_COLLAPSE",
+            "INSUFFICIENT_TEST_EVENTS",
+            "POOR_CALIBRATION",
+            "HIGH_BRIER_SCORE",
+            "LOW_ROC_AUC",
+        ))
+        for r in results
+    )
+    ok = bool(results) and not failures and not hard_quality_flags
 
     return {
         "ok": ok,
@@ -227,6 +244,8 @@ def run(symbols: List[str]) -> Dict[str, Any]:
         "summary": {
             "probability_collapse_detected": collapse,
             "class_imbalance_detected": imbalance,
+            "insufficient_test_events_detected": insufficient_events,
+            "hard_quality_failure_detected": hard_quality_flags,
             "symbols_with_results": len(results),
             "symbols_failed": len(failures),
             "target_return": EngineConfig().target_return,
