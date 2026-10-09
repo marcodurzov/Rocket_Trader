@@ -1,32 +1,27 @@
-# Rocket_Trader
-Trading MDV PS
+[README.md](https://github.com/user-attachments/files/33259974/README.md)
+# Rocket Trader — Signal Research v0.3
 
-Rocket Trader
+Research-only update. No trading API/client is imported; this script cannot submit orders.
 
-Bot de trading algorítmico autónomo, inicialmente para acciones de EE.UU. mediante Alpaca.
+## Install in the existing repository
 
-Arquitectura inicial
+1. Replace the repository-root file `rocket_trader_signal_research.py` with the file in this package.
+2. Put `.github/workflows/rocket-trader-signal-research.yml` into the same path in the repository.
+3. Confirm `rocket_trader_engine.py`, `rocket_trader_market_data.py`, `requirements.txt`, and `requirements-alpaca.txt` remain at repository root and are the working versions already used by Rocket Trader.
+4. Commit and push.
+5. Open GitHub Actions → `Rocket Trader - Signal Research v0.3` → `Run workflow`.
 
-• rocket_trader_core.py: seguridad, riesgo, decisión, benchmark y ejecución desacoplada.
-• data/: auditoría y datos generados localmente; no contiene credenciales.
-• tests/: pruebas del sistema.
-• requirements.txt: dependencias Python.
-• .env.example: variables de entorno de ejemplo.
+## What changed
 
-Reglas iniciales
+- Signal at bar close, entry at next bar open.
+- Exit at the close of the fifth holding bar by default.
+- Non-overlapping long-only positions.
+- Training labels are constrained to data inside each training fold.
+- Threshold chosen using only the earlier OOS selection segment; final later OOS segment is held out from threshold selection.
+- Round-trip transaction friction plus slippage charged on both entry and exit.
+- Holdout must pass minimum trade/fold, profit factor, drawdown, and same-window buy-and-hold checks to get `research_pass=true`.
+- Writes `rocket_trader_signal_research_results.json`, uploaded by Actions as an artifact.
 
-• Mercado inicial: acciones/ETFs de EE.UU. vía Alpaca.
-• Ejecución: PAPER.
-• LIVE bloqueado explícitamente.
-• LONG-only.
-• CASH-only; no se usa buying power de margen para dimensionar posiciones.
-• Stop-loss obligatorio.
-• Take-profit obligatorio.
-• Kill-switch automático.
-• Benchmark contra precedentes de traders exitosos.
-• Si no hay precedente suficiente: escenario NOVEL y presupuesto de riesgo reducido.
-• Distribución mensual de utilidad: 10% reserva / 70% reinversión / 20% flujo personal.
+## Important
 
-Seguridad
-
-No guardar API keys en Git. Usar variables de entorno o un secret manager.
+A workflow that completes successfully means the code ran, not that the strategy is profitable. A research pass is not authorization to trade live. Keep execution disabled and continue paper testing before considering any live trading.
