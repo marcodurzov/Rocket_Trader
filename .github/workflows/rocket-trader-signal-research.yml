@@ -1,34 +1,68 @@
-name: Rocket Trader - Signal Research
+name: Rocket Trader - Signal Research v0.3
+
 on:
   workflow_dispatch:
     inputs:
       days:
-        description: "Calendar days of Alpaca data"
+        description: "Calendar lookback window; Alpaca API returns up to 10,000 bars per request"
         required: false
         default: "30"
         type: string
+      symbols:
+        description: "Space-separated US stock/ETF symbols"
+        required: false
+        default: "SPY QQQ"
+        type: string
+
+permissions:
+  contents: read
+
 jobs:
   signal-research:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
-      - name: Structural self-test
+
+      - name: Compile research code
+        run: python -m py_compile rocket_trader_signal_research.py
+
+      - name: Offline structural and execution-assumption tests
         run: python rocket_trader_signal_research.py --self-test
-      - name: Walk-forward signal research
+
+      - name: Run walk-forward research (no orders)
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SYMBOLS_INPUT: ${{ inputs.symbols || 'SPY QQQ' }}
+          DAYS_INPUT: ${{ inputs.days || '30' }}
         run: |
+          read -r -a symbols <<< "$SYMBOLS_INPUT"
           python rocket_trader_signal_research.py \
-            --symbols SPY QQQ \
-            --days "${{ inputs.days || '30' }}" \
+            --symbols "${symbols[@]}" \
+            --days "$DAYS_INPUT" \
             --friction 0.00020 \
-            --slippage 0.00010
+            --slippage-per-side 0.00010 \
+            --selection-fraction 0.60 \
+            --output rocket_trader_signal_research_results.json
+
+      - name: Upload research report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocket-trader-signal-research-report
+          path: rocket_trader_signal_research_results.json
+          if-no-files-found: ignore
