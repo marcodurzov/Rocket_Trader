@@ -34,10 +34,10 @@ from rocket_trader_engine import (
     MarketDataValidator,
 )
 
-VERSION = "0.4"
+VERSION = "0.5"
 BAR_MINUTES = 5
 DEFAULT_HORIZONS = [3, 6, 12]  # 15, 30, 60 minutes of holding bars
-DEFAULT_THRESHOLDS = [0.05, 0.075, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70]
+DEFAULT_THRESHOLDS = [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
 MIN_TRAIN = 3000
 TEST_BLOCK = 800
 MAX_FOLDS = 6
@@ -125,10 +125,17 @@ def make_training_set(features: pd.DataFrame, cfg: EngineConfig, train_end: int)
     if train_end <= cfg.horizon_bars:
         raise RuntimeError("Ventana de entrenamiento menor al horizonte")
     hist = features.iloc[:train_end].copy()
-    future_close = features["close"].shift(-cfg.horizon_bars).iloc[:train_end]
+    # Match the tradable return exactly: signal at bar i, entry at bar i+1 open,
+    # exit at bar i+horizon close. The old v0.4 label compared exit close to
+    # signal close, which did not match the simulated execution price.
+    entry_open = features["open"].shift(-1).iloc[:train_end]
+    exit_close = features["close"].shift(-cfg.horizon_bars).iloc[:train_end]
     eligible = np.arange(train_end) < (train_end - cfg.horizon_bars)
-    label = (future_close >= hist["close"] * (1.0 + cfg.target_return)).astype("int8")
-    valid = pd.Series(eligible, index=hist.index) & hist[FEATURE_COLUMNS].notna().all(axis=1) & future_close.notna()
+    label = (exit_close >= entry_open * (1.0 + cfg.target_return)).astype("int8")
+    valid = (pd.Series(eligible, index=hist.index)
+             & hist[FEATURE_COLUMNS].notna().all(axis=1)
+             & entry_open.notna() & exit_close.notna()
+             & (entry_open > 0) & (exit_close > 0))
     X, y = hist.loc[valid, FEATURE_COLUMNS], label.loc[valid]
     if len(X) < cfg.min_training_rows or y.nunique() < 2:
         raise RuntimeError(f"Training insuficiente: rows={len(X)}, classes={y.nunique()}")
@@ -358,9 +365,9 @@ def evaluate_symbol(symbol: str, days: int, cost: float, slippage: float,
         "buy_hold_return_same_holdout_window": holdout_benchmark,
         "research_pass": research_pass, "reason": reason,
         "sample_holdout_trades": sample_trades,
-        "target_label": f"forward return >= {TARGET_RETURN:.4%} over each tested horizon",
+        "target_label": f"gross tradable return >= {TARGET_RETURN:.4%}: next-bar open to signal-index+horizon close",
         "entry_rule": "signal bar close -> next 5-minute bar open",
-        "exit_rule": "close of the Nth holding bar; N in tested horizon grid",
+        "exit_rule": "close of the Nth holding bar; exit bar index = signal bar index + N",
         "round_trip_transaction_cost": float(cost), "slippage_per_side": float(slippage),
         "total_slippage_per_trade": float(2 * slippage),
         "selection_fraction_of_OOS": float(selection_fraction),
@@ -398,18 +405,26 @@ def self_test() -> Dict[str, Any]:
     assert metric["trades"] == 1 and trades[0].entry_bar_index == 11 and trades[0].exit_bar_index == 13
     assert trades[0].entry_price == float(tiny.iloc[11]["open"])
     assert trades[0].exit_price == float(tiny.iloc[13]["close"])
+    # Verify that training labels match the simulated entry/exit price convention.
+    label_horizon = 3
+    entry_open = tiny["open"].shift(-1)
+    exit_close = tiny["close"].shift(-label_horizon)
+    expected_label = int(exit_close.iloc[10] >= entry_open.iloc[10] * (1.0 + TARGET_RETURN))
+    actual_gross = float(tiny.iloc[10 + label_horizon]["close"] / tiny.iloc[11]["open"] - 1.0)
+    assert expected_label == int(actual_gross >= TARGET_RETURN)
+    assert trades[0].gross_return == float(tiny.iloc[13]["close"] / tiny.iloc[11]["open"] - 1.0)
     # Fold anchoring is tested structurally without training expensive models.
     first_test = n - MAX_FOLDS * TEST_BLOCK
     assert first_test >= MIN_TRAIN
     assert first_test + MAX_FOLDS * TEST_BLOCK == n
     return {"ok": True, "version": VERSION, "pipeline": "rocket_trader_signal_research",
         "bar_minutes": BAR_MINUTES, "features_test": "PASS", "next_bar_entry_test": "PASS",
-        "holding_period_exit_test": "PASS", "latest_anchored_folds_test": "PASS",
+        "holding_period_exit_test": "PASS", "tradable_label_alignment_test": "PASS", "latest_anchored_folds_test": "PASS",
         "orders_enabled": False, "order_submission_imported": False, "orders_submitted": 0}
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Rocket Trader research-only walk-forward evaluation")
+    p = argparse.ArgumentParser(description="Rocket Trader research-only walk-forward evaluation v0.5")
     p.add_argument("--self-test", action="store_true")
     p.add_argument("--symbols", nargs="+", default=["SPY", "QQQ"])
     p.add_argument("--days", type=int, default=365)
