@@ -1,10 +1,10 @@
-name: Rocket Trader - Traditional Strategy Research
+name: Rocket Trader - Traditional Research v0.2
 
 on:
   workflow_dispatch:
     inputs:
       days:
-        description: "Calendar lookback window"
+        description: "Calendar lookback window for intraday bars (daily filter fetches 500 calendar days for warm-up)"
         required: false
         default: "365"
         type: string
@@ -14,19 +14,19 @@ on:
         default: "SPY QQQ"
         type: string
   schedule:
-    - cron: "0 15 * * 0" # Weekly Sunday run, 15:00 UTC
+    - cron: "0 15 * * 0"
 
 permissions:
   contents: read
 
 concurrency:
-  group: rocket-trader-traditional-research
+  group: rocket-trader-traditional-research-v02
   cancel-in-progress: false
 
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,9 +41,9 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
       - name: Compile research code
-        run: python -m py_compile rocket_trader_traditional_research.py
+        run: python -m py_compile rocket_trader_traditional_research_v0_2.py
       - name: Offline tests
-        run: python rocket_trader_traditional_research.py --self-test
+        run: python rocket_trader_traditional_research_v0_2.py --self-test
       - name: Run research (no orders)
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
@@ -52,11 +52,11 @@ jobs:
           DAYS_INPUT: ${{ inputs.days || '365' }}
         run: |
           read -r -a symbols <<< "$SYMBOLS_INPUT"
-          python rocket_trader_traditional_research.py --symbols "${symbols[@]}" --days "$DAYS_INPUT" --output rocket_trader_traditional_research_results.json
+          python rocket_trader_traditional_research_v0_2.py --symbols "${symbols[@]}" --days "$DAYS_INPUT" --output rocket_trader_traditional_research_v0_2_results.json
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rocket-trader-traditional-research-report
-          path: rocket_trader_traditional_research_results.json
+          name: rocket-trader-traditional-research-v0-2-report
+          path: rocket_trader_traditional_research_v0_2_results.json
           if-no-files-found: ignore
