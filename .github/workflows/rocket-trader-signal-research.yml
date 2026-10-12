@@ -1,4 +1,4 @@
-name: Rocket Trader - Signal Research v0.4
+name: Rocket Trader - Signal Research v0.5
 
 on:
   workflow_dispatch:
@@ -65,6 +65,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rocket-trader-signal-research-v0.4-report
+          name: rocket-trader-signal-research-v0.5-report
           path: rocket_trader_signal_research_results.json
           if-no-files-found: ignore
