@@ -1,0 +1,64 @@
+name: Rocket Trader - Traditional Research v0.5
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Calendar lookback for intraday bars; daily SMA warmup is fetched separately"
+        required: false
+        default: "365"
+        type: string
+      symbols:
+        description: "Space-separated US stocks/ETFs; includes volatile test candidates"
+        required: false
+        default: "SPY QQQ TSLA COIN"
+        type: string
+  schedule:
+    - cron: "0 15 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocket-trader-traditional-research-v05
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-alpaca.txt
+      - name: Compile research code
+        run: python -m py_compile rocket_trader_traditional_research_v0_5.py
+      - name: Offline tests
+        run: python rocket_trader_traditional_research_v0_5.py --self-test
+      - name: Run research (no orders)
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SYMBOLS_INPUT: ${{ inputs.symbols || 'SPY QQQ TSLA COIN' }}
+          DAYS_INPUT: ${{ inputs.days || '365' }}
+        run: |
+          read -r -a symbols <<< "$SYMBOLS_INPUT"
+          python rocket_trader_traditional_research_v0_5.py --symbols "${symbols[@]}" --days "$DAYS_INPUT" --compact --output rocket_trader_traditional_research_v0_5_results.json --audit-dir rocket_trader_v0_5_audits
+      - name: Upload full research report and audit files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocket-trader-traditional-research-v0-5-report
+          path: |
+            rocket_trader_traditional_research_v0_5_results.json
+            rocket_trader_v0_5_audits/**
+          if-no-files-found: ignore
