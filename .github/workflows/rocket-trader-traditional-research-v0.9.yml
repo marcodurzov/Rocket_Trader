@@ -1,0 +1,45 @@
+
+name: Rocket Trader - Traditional Research v0.9 Audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "rocket_trader_traditional_research_v0_9.py"
+      - "research_artifacts/**"
+      - ".github/workflows/rocket-trader-traditional-research-v0.9.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run unit tests
+        run: python rocket_trader_traditional_research_v0_9.py --run-tests
+
+      - name: Run research artifact audit
+        run: |
+          python rocket_trader_traditional_research_v0_9.py \
+            --input-dir research_artifacts \
+            --output research_artifacts/v0_9_audit_report.json
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocket-trader-traditional-research-v0.9-audit
+          path: research_artifacts/v0_9_audit_report.json
+          if-no-files-found: warn
+          retention-days: 30
