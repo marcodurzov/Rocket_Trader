@@ -1,3 +1,4 @@
+
 name: Rocket Trader - Traditional Research v0.9 Audit
 
 on:
@@ -16,6 +17,7 @@ jobs:
     name: preflight-and-audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,50 +69,49 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [[ -f research_artifacts/v0_9_audit_report.json ]]; then
-            python - <<'PY'
-            import json
-            import os
-            from pathlib import Path
-            report = json.loads(Path("research_artifacts/v0_9_audit_report.json").read_text(encoding="utf-8"))
-            lines = [
-                "## Rocket Trader research audit",
-                "",
-                f"- **Audit status:** `{report.get('audit_status', 'UNKNOWN')}`",
-                f"- Files scanned: {report.get('files_scanned', 0)}",
-                f"- Trade rows scanned: {report.get('trade_rows_scanned', 0)}",
-                f"- Errors: {report.get('error_count', 0)}",
-                f"- Warnings: {report.get('warning_count', 0)}",
-                f"- Findings: {len(report.get('findings', []))}",
-                "- Strategy profitability independently verified: **No**",
-                "- Live orders enabled: **No**",
-                "",
-                "### Findings",
-            ]
-            findings = report.get("findings", [])
-            if findings:
-                lines.extend(f"- `{x.get('severity')}` `{x.get('code')}`: {x.get('message')}" for x in findings)
-            else:
-                lines.append("- No findings.")
-            with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-                f.write("\n".join(lines) + "\n")
-            PY
-          else
-            echo "## Rocket Trader research audit" >> "$GITHUB_STEP_SUMMARY"
-            echo "Audit report was not generated; inspect earlier steps." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+          report="research_artifacts/v0_9_audit_report.json"
+
+          {
+            echo "## Rocket Trader research audit"
+            echo ""
+
+            if [[ -f "$report" ]]; then
+              jq -r '"- **Audit status:** `" + (.audit_status // "UNKNOWN") + "`"' "$report"
+              jq -r '"- Files scanned: " + ((.files_scanned // 0) | tostring)' "$report"
+              jq -r '"- Trade rows scanned: " + ((.trade_rows_scanned // 0) | tostring)' "$report"
+              jq -r '"- Errors: " + ((.error_count // 0) | tostring)' "$report"
+              jq -r '"- Warnings: " + ((.warning_count // 0) | tostring)' "$report"
+
+              echo "- Strategy profitability independently verified: **No**"
+              echo "- Live orders enabled: **No**"
+              echo ""
+              echo "### Findings"
+
+              if jq -e '(.findings // []) | length > 0' "$report" >/dev/null; then
+                jq -r '(.findings // [])[] | "- `" + (.severity // "UNKNOWN") + "` `" + (.code // "UNKNOWN") + "`: " + (.message // "No message")' "$report"
+              else
+                echo "- No structured findings listed in the report."
+              fi
+            else
+              echo "Audit report was not generated; inspect earlier steps."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          test -f "$report"
 
       - name: Enforce audit gate
         if: always()
         shell: bash
         run: |
           audit_rc="${{ steps.audit.outputs.exit_code }}"
+
           if [[ -z "$audit_rc" ]]; then
             echo "Audit did not produce an exit code; failing closed."
             exit 1
           fi
+
           if [[ "$audit_rc" != "0" ]]; then
             echo "Audit gate failed with exit code $audit_rc."
+            echo "If status is NO_DATA, add valid research JSON/CSV inputs to research_artifacts/."
             exit 1
           fi
