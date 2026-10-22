@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.9.1"
+VERSION = "0.9.2"
 ORDER_COUNT_KEYS = ("orders_submitted", "live_orders_submitted", "real_orders_submitted")
 TIME_ALIASES = {
     "signal": ("entry_signal_timestamp", "entry_signal_time", "signal_timestamp", "signal_time", "signal_at"),
@@ -315,6 +315,38 @@ def self_test() -> int:
                 report = Audit(p).run()
                 self.assertEqual(report["audit_status"], "FAIL")
                 self.assertTrue(any(x["code"] == "ORDERS_ENABLED" for x in report["findings"]))
+        def test_exit_before_entry_fails(self):
+            with tempfile.TemporaryDirectory() as tmp:
+                p = Path(tmp); (p / "ledger.csv").write_text(
+                    "trade_id,entry_timestamp,entry_price,exit_timestamp,exit_price\n"
+                    "T1,2026-05-22T19:00:00Z,100,2026-05-22T18:00:00Z,101\n", encoding="utf-8")
+                report = Audit(p).run()
+                self.assertEqual(report["audit_status"], "FAIL")
+                self.assertTrue(any(x["code"] == "EXIT_BEFORE_ENTRY" for x in report["findings"]))
+        def test_exit_before_exit_signal_fails(self):
+            with tempfile.TemporaryDirectory() as tmp:
+                p = Path(tmp); (p / "ledger.csv").write_text(
+                    "trade_id,entry_timestamp,entry_price,exit_signal_timestamp,exit_timestamp,exit_price\n"
+                    "T1,2026-05-22T18:00:00Z,100,2026-05-22T19:00:00Z,2026-05-22T18:55:00Z,101\n", encoding="utf-8")
+                report = Audit(p).run()
+                self.assertEqual(report["audit_status"], "FAIL")
+                self.assertTrue(any(x["code"] == "EXIT_BEFORE_SIGNAL" for x in report["findings"]))
+        def test_invalid_price_and_quantity_fail(self):
+            with tempfile.TemporaryDirectory() as tmp:
+                p = Path(tmp); (p / "ledger.csv").write_text(
+                    "trade_id,entry_timestamp,entry_price,exit_timestamp,exit_price,quantity\n"
+                    "T1,2026-05-22T18:00:00Z,0,2026-05-22T19:00:00Z,101,-2\n", encoding="utf-8")
+                report = Audit(p).run()
+                codes = {x["code"] for x in report["findings"]}
+                self.assertEqual(report["audit_status"], "FAIL")
+                self.assertIn("INVALID_ENTRY_PRICE", codes)
+                self.assertIn("INVALID_QUANTITY", codes)
+        def test_malformed_json_fails(self):
+            with tempfile.TemporaryDirectory() as tmp:
+                p = Path(tmp); (p / "report.json").write_text("{broken", encoding="utf-8")
+                report = Audit(p).run()
+                self.assertEqual(report["audit_status"], "FAIL")
+                self.assertTrue(any(x["code"] == "JSON_UNREADABLE" for x in report["findings"]))
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(Tests)
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
