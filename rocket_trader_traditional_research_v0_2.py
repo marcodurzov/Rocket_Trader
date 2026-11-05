@@ -1,96 +1,206 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""Rocket Trader traditional strategy research v0.2.
-RESEARCH ONLY: reads Alpaca historical data; never submits or manages orders.
-Changes: regular US session only, lagged daily regime filter, cost stress test,
-explicit holdout metrics and regression tests for next-bar execution.
-"""
-from __future__ import annotations
-import argparse, json, math, os, sys
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
-from typing import Any, Dict
-import numpy as np
-import pandas as pd
+```yaml
+name: Rocket Trader - Traditional Research v0.2
 
-VERSION = "0.2"
-BAR_MINUTES = 5
-ROUND_TRIP_TRANSACTION_COST = 0.00020
-SLIPPAGE_PER_SIDE = 0.00010
-NY = ZoneInfo("America/New_York")
-COST_MULTIPLIERS = (1.0, 2.0, 3.0)
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Calendar lookback window"
+        required: false
+        default: "365"
+        type: string
+      symbols:
+        description: "Space-separated US stocks/ETFs"
+        required: false
+        default: "SPY QQQ"
+        type: string
 
+  schedule:
+    - cron: "0 15 * * 0"
 
-def _alpaca_client():
-    from alpaca.data.historical import StockHistoricalDataClient
-    key, secret = os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY")
-    if not key or not secret:
-        raise RuntimeError("Faltan ALPACA_API_KEY y/o ALPACA_SECRET_KEY.")
-    return StockHistoricalDataClient(key, secret)
+permissions:
+  contents: read
 
+concurrency:
+  group: rocket-trader-traditional-research-v02
+  cancel-in-progress: false
 
-def fetch_bars(symbol: str, days: int, daily: bool = False, chunk_days: int = 25) -> pd.DataFrame:
-    from alpaca.data.enums import DataFeed
-    from alpaca.data.requests import StockBarsRequest
-    from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
-    client = _alpaca_client()
-    symbol = symbol.strip().upper()
-    end = datetime.now(timezone.utc)
-    # Extra calendar warm-up gives the daily SMA200 enough observations.
-    start = end - timedelta(days=(max(days, 500) if daily else days))
-    chunks, cursor = [], start
-    while cursor < end:
-        chunk_end = min(cursor + timedelta(days=chunk_days), end)
-        tf = TimeFrame.Day if daily else TimeFrame(BAR_MINUTES, TimeFrameUnit.Minute)
-        request = StockBarsRequest(symbol_or_symbols=symbol, timeframe=tf, start=cursor,
-                                   end=chunk_end, limit=10000, feed=DataFeed.IEX)
-        response = client.get_stock_bars(request)
-        try:
-            bars = response[symbol]
-            records = [{"timestamp": b.timestamp, "open": b.open, "high": b.high,
-                        "low": b.low, "close": b.close, "volume": b.volume} for b in bars]
-        except (KeyError, TypeError, AttributeError):
-            records = []
-        if records:
-            chunks.append(pd.DataFrame(records))
-        cursor = chunk_end
-    if not chunks:
-        raise RuntimeError(f"Alpaca no devolvió barras para {symbol} ({'daily' if daily else '5m'}).")
-    df = pd.concat(chunks, ignore_index=True)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df = df.sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
-    for col in ("open", "high", "low", "close", "volume"):
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df = df.dropna(subset=["timestamp", "open", "high", "low", "close"])
-    df = df[(df[["open", "high", "low", "close"]] > 0).all(axis=1)].reset_index(drop=True)
-    if not daily:
-        # Timestamp is the bar start; keep 09:30 <= start < 16:00 New York time.
-        local = df["timestamp"].dt.tz_convert(NY)
-        minutes = local.dt.hour * 60 + local.dt.minute
-        df = df[(local.dt.dayofweek < 5) & (minutes >= 570) & (minutes < 960)].reset_index(drop=True)
-    if len(df) < (200 if daily else 1000):
-        raise RuntimeError(f"Histórico insuficiente para {symbol}: {len(df)} barras.")
-    return df
+jobs:
+  research:
+    name: research-v0-2
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-def add_lagged_daily_regime(intraday: pd.DataFrame, daily: pd.DataFrame) -> pd.DataFrame:
-    """Use only completed prior-session daily close vs prior 200-session SMA."""
-    d = daily.copy()
-    d["session_date"] = d["timestamp"].dt.tz_convert(NY).dt.date
-    d["daily_sma200"] = d["close"].rolling(200, min_periods=200).mean()
-    d["daily_bull_regime"] = (d["close"].shift(1) > d["daily_sma200"].shift(1)).fillna(False)
-    # The shifted daily close/SMA are known before the current session starts.
-    regime = d[["session_date", "daily_bull_regime"]].copy()
-    x = intraday.copy()
-    x["session_date"] = x["timestamp"].dt.tz_convert(NY).dt.date
-    x = x.merge(regime, on="session_date", how="left")
-    x["daily_bull_regime"] = x["daily_bull_regime"].fillna(False).astype(bool)
-    return x.drop(columns=["session_date"])
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
+      - name: Verify exact research implementation
+        shell: bash
+        run: |
+          set -euo pipefail
 
-def rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    delta = series.diff()
-    gain = delta.clip(lower=0).ewm(alpha=1/period, adjust=False, min_periods=period).mean()
-    loss = (-delta.clip(upper=0)).ewm(alpha=1/period, adjust=False, min_periods=period).mean()
-    rs = gain / loss.replace(0, np.nan)
-    return 100 - 100 / (1 + rs)
+          FILE="rocket_trader_traditional_research_v0_2.py"
+
+          if [[ ! -f "$FILE" ]]; then
+            echo "FATAL: $FILE is missing."
+            exit 1
+          fi
+
+          python -m py_compile "$FILE"
+
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("rocket_trader_traditional_research_v0_2.py")
+          tree = ast.parse(path.read_text(encoding="utf-8"))
+
+          version = None
+
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name) and target.id == "VERSION":
+                          version = ast.literal_eval(node.value)
+
+          if version != "0.2":
+              raise SystemExit(
+                  f"FATAL: Expected version 0.2, found {version!r}"
+              )
+
+          print("Exact research implementation verified: v0.2")
+          PY
+
+      - name: Validate research inputs
+        shell: bash
+        env:
+          SYMBOLS_INPUT: ${{ inputs.symbols || 'SPY QQQ' }}
+          DAYS_INPUT: ${{ inputs.days || '365' }}
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$DAYS_INPUT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "FATAL: days must be a positive integer."
+            exit 1
+          fi
+
+          if [[ -z "${SYMBOLS_INPUT//[[:space:]]/}" ]]; then
+            echo "FATAL: At least one symbol is required."
+            exit 1
+          fi
+
+          echo "Days: $DAYS_INPUT"
+          echo "Symbols: $SYMBOLS_INPUT"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-alpaca.txt
+
+      - name: Run offline tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python rocket_trader_traditional_research_v0_2.py --self-test
+
+      - name: Run research
+        shell: bash
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SYMBOLS_INPUT: ${{ inputs.symbols || 'SPY QQQ' }}
+          DAYS_INPUT: ${{ inputs.days || '365' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ALPACA_API_KEY:-}" || -z "${ALPACA_SECRET_KEY:-}" ]]; then
+            echo "FATAL: Alpaca API credentials are not configured."
+            exit 1
+          fi
+
+          mkdir -p research_artifacts
+
+          read -r -a symbols <<< "$SYMBOLS_INPUT"
+
+          echo "Starting v0.2 research."
+          echo "Symbols: ${symbols[*]}"
+          echo "Calendar days: $DAYS_INPUT"
+
+          python rocket_trader_traditional_research_v0_2.py \
+            --symbols "${symbols[@]}" \
+            --days "$DAYS_INPUT" \
+            --output research_artifacts/rocket_trader_traditional_research_v0_2_results.json
+
+      - name: Verify generated report
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REPORT="research_artifacts/rocket_trader_traditional_research_v0_2_results.json"
+
+          if [[ ! -s "$REPORT" ]]; then
+            echo "FATAL: Research report missing or empty."
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "research_artifacts/"
+              "rocket_trader_traditional_research_v0_2_results.json"
+          )
+
+          data = json.loads(path.read_text(encoding="utf-8"))
+          summary = data.get("summary", {})
+
+          checks = {
+              "version": summary.get("version") == "0.2",
+              "pipeline": (
+                  summary.get("pipeline")
+                  == "rocket_trader_traditional_research_v0_2"
+              ),
+              "orders_disabled": summary.get("orders_enabled") is False,
+              "zero_orders": summary.get("orders_submitted") == 0,
+              "pipeline_ok": summary.get("ok") is True,
+              "results_present": bool(data.get("results")),
+              "no_symbol_failures": not summary.get("symbols_failed"),
+          }
+
+          for name, passed in checks.items():
+              print(f"{'PASS' if passed else 'FAIL'}: {name}")
+
+          failed = [name for name, passed in checks.items() if not passed]
+
+          if failed:
+              raise SystemExit(
+                  "FATAL: Report validation failed: " + ", ".join(failed)
+              )
+
+          print("Research report identity and safety verified.")
+          print("Version:", summary["version"])
+          print("Pipeline:", summary["pipeline"])
+          print("Symbols:", summary.get("symbols_processed"))
+          print("Orders enabled:", summary["orders_enabled"])
+          print("Orders submitted:", summary["orders_submitted"])
+          PY
+
+      - name: Upload research report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocket-trader-traditional-research-v0-2-report
+          path: research_artifacts/rocket_trader_traditional_research_v0_2_results.json
+          if-no-files-found: error
+          retention-days: 30
+```
