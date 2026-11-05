@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       research_run_id:
-        description: "GitHub Actions run ID of Traditional Research v0.2"
+        description: "Run ID of the successful Traditional Research v0.2 workflow"
         required: true
         default: "39855884241"
         type: string
@@ -20,6 +20,10 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: rocket-trader-traditional-research-v09-audit
+  cancel-in-progress: false
+
 jobs:
   preflight-and-audit:
     name: preflight-and-audit
@@ -27,7 +31,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -38,19 +42,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify auditor exists
-        run: test -f rocket_trader_traditional_research_v0_9.py
+      - name: Verify auditor
+        run: |
+          test -f rocket_trader_traditional_research_v0_9.py
+          python -m py_compile rocket_trader_traditional_research_v0_9.py
 
-      - name: Compile auditor
-        run: python -m py_compile rocket_trader_traditional_research_v0_9.py
+      - name: Run auditor self-tests
+        run: |
+          python rocket_trader_traditional_research_v0_9.py --run-tests
 
-      - name: Run auditor tests
-        run: python rocket_trader_traditional_research_v0_9.py --run-tests
-
-      - name: Prepare research artifacts
-        run: mkdir -p research_artifacts
-
-      - name: Determine research run ID
+      - name: Determine source research run
         id: source
         shell: bash
         env:
@@ -59,47 +60,103 @@ jobs:
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            echo "run_id=$WORKFLOW_RUN_ID" >> "$GITHUB_OUTPUT"
+            RUN_ID="$WORKFLOW_RUN_ID"
           else
-            if [[ ! "$MANUAL_RUN_ID" =~ ^[0-9]+$ ]]; then
-              echo "ERROR: research_run_id must be numeric."
-              exit 1
-            fi
-            echo "run_id=$MANUAL_RUN_ID" >> "$GITHUB_OUTPUT"
+            RUN_ID="$MANUAL_RUN_ID"
           fi
 
-      - name: Download Traditional Research report
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: Invalid research run ID: $RUN_ID"
+            exit 1
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Research source run: $RUN_ID"
+
+      - name: Download research artifact
         uses: actions/download-artifact@v4
         with:
           name: rocket-trader-traditional-research-v0-2-report
-          path: research_artifacts/
+          path: downloaded_artifact
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           run-id: ${{ steps.source.outputs.run_id }}
 
-      - name: List downloaded files
-        run: find research_artifacts -maxdepth 2 -type f -print
-
-      - name: Validate downloaded JSON
+      - name: Inspect downloaded artifact
         shell: bash
         run: |
-          found=0
+          echo "Downloaded artifact contents:"
+          find downloaded_artifact -maxdepth 6 -type f -print
 
-          while IFS= read -r -d '' file; do
-            if [[ "$file" == *"v0_9_audit_report.json" ]]; then
-              continue
-            fi
-
-            if [[ "$file" == *.json ]]; then
-              python -m json.tool "$file" > /dev/null
-              found=1
-            fi
-          done < <(find research_artifacts -type f -name '*.json' -print0)
-
-          if [[ "$found" -ne 1 ]]; then
-            echo "ERROR: No valid research JSON was downloaded."
+          if [[ ! -d downloaded_artifact ]]; then
+            echo "ERROR: Download directory does not exist."
             exit 1
           fi
+
+          COUNT=$(find downloaded_artifact -type f \
+            \( -iname '*.json' -o -iname '*.csv' \) | wc -l)
+
+          echo "Supported files found: $COUNT"
+
+          if [[ "$COUNT" -eq 0 ]]; then
+            echo "ERROR: Artifact contains no JSON or CSV files."
+            exit 1
+          fi
+
+      - name: Prepare clean audit input
+        shell: bash
+        run: |
+          mkdir -p audit_input audit_output
+
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          source = Path("downloaded_artifact")
+          destination = Path("audit_input")
+
+          supported = []
+          for path in source.rglob("*"):
+              if path.is_file() and path.suffix.lower() in {".json", ".csv"}:
+                  supported.append(path)
+
+          if not supported:
+              raise SystemExit("ERROR: No supported files found.")
+
+          copied = []
+
+          for index, path in enumerate(sorted(supported), start=1):
+              target = destination / f"source_{index:03d}_{path.name}"
+              shutil.copy2(path, target)
+              copied.append(target)
+
+          print("Files copied into clean audit directory:")
+          for path in copied:
+              print(f" - {path}")
+
+          if not any(p.suffix.lower() == ".json" for p in copied):
+              raise SystemExit("ERROR: No JSON research report was copied.")
+          PY
+
+      - name: Validate research JSON files
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          files = list(Path("audit_input").glob("*.json"))
+
+          if not files:
+              raise SystemExit("ERROR: audit_input contains no JSON files.")
+
+          for path in files:
+              print(f"Validating: {path}")
+              with path.open("r", encoding="utf-8") as f:
+                  json.load(f)
+
+          print(f"Validated {len(files)} JSON file(s).")
+          PY
 
       - name: Run artifact audit
         id: audit
@@ -109,50 +166,78 @@ jobs:
           set +e
 
           python rocket_trader_traditional_research_v0_9.py \
-            --input-dir research_artifacts \
-            --output research_artifacts/v0_9_audit_report.json \
+            --input-dir audit_input \
+            --output audit_output/v0_9_audit_report.json \
             --strict-no-data
 
-          rc=$?
-          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
-          exit "$rc"
+          RC=$?
+          echo "exit_code=$RC" >> "$GITHUB_OUTPUT"
 
-      - name: Upload audit report
+          echo "Auditor exit code: $RC"
+          exit "$RC"
+
+      - name: Display audit report
+        if: always()
+        shell: bash
+        run: |
+          REPORT="audit_output/v0_9_audit_report.json"
+
+          if [[ -f "$REPORT" ]]; then
+            python -m json.tool "$REPORT"
+          else
+            echo "ERROR: Auditor did not generate its report."
+          fi
+
+      - name: Upload audit artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rocket-trader-traditional-research-v0.9-audit
-          path: research_artifacts/v0_9_audit_report.json
+          path: |
+            audit_output/
+            audit_input/
+            downloaded_artifact/
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Add audit summary
+      - name: Publish audit summary
         if: always()
         shell: bash
         run: |
-          report="research_artifacts/v0_9_audit_report.json"
+          REPORT="audit_output/v0_9_audit_report.json"
 
           {
-            echo "## Rocket Trader research audit"
+            echo "## Rocket Trader - Research Audit"
             echo ""
 
-            if [[ -f "$report" ]]; then
-              jq -r '"- Status: `" + (.audit_status // "UNKNOWN") + "`"' "$report"
-              jq -r '"- Files scanned: " + ((.files_scanned // 0) | tostring)' "$report"
-              jq -r '"- Reports scanned: " + ((.reports_scanned // 0) | tostring)' "$report"
-              jq -r '"- CSV files scanned: " + ((.csv_files_scanned // 0) | tostring)' "$report"
-              jq -r '"- Trade rows scanned: " + ((.trade_rows_scanned // 0) | tostring)' "$report"
-              jq -r '"- Errors: " + ((.error_count // 0) | tostring)' "$report"
-              jq -r '"- Warnings: " + ((.warning_count // 0) | tostring)' "$report"
-              echo "- Live orders enabled: **No**"
-              echo "- Strategy profitability independently verified: **No**"
-              echo ""
-              echo "### Findings"
+            if [[ -f "$REPORT" ]]; then
+              python - <<'PY'
+          import json
+          from pathlib import Path
 
-              jq -r '(.findings // [])[]? |
-                "- [" + (.severity // "UNKNOWN") + "] " +
-                (.code // "UNKNOWN") + ": " +
-                (.message // "No details")' "$report"
+          report = json.loads(
+              Path("audit_output/v0_9_audit_report.json").read_text()
+          )
+
+          print(f"- Status: **{report.get('audit_status', 'UNKNOWN')}**")
+          print(f"- Files scanned: {report.get('files_scanned', 0)}")
+          print(f"- Reports scanned: {report.get('reports_scanned', 0)}")
+          print(f"- CSV files scanned: {report.get('csv_files_scanned', 0)}")
+          print(f"- Trade rows scanned: {report.get('trade_rows_scanned', 0)}")
+          print(f"- Errors: {report.get('error_count', 0)}")
+          print(f"- Warnings: {report.get('warning_count', 0)}")
+          print("- Live orders: DISABLED")
+          print("- Strategy promotion: DISABLED")
+          print("- Profitability independently verified: NO")
+
+          print("\n### Findings")
+          for item in report.get("findings", []):
+              print(
+                  f"- [{item.get('severity', 'UNKNOWN')}] "
+                  f"{item.get('code', 'UNKNOWN')}: "
+                  f"{item.get('message', '')}"
+              )
+          PY
             else
               echo "Audit report was not generated."
             fi
@@ -170,8 +255,7 @@ jobs:
           fi
 
           if [[ "$AUDIT_EXIT_CODE" != "0" ]]; then
-            echo "Audit failed with exit code $AUDIT_EXIT_CODE."
-            echo "Review the audit report and findings."
+            echo "ERROR: Audit failed with exit code $AUDIT_EXIT_CODE."
             exit 1
           fi
 
