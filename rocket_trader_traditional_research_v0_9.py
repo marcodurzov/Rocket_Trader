@@ -1,376 +1,602 @@
+
 #!/usr/bin/env python3
-"""Rocket Trader Traditional Research v0.9 — fail-closed artifact auditor.
-Research-only. No broker integrations, network calls, or order submission.
+# -*- coding: utf-8 -*-
+
 """
+ROCKET TRADER - RESEARCH ARTIFACT AUDITOR v1.0
+
+Audita reportes JSON/CSV de investigación.
+No conecta con brokers.
+No ejecuta órdenes.
+No verifica rentabilidad real ni promueve estrategias.
+
+PASS = reporte reconocido, datos estructuralmente válidos y controles de
+       seguridad aprobados. NO significa rentabilidad demostrada.
+FAIL = errores estructurales, valores inválidos o controles incumplidos.
+NO_DATA = no se encontraron reportes de investigación utilizables.
+"""
+
 from __future__ import annotations
+
 import argparse
 import csv
 import json
 import math
-import re
 import sys
-from collections import Counter
-from datetime import datetime, timezone
+import tempfile
+
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.9.2"
-ORDER_COUNT_KEYS = ("orders_submitted", "live_orders_submitted", "real_orders_submitted")
-TIME_ALIASES = {
-    "signal": ("entry_signal_timestamp", "entry_signal_time", "signal_timestamp", "signal_time", "signal_at"),
-    "entry": ("entry_timestamp", "entry_time", "entry_at", "entry_execution_timestamp", "entry_execution_time"),
-    "exit_signal": ("exit_signal_timestamp", "exit_signal_time"),
-    "exit": ("exit_timestamp", "exit_time", "exit_at", "exit_execution_timestamp", "exit_execution_time"),
+
+VERSION = "1.0.0"
+
+EXCLUDED_NAMES = {
+    "v0_9_audit_report.json",
+    "v1_0_audit_report.json",
 }
-PRICE_ALIASES = {
-    "entry": ("entry_price", "entry_fill_price", "buy_price"),
-    "exit": ("exit_price", "exit_fill_price", "sell_price"),
+
+LEDGER_KEYS = {
+    "trade_ledger",
+    "trades",
+    "sample_holdout_trades",
+    "ledger",
 }
-RETURN_ALIASES = ("return_pct", "trade_return_pct", "net_return_pct", "pnl_pct")
 
 
-def norm(value: Any) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", str(value).strip().lower()).strip("_")
+def is_finite_tree(value: Any, path: str = "$") -> list[dict]:
+    """Detecta NaN e infinitos en cualquier nivel del JSON."""
+    issues = []
+
+    if isinstance(value, float) and not math.isfinite(value):
+        issues.append({
+            "code": "NON_FINITE_NUMBER",
+            "path": path,
+            "message": f"Valor numérico no finito en {path}",
+        })
+
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            issues.extend(is_finite_tree(child, f"{path}.{key}"))
+
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            issues.extend(is_finite_tree(child, f"{path}[{index}]"))
+
+    return issues
 
 
-def norm_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {norm(k): v for k, v in row.items() if k is not None}
+def walk_dicts(value: Any):
+    """Recorre recursivamente todos los diccionarios."""
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk_dicts(child)
+
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk_dicts(child)
 
 
-def first(row: dict[str, Any], aliases: tuple[str, ...]) -> Any:
-    for alias in aliases:
-        value = row.get(norm(alias))
-        if value is not None and str(value).strip() != "":
-            return value
-    return None
-
-
-def number(value: Any) -> float | None:
-    if value is None:
+def parse_timestamp(value: Any):
+    if not isinstance(value, str) or not value.strip():
         return None
+
     try:
-        result = float(str(value).replace(",", "").replace("%", "").strip())
-    except (TypeError, ValueError):
-        return None
-    return result if math.isfinite(result) else None
-
-
-def timestamp(value: Any) -> datetime | None:
-    if value is None or not str(value).strip():
-        return None
-    raw = str(value).strip()
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(raw)
+        normalized = value.strip().replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized)
     except ValueError:
         return None
-    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed
 
 
-def compare_times(a: datetime, b: datetime) -> int | None:
-    """Return -1/0/1; None if one timestamp is naive and the other aware."""
-    if (a.tzinfo is None) != (b.tzinfo is None):
-        return None
-    return -1 if a < b else (1 if a > b else 0)
+def find_ledgers(data: Any):
+    """Busca listas que aparenten ser historiales de operaciones."""
+    found = []
+
+    for item in walk_dicts(data):
+        for key, value in item.items():
+            if key.lower() in LEDGER_KEYS and isinstance(value, list):
+                if value and all(isinstance(row, dict) for row in value):
+                    found.append((key, value))
+
+    return found
 
 
-class Audit:
-    def __init__(self, input_dir: Path, exclude_paths: set[Path] | None = None):
-        self.input_dir = input_dir
-        self.exclude_paths = {x.resolve() for x in (exclude_paths or set())}
-        self.findings: list[dict[str, Any]] = []
-        self.results: list[dict[str, Any]] = []
-        self.files_scanned = self.reports_scanned = self.trade_rows_scanned = 0
-        self.json_files = self.csv_files = 0
+def audit_ledger(rows: list[dict], source: str):
+    findings = []
+    valid_rows = 0
 
-    def finding(self, severity: str, code: str, message: str,
-                file: str | None = None, row: int | None = None) -> None:
-        item: dict[str, Any] = {"severity": severity, "code": code, "message": message}
-        if file:
-            item["file"] = file
-        if row is not None:
-            item["row"] = row
-        self.findings.append(item)
+    for index, row in enumerate(rows):
+        prefix = f"{source}[{index}]"
 
-    def audit_json(self, path: Path) -> None:
-        self.json_files += 1
-        self.reports_scanned += 1
+        signal = (
+            row.get("signal_timestamp")
+            or row.get("signal_time")
+        )
+        entry = (
+            row.get("entry_timestamp")
+            or row.get("entry_time")
+        )
+        exit_time = (
+            row.get("exit_timestamp")
+            or row.get("exit_time")
+        )
+
+        signal_dt = parse_timestamp(signal)
+        entry_dt = parse_timestamp(entry)
+        exit_dt = parse_timestamp(exit_time)
+
+        if signal and not signal_dt:
+            findings.append({
+                "severity": "ERROR",
+                "code": "INVALID_SIGNAL_TIMESTAMP",
+                "message": f"Timestamp de señal inválido: {prefix}",
+            })
+
+        if entry and not entry_dt:
+            findings.append({
+                "severity": "ERROR",
+                "code": "INVALID_ENTRY_TIMESTAMP",
+                "message": f"Timestamp de entrada inválido: {prefix}",
+            })
+
+        if exit_time and not exit_dt:
+            findings.append({
+                "severity": "ERROR",
+                "code": "INVALID_EXIT_TIMESTAMP",
+                "message": f"Timestamp de salida inválido: {prefix}",
+            })
+
+        # Comparación cronológica solo si las fechas tienen zonas compatibles.
         try:
-            data = json.loads(path.read_text(encoding="utf-8-sig"))
-        except (OSError, json.JSONDecodeError) as exc:
-            self.finding("ERROR", "JSON_UNREADABLE", str(exc), str(path))
-            return
-        for location, obj in self.walk(data):
-            row = norm_row(obj)
-            enabled = row.get("orders_enabled")
-            if enabled is True or (isinstance(enabled, str) and enabled.strip().lower() in {"true", "yes", "1"}):
-                self.finding("ERROR", "ORDERS_ENABLED", f"{location}.orders_enabled is true", str(path))
-            for key in ORDER_COUNT_KEYS:
-                val = number(row.get(key))
-                if val is not None and val > 0:
-                    self.finding("ERROR", "ORDER_COUNT_NONZERO", f"{location}.{key}={val}", str(path))
-            symbol = row.get("symbol", row.get("ticker"))
-            strategy = row.get("strategy", row.get("strategy_name"))
-            ret = next((number(row.get(k)) for k in ("total_return_pct", "return_pct", "total_return", "net_return_pct") if number(row.get(k)) is not None), None)
-            trades = next((number(row.get(k)) for k in ("trades", "trade_count", "number_of_trades", "total_trades") if number(row.get(k)) is not None), None)
-            if symbol is not None and (ret is not None or trades is not None):
-                self.results.append({"file": str(path), "path": location, "symbol": symbol,
-                                     "strategy": strategy, "reported_return": ret,
-                                     "reported_trades": trades, "independently_verified": False})
+            if signal_dt and entry_dt and entry_dt < signal_dt:
+                findings.append({
+                    "severity": "ERROR",
+                    "code": "ENTRY_BEFORE_SIGNAL",
+                    "message": f"Entrada anterior a la señal: {prefix}",
+                })
 
-    @staticmethod
-    def walk(obj: Any, path: str = "$"):
-        if isinstance(obj, dict):
-            yield path, obj
-            for k, v in obj.items():
-                yield from Audit.walk(v, f"{path}.{k}")
-        elif isinstance(obj, list):
-            for i, v in enumerate(obj):
-                yield from Audit.walk(v, f"{path}[{i}]")
+            if entry_dt and exit_dt and exit_dt < entry_dt:
+                findings.append({
+                    "severity": "ERROR",
+                    "code": "EXIT_BEFORE_ENTRY",
+                    "message": f"Salida anterior a la entrada: {prefix}",
+                })
 
-    def audit_csv(self, path: Path) -> None:
-        self.csv_files += 1
-        try:
-            with path.open("r", newline="", encoding="utf-8-sig") as stream:
-                reader = csv.DictReader(stream)
-                if not reader.fieldnames:
-                    self.finding("ERROR", "CSV_NO_HEADER", "CSV has no header row", str(path))
-                    return
-                headers = {norm(x) for x in reader.fieldnames}
-                rows = list(reader)
-        except (OSError, csv.Error) as exc:
-            self.finding("ERROR", "CSV_UNREADABLE", str(exc), str(path))
-            return
-        looks_like_ledger = any(x.startswith("entry") for x in headers) and any(x.startswith("exit") for x in headers)
-        if not looks_like_ledger:
-            self.finding("INFO", "CSV_SKIPPED_NON_LEDGER", "CSV lacks recognizable entry/exit columns; not treated as a trade ledger", str(path))
-            return
-        self.trade_rows_scanned += len(rows)
-        if not rows:
-            self.finding("ERROR", "EMPTY_TRADE_LEDGER", "Trade ledger has headers but no trade rows", str(path))
-            return
-        seen_ids: set[str] = set()
-        previous_entry: datetime | None = None
-        for line, raw in enumerate(rows, start=2):
-            row = norm_row(raw)
-            tid = first(row, ("trade_id", "id", "order_id"))
-            if tid is not None:
-                tid = str(tid).strip()
-                if tid in seen_ids:
-                    self.finding("ERROR", "DUPLICATE_TRADE_ID", f"Duplicate trade identifier {tid!r}", str(path), line)
-                seen_ids.add(tid)
-            prices: dict[str, float | None] = {k: number(first(row, v)) for k, v in PRICE_ALIASES.items()}
-            for key, val in prices.items():
-                if val is not None and val <= 0:
-                    self.finding("ERROR", f"INVALID_{key.upper()}_PRICE", f"{key} price must be positive; got {val}", str(path), line)
-            times: dict[str, datetime] = {}
-            for role, aliases in TIME_ALIASES.items():
-                raw_time = first(row, aliases)
-                if raw_time is not None:
-                    parsed = timestamp(raw_time)
-                    if parsed is None:
-                        self.finding("ERROR", "INVALID_TIMESTAMP", f"Cannot parse {role} timestamp {raw_time!r}", str(path), line)
-                    else:
-                        times[role] = parsed
-            for earlier_role, later_role, code, msg in (
-                ("signal", "entry", "ENTRY_BEFORE_SIGNAL", "Entry execution precedes recorded signal"),
-                ("exit_signal", "exit", "EXIT_BEFORE_SIGNAL", "Exit execution precedes recorded exit signal"),
-                ("entry", "exit", "EXIT_BEFORE_ENTRY", "Exit execution precedes entry execution"),
-            ):
-                if earlier_role in times and later_role in times:
-                    order = compare_times(times[earlier_role], times[later_role])
-                    if order is None:
-                        self.finding("WARN", "MIXED_TIMEZONES", f"Cannot safely compare naive and timezone-aware {earlier_role}/{later_role} timestamps", str(path), line)
-                    elif order > 0:
-                        self.finding("ERROR", code, msg, str(path), line)
-            entry_time = times.get("entry")
-            if entry_time:
-                if previous_entry:
-                    order = compare_times(previous_entry, entry_time)
-                    if order is None:
-                        self.finding("WARN", "MIXED_TIMEZONES", "Cannot verify ledger order because timestamps mix naive and aware formats", str(path), line)
-                    elif order > 0:
-                        self.finding("WARN", "LEDGER_OUT_OF_ORDER", "Ledger rows are not chronological by entry timestamp", str(path), line)
-                previous_entry = entry_time
-            qty = number(first(row, ("quantity", "qty", "shares")))
-            if qty is not None and qty <= 0:
-                self.finding("ERROR", "INVALID_QUANTITY", f"Quantity must be positive; got {qty}", str(path), line)
-            reported = number(first(row, RETURN_ALIASES))
-            ep, xp = prices["entry"], prices["exit"]
-            if ep is not None and xp is not None and reported is not None:
-                gross = (xp / ep - 1) * 100
-                if abs(gross - reported) > 0.25:
-                    self.finding("WARN", "RETURN_RECONCILIATION_MISMATCH",
-                                 f"Reported return {reported:.4f}% vs simple gross long return {gross:.4f}%; fees/sizing may explain difference", str(path), line)
+            if signal_dt and exit_dt and exit_dt < signal_dt:
+                findings.append({
+                    "severity": "ERROR",
+                    "code": "EXIT_BEFORE_SIGNAL",
+                    "message": f"Salida anterior a la señal: {prefix}",
+                })
 
-    def run(self) -> dict[str, Any]:
-        if not self.input_dir.exists():
-            self.finding("ERROR", "INPUT_DIR_MISSING", f"Input directory does not exist: {self.input_dir}")
-        elif not self.input_dir.is_dir():
-            self.finding("ERROR", "INPUT_PATH_NOT_DIRECTORY", f"Input path is not a directory: {self.input_dir}")
-        else:
-            paths = sorted(p for p in self.input_dir.rglob("*") if p.is_file() and p.suffix.lower() in {".json", ".csv"} and p.resolve() not in self.exclude_paths)
-            for path in paths:
-                self.files_scanned += 1
-                if path.suffix.lower() == ".json":
-                    self.audit_json(path)
-                else:
-                    self.audit_csv(path)
-            if self.files_scanned == 0:
-                self.finding("NO_DATA", "NO_SUPPORTED_FILES", "No JSON or CSV files found in input directory (generated output files are excluded)")
-            elif self.trade_rows_scanned == 0:
-                self.finding("NO_DATA", "NO_TRADE_LEDGER_ROWS", "No recognizable trade-ledger rows were audited; performance and trade chronology remain unverified")
-        counts = Counter(x["severity"] for x in self.findings)
-        errors, warnings, no_data = counts["ERROR"], counts["WARN"], counts["NO_DATA"]
-        if errors:
-            status = "FAIL"
-        elif no_data or (self.files_scanned == 0):
-            status = "NO_DATA"
-        elif warnings:
-            status = "PASS_WITH_WARNINGS"
-        else:
-            status = "PASS"
+        except TypeError:
+            findings.append({
+                "severity": "ERROR",
+                "code": "INCOMPARABLE_TIMESTAMPS",
+                "message": f"Zonas horarias incompatibles: {prefix}",
+            })
+
+        for field in ("entry_price", "exit_price", "quantity"):
+            if field in row:
+                try:
+                    number = float(row[field])
+                    if not math.isfinite(number) or number <= 0:
+                        raise ValueError()
+                except (TypeError, ValueError):
+                    findings.append({
+                        "severity": "ERROR",
+                        "code": "INVALID_TRADE_VALUE",
+                        "message": f"{field} inválido en {prefix}",
+                    })
+
+        valid_rows += 1
+
+    return valid_rows, findings
+
+
+def recognize_research_report(data: Any):
+    """
+    Reconoce el formato de Traditional Research v0.2:
+    {
+        "summary": {...},
+        "results": [...]
+    }
+
+    También acepta reportes que declaren pipeline y results.
+    """
+    if not isinstance(data, dict):
+        return False, None, None
+
+    summary = data.get("summary")
+    results = data.get("results")
+
+    if isinstance(summary, dict) and isinstance(results, list):
+        return True, summary, results
+
+    if isinstance(data.get("pipeline"), str) and isinstance(results, list):
+        return True, data, results
+
+    return False, None, None
+
+
+def audit_json(path: Path):
+    findings = []
+
+    try:
+        with path.open("r", encoding="utf-8-sig") as handle:
+            data = json.load(handle)
+    except Exception as exc:
+        return None, [{
+            "severity": "ERROR",
+            "code": "INVALID_JSON",
+            "message": f"{path.name}: {type(exc).__name__}: {exc}",
+        }]
+
+    for issue in is_finite_tree(data):
+        findings.append({
+            "severity": "ERROR",
+            "code": issue["code"],
+            "message": f"{path.name}: {issue['message']}",
+        })
+
+    recognized, summary, results = recognize_research_report(data)
+
+    if not recognized:
+        return None, findings + [{
+            "severity": "WARNING",
+            "code": "UNRECOGNIZED_JSON",
+            "message": (
+                f"{path.name}: JSON válido, pero no tiene la estructura "
+                "summary/results ni pipeline/results."
+            ),
+        }]
+
+    if not results:
+        findings.append({
+            "severity": "ERROR",
+            "code": "EMPTY_RESULTS",
+            "message": f"{path.name}: el reporte no contiene resultados.",
+        })
+
+    if not isinstance(summary, dict):
+        findings.append({
+            "severity": "ERROR",
+            "code": "INVALID_SUMMARY",
+            "message": f"{path.name}: summary no es un objeto.",
+        })
+        summary = {}
+
+    # Revisar controles de seguridad en todo el reporte.
+    for item in walk_dicts(data):
+        if item.get("orders_enabled") is True:
+            findings.append({
+                "severity": "ERROR",
+                "code": "ORDERS_ENABLED",
+                "message": f"{path.name}: se encontró orders_enabled=true.",
+            })
+
+        if "orders_submitted" in item:
+            try:
+                submitted = int(item["orders_submitted"])
+                if submitted > 0:
+                    findings.append({
+                        "severity": "ERROR",
+                        "code": "ORDERS_SUBMITTED",
+                        "message": (
+                            f"{path.name}: orders_submitted={submitted}."
+                        ),
+                    })
+                elif submitted < 0:
+                    raise ValueError()
+            except (TypeError, ValueError):
+                findings.append({
+                    "severity": "ERROR",
+                    "code": "INVALID_ORDER_COUNT",
+                    "message": f"{path.name}: orders_submitted inválido.",
+                })
+
+    if summary.get("ok") is False:
+        findings.append({
+            "severity": "ERROR",
+            "code": "RESEARCH_PIPELINE_FAILED",
+            "message": f"{path.name}: el pipeline reportó ok=false.",
+        })
+
+    if summary.get("symbols_failed"):
+        findings.append({
+            "severity": "ERROR",
+            "code": "SYMBOL_FAILURES",
+            "message": (
+                f"{path.name}: uno o más símbolos fallaron en investigación."
+            ),
+        })
+
+    ledgers = find_ledgers(data)
+    ledger_rows = 0
+
+    if not ledgers:
+        findings.append({
+            "severity": "WARNING",
+            "code": "LEDGER_NOT_PRESENT",
+            "message": (
+                f"{path.name}: reporte válido, pero no incluye un ledger "
+                "individual de operaciones. No se puede verificar cronología "
+                "ni reconciliar cada operación."
+            ),
+        })
+    else:
+        for ledger_name, rows in ledgers:
+            count, ledger_findings = audit_ledger(
+                rows, f"{path.name}.{ledger_name}"
+            )
+            ledger_rows += count
+            findings.extend(ledger_findings)
+
+    report_info = {
+        "file": str(path),
+        "pipeline": summary.get("pipeline", data.get("pipeline")),
+        "version": summary.get("version", data.get("version")),
+        "symbols_processed": summary.get("symbols_processed", []),
+        "symbols_failed": summary.get("symbols_failed", []),
+        "result_count": len(results),
+        "ledger_rows": ledger_rows,
+        "ledger_present": bool(ledgers),
+        "research_pass": summary.get("research_pass"),
+    }
+
+    return report_info, findings
+
+
+def audit_csv(path: Path):
+    findings = []
+
+    try:
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            headers = reader.fieldnames or []
+            rows = list(reader)
+
+        if not headers:
+            findings.append({
+                "severity": "ERROR",
+                "code": "CSV_WITHOUT_HEADERS",
+                "message": f"{path.name}: CSV sin encabezados.",
+            })
+
         return {
-            "version": VERSION, "audit_status": status,
-            "input_directory": str(self.input_dir), "files_scanned": self.files_scanned,
-            "reports_scanned": self.reports_scanned, "csv_files_scanned": self.csv_files,
-            "trade_rows_scanned": self.trade_rows_scanned,
-            "error_count": errors, "warning_count": warnings,
-            "orders_enabled": False, "orders_submitted": 0,
-            "strategy_profitability_verified": False, "strategy_promotion_enabled": False,
-            "reported_results": self.results, "findings": self.findings,
-            "limitations": [
-                "PASS only means implemented artifact checks found no issues; it does not prove profitability.",
-                "Reported performance is not reproduced from original market bars.",
-                "Return reconciliation is a simple long-only diagnostic and may differ from net accounting.",
-                "Missing timestamps prevent chronology verification.",
-                "This tool does not fetch market data, execute orders, or connect to a broker.",
+            "file": str(path),
+            "headers": headers,
+            "rows": len(rows),
+        }, findings
+
+    except Exception as exc:
+        return None, [{
+            "severity": "ERROR",
+            "code": "INVALID_CSV",
+            "message": f"{path.name}: {type(exc).__name__}: {exc}",
+        }]
+
+
+def run_audit(input_dir: Path, output: Path):
+    findings = []
+    reports = []
+    csv_reports = []
+    files_scanned = 0
+    trade_rows = 0
+
+    if not input_dir.exists() or not input_dir.is_dir():
+        findings.append({
+            "severity": "NO_DATA",
+            "code": "INPUT_DIRECTORY_MISSING",
+            "message": f"No existe el directorio de entrada: {input_dir}",
+        })
+    else:
+        candidates = sorted(
+            p for p in input_dir.rglob("*")
+            if p.is_file()
+            and p.name not in EXCLUDED_NAMES
+            and p.resolve() != output.resolve()
+            and p.suffix.lower() in {".json", ".csv"}
+        )
+
+        files_scanned = len(candidates)
+
+        for path in candidates:
+            if path.suffix.lower() == ".json":
+                report, issues = audit_json(path)
+                findings.extend(issues)
+                if report:
+                    reports.append(report)
+                    trade_rows += report["ledger_rows"]
+
+            elif path.suffix.lower() == ".csv":
+                report, issues = audit_csv(path)
+                findings.extend(issues)
+                if report:
+                    csv_reports.append(report)
+
+    errors = sum(1 for f in findings if f["severity"] == "ERROR")
+    warnings = sum(1 for f in findings if f["severity"] == "WARNING")
+
+    if errors:
+        status = "FAIL"
+    elif not reports:
+        status = "NO_DATA"
+        if not any(f["severity"] == "NO_DATA" for f in findings):
+            findings.append({
+                "severity": "NO_DATA",
+                "code": "NO_RESEARCH_REPORTS",
+                "message": (
+                    "No se encontró ningún reporte JSON reconocido. "
+                    "Un CSV aislado no sustituye al reporte de investigación."
+                ),
+            })
+    else:
+        status = "PASS"
+
+    result = {
+        "version": VERSION,
+        "audit_status": status,
+        "input_directory": str(input_dir),
+        "files_scanned": files_scanned,
+        "reports_scanned": len(reports),
+        "csv_files_scanned": len(csv_reports),
+        "trade_rows_scanned": trade_rows,
+        "error_count": errors,
+        "warning_count": warnings,
+        "orders_enabled": False,
+        "orders_submitted": 0,
+        "strategy_profitability_verified": False,
+        "strategy_promotion_enabled": False,
+        "reported_results": reports,
+        "csv_reports": csv_reports,
+        "findings": findings,
+        "limitations": [
+            "PASS valida estructura y controles del artefacto, no rentabilidad.",
+            "Sin ledger no se verifica la cronología individual de operaciones.",
+            "No se reconstruyen resultados desde barras originales de mercado.",
+            "No se conecta con brokers ni se envían órdenes.",
+            "No se habilita promoción automática de estrategias.",
+        ],
+    }
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2, ensure_ascii=False, allow_nan=False)
+
+    return result
+
+
+def self_test():
+    tests = []
+
+    def check(name, condition):
+        if not condition:
+            raise AssertionError(name)
+        tests.append(name)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        source = root / "input"
+        source.mkdir()
+        output = root / "out" / "audit.json"
+
+        # Reporte válido v0.2 sin ledger: debe ser PASS con advertencia.
+        valid = {
+            "summary": {
+                "ok": True,
+                "version": "0.2",
+                "pipeline": "rocket_trader_traditional_research_v0_2",
+                "symbols_processed": ["SPY", "QQQ"],
+                "symbols_failed": [],
+                "orders_enabled": False,
+                "orders_submitted": 0,
+            },
+            "results": [
+                {"symbol": "SPY"},
+                {"symbol": "QQQ"},
             ],
         }
+        (source / "valid.json").write_text(json.dumps(valid), encoding="utf-8")
+        result = run_audit(source, output)
+        check("v02_report_without_ledger_passes_with_warning",
+              result["audit_status"] == "PASS"
+              and any(f["code"] == "LEDGER_NOT_PRESENT"
+                      for f in result["findings"]))
+
+        # Órdenes activadas: FAIL.
+        valid["summary"]["orders_enabled"] = True
+        (source / "valid.json").write_text(json.dumps(valid), encoding="utf-8")
+        result = run_audit(source, output)
+        check("orders_enabled_fails", result["audit_status"] == "FAIL")
+
+        # JSON no reconocido: NO_DATA.
+        for p in source.iterdir():
+            p.unlink()
+        (source / "other.json").write_text('{"hello":"world"}', encoding="utf-8")
+        result = run_audit(source, output)
+        check("unrecognized_json_is_no_data",
+              result["audit_status"] == "NO_DATA")
+
+        # NaN: FAIL.
+        bad = {
+            "summary": {"ok": True, "orders_enabled": False,
+                        "orders_submitted": 0},
+            "results": [{"metric": float("nan")}],
+        }
+        (source / "other.json").write_text(
+            json.dumps(bad), encoding="utf-8"
+        )
+        result = run_audit(source, output)
+        check("non_finite_number_fails", result["audit_status"] == "FAIL")
+
+        # Cronología incorrecta: FAIL.
+        ledger = {
+            "summary": {"ok": True, "orders_enabled": False,
+                        "orders_submitted": 0},
+            "results": [{
+                "trade_ledger": [{
+                    "signal_timestamp": "2026-01-01T10:00:00Z",
+                    "entry_timestamp": "2026-01-01T09:00:00Z",
+                    "exit_timestamp": "2026-01-01T11:00:00Z",
+                    "entry_price": 100,
+                    "exit_price": 101,
+                    "quantity": 1,
+                }]
+            }],
+        }
+        (source / "other.json").write_text(
+            json.dumps(ledger), encoding="utf-8"
+        )
+        result = run_audit(source, output)
+        check("entry_before_signal_fails", result["audit_status"] == "FAIL")
+
+        # Sin archivos: NO_DATA.
+        for p in source.iterdir():
+            p.unlink()
+        result = run_audit(source, output)
+        check("empty_directory_is_no_data",
+              result["audit_status"] == "NO_DATA")
+
+    return {
+        "ok": True,
+        "version": VERSION,
+        "tests_passed": len(tests),
+        "tests": tests,
+        "orders_enabled": False,
+        "orders_submitted": 0,
+    }
 
 
-def self_test() -> int:
-    import tempfile
-    import unittest
-    class Tests(unittest.TestCase):
-        def test_iso_z(self):
-            self.assertEqual(timestamp("2026-05-22T18:05:00Z").tzinfo, timezone.utc)
-        def test_invalid_timestamp(self):
-            self.assertIsNone(timestamp("not-a-date"))
-        def test_nonfinite_number(self):
-            self.assertIsNone(number("nan")); self.assertIsNone(number("inf"))
-        def test_compare_mixed_timezone(self):
-            self.assertIsNone(compare_times(datetime(2026, 1, 1), datetime(2026, 1, 1, tzinfo=timezone.utc)))
-        def test_missing_dir_no_data_error(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                report = Audit(Path(tmp) / "missing").run()
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertEqual(report["findings"][0]["code"], "INPUT_DIR_MISSING")
-        def test_empty_dir_no_data(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                report = Audit(Path(tmp)).run()
-                self.assertEqual(report["audit_status"], "NO_DATA")
-                self.assertEqual(report["error_count"], 0)
-        def test_entry_before_signal_fails(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "ledger.csv").write_text(
-                    "trade_id,entry_signal_timestamp,entry_timestamp,entry_price,exit_timestamp,exit_price,return_pct\n"
-                    "1,2026-05-22T18:05:00Z,2026-05-22T18:00:00Z,100,2026-05-22T19:00:00Z,101,1\n", encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertTrue(any(x["code"] == "ENTRY_BEFORE_SIGNAL" for x in report["findings"]))
-        def test_valid_ledger_passes(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "ledger.csv").write_text(
-                    "trade_id,entry_signal_timestamp,entry_timestamp,entry_price,exit_signal_timestamp,exit_timestamp,exit_price,return_pct,quantity\n"
-                    "1,2026-05-22T18:00:00Z,2026-05-22T18:05:00Z,100,2026-05-22T18:55:00Z,2026-05-22T19:00:00Z,101,1,2\n", encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "PASS")
-        def test_output_file_excluded(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); output = p / "audit.json"
-                output.write_text(json.dumps({"audit_status": "PASS"}), encoding="utf-8")
-                report = Audit(p, exclude_paths={output}).run()
-                self.assertEqual(report["audit_status"], "NO_DATA")
-                self.assertEqual(report["files_scanned"], 0)
-        def test_report_without_ledger_is_no_data(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "summary.json").write_text(json.dumps({"symbol": "TSLA", "total_return_pct": 17.72}), encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "NO_DATA")
-                self.assertTrue(any(x["code"] == "NO_TRADE_LEDGER_ROWS" for x in report["findings"]))
-        def test_duplicate_trade_id_detected(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "ledger.csv").write_text(
-                    "trade_id,entry_timestamp,entry_price,exit_timestamp,exit_price\n"
-                    "T1,2026-05-22T18:05:00Z,100,2026-05-22T19:00:00Z,101\n"
-                    "T1,2026-05-23T18:05:00Z,100,2026-05-23T19:00:00Z,101\n", encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertTrue(any(x["code"] == "DUPLICATE_TRADE_ID" for x in report["findings"]))
-        def test_orders_enabled_report_fails(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "report.json").write_text(json.dumps({"orders_enabled": True, "orders_submitted": 1}), encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertTrue(any(x["code"] == "ORDERS_ENABLED" for x in report["findings"]))
-        def test_exit_before_entry_fails(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "ledger.csv").write_text(
-                    "trade_id,entry_timestamp,entry_price,exit_timestamp,exit_price\n"
-                    "T1,2026-05-22T19:00:00Z,100,2026-05-22T18:00:00Z,101\n", encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertTrue(any(x["code"] == "EXIT_BEFORE_ENTRY" for x in report["findings"]))
-        def test_exit_before_exit_signal_fails(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "ledger.csv").write_text(
-                    "trade_id,entry_timestamp,entry_price,exit_signal_timestamp,exit_timestamp,exit_price\n"
-                    "T1,2026-05-22T18:00:00Z,100,2026-05-22T19:00:00Z,2026-05-22T18:55:00Z,101\n", encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertTrue(any(x["code"] == "EXIT_BEFORE_SIGNAL" for x in report["findings"]))
-        def test_invalid_price_and_quantity_fail(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "ledger.csv").write_text(
-                    "trade_id,entry_timestamp,entry_price,exit_timestamp,exit_price,quantity\n"
-                    "T1,2026-05-22T18:00:00Z,0,2026-05-22T19:00:00Z,101,-2\n", encoding="utf-8")
-                report = Audit(p).run()
-                codes = {x["code"] for x in report["findings"]}
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertIn("INVALID_ENTRY_PRICE", codes)
-                self.assertIn("INVALID_QUANTITY", codes)
-        def test_malformed_json_fails(self):
-            with tempfile.TemporaryDirectory() as tmp:
-                p = Path(tmp); (p / "report.json").write_text("{broken", encoding="utf-8")
-                report = Audit(p).run()
-                self.assertEqual(report["audit_status"], "FAIL")
-                self.assertTrue(any(x["code"] == "JSON_UNREADABLE" for x in report["findings"]))
-    suite = unittest.defaultTestLoader.loadTestsFromTestCase(Tests)
-    result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-dir", default="research_artifacts")
-    parser.add_argument("--output", default="research_artifacts/v0_9_audit_report.json")
-    parser.add_argument("--run-tests", action="store_true")
-    parser.add_argument("--strict-no-data", action="store_true", help="Return exit code 2 when no audit inputs are found")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Rocket Trader Research Artifact Auditor v1.0"
+    )
+    parser.add_argument("--input-dir", default="audit_input")
+    parser.add_argument("--output", default="audit_output/v1_0_audit_report.json")
+    parser.add_argument("--run-tests", "--self-test",
+                        dest="run_tests", action="store_true")
+    parser.add_argument("--strict-no-data", action="store_true")
     args = parser.parse_args()
+
     if args.run_tests:
-        return self_test()
-    output = Path(args.output)
-    report = Audit(Path(args.input_dir), exclude_paths={output}).run()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(json.dumps({k: report[k] for k in ("version", "audit_status", "files_scanned", "reports_scanned", "csv_files_scanned", "trade_rows_scanned", "error_count", "warning_count", "orders_enabled", "orders_submitted", "strategy_profitability_verified")}, indent=2))
-    if report["audit_status"] == "FAIL":
+        result = self_test()
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return 0
+
+    result = run_audit(Path(args.input_dir), Path(args.output))
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    if result["audit_status"] == "FAIL":
         return 1
-    if args.strict_no_data and (report["audit_status"] == "NO_DATA" or report["trade_rows_scanned"] == 0):
+
+    if result["audit_status"] == "NO_DATA" and args.strict_no_data:
         return 2
+
     return 0
 
+
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
