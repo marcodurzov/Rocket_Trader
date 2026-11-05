@@ -27,6 +27,7 @@ concurrency:
 
 jobs:
   research:
+    name: research-v0-2
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -40,47 +41,54 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      - name: Verify exact research implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FILE="rocket_trader_traditional_research_v0_2.py"
+
+          if [[ ! -f "$FILE" ]]; then
+            echo "FATAL: $FILE is missing."
+            echo "The old unversioned research script will NOT be used."
+            exit 1
+          fi
+
+          python -m py_compile "$FILE"
+
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path("rocket_trader_traditional_research_v0_2.py")
+          tree = ast.parse(path.read_text(encoding="utf-8"))
+
+          version = None
+          for node in tree.body:
+              if isinstance(node, ast.Assign):
+                  for target in node.targets:
+                      if isinstance(target, ast.Name) and target.id == "VERSION":
+                          version = ast.literal_eval(node.value)
+
+          if version != "0.2":
+              raise SystemExit(
+                  f"FATAL: Expected version 0.2, found {version!r}"
+              )
+
+          print("Exact research implementation verified: v0.2")
+          PY
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
 
-      - name: Verify research script
-        shell: bash
+      - name: Run offline tests
         run: |
-          if [[ -f rocket_trader_traditional_research_v0_2.py ]]; then
-            echo "Using rocket_trader_traditional_research_v0_2.py"
-          elif [[ -f rocket_trader_traditional_research.py ]]; then
-            echo "Using rocket_trader_traditional_research.py"
-          else
-            echo "ERROR: No traditional research script found."
-            exit 1
-          fi
+          python rocket_trader_traditional_research_v0_2.py --self-test
 
-      - name: Compile research code
-        shell: bash
-        run: |
-          if [[ -f rocket_trader_traditional_research_v0_2.py ]]; then
-            python -m py_compile rocket_trader_traditional_research_v0_2.py
-          else
-            python -m py_compile rocket_trader_traditional_research.py
-          fi
-
-      - name: Offline tests
-        shell: bash
-        run: |
-          if [[ -f rocket_trader_traditional_research_v0_2.py ]]; then
-            python rocket_trader_traditional_research_v0_2.py --self-test
-          else
-            echo "WARNING: Using the unversioned script; checking supported test option."
-            python rocket_trader_traditional_research.py --help
-          fi
-
-      - name: Prepare research artifacts
-        run: mkdir -p research_artifacts
-
-      - name: Run research (no orders)
+      - name: Run research
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -88,29 +96,69 @@ jobs:
           DAYS_INPUT: ${{ inputs.days || '365' }}
         shell: bash
         run: |
+          set -euo pipefail
+
+          mkdir -p research_artifacts
+
           read -r -a symbols <<< "$SYMBOLS_INPUT"
 
-          if [[ -f rocket_trader_traditional_research_v0_2.py ]]; then
-            script="rocket_trader_traditional_research_v0_2.py"
-          else
-            script="rocket_trader_traditional_research.py"
-          fi
-
-          python "$script" \
+          python rocket_trader_traditional_research_v0_2.py \
             --symbols "${symbols[@]}" \
             --days "$DAYS_INPUT" \
             --output research_artifacts/rocket_trader_traditional_research_v0_2_results.json
 
-      - name: Verify research report
+      - name: Verify generated report identity
+        shell: bash
         run: |
-          test -s research_artifacts/rocket_trader_traditional_research_v0_2_results.json
-          python -m json.tool research_artifacts/rocket_trader_traditional_research_v0_2_results.json > /dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "research_artifacts/"
+              "rocket_trader_traditional_research_v0_2_results.json"
+          )
+
+          if not path.is_file():
+              raise SystemExit("FATAL: Research report missing.")
+
+          data = json.loads(path.read_text(encoding="utf-8"))
+          summary = data.get("summary", {})
+
+          if summary.get("version") != "0.2":
+              raise SystemExit(
+                  f"FATAL: Wrong report version: {summary.get('version')!r}"
+              )
+
+          if summary.get("pipeline") != "rocket_trader_traditional_research_v0_2":
+              raise SystemExit(
+                  f"FATAL: Wrong pipeline: {summary.get('pipeline')!r}"
+              )
+
+          if summary.get("orders_enabled") is not False:
+              raise SystemExit("FATAL: orders_enabled must be false.")
+
+          if summary.get("orders_submitted") != 0:
+              raise SystemExit("FATAL: orders_submitted must equal zero.")
+
+          if not summary.get("ok"):
+              raise SystemExit("FATAL: Research pipeline reported failure.")
+
+          if not data.get("results"):
+              raise SystemExit("FATAL: No research results.")
+
+          print("Research report identity verified.")
+          print("Version:", summary["version"])
+          print("Pipeline:", summary["pipeline"])
+          print("Symbols:", summary["symbols_processed"])
+          print("Orders enabled:", summary["orders_enabled"])
+          PY
 
       - name: Upload research report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rocket-trader-traditional-research-v0-2-report
-          path: research_artifacts/rocket_trader_traditional_research_v0_2_results.json
+          path: research_artifacts/
           if-no-files-found: warn
           retention-days: 30
