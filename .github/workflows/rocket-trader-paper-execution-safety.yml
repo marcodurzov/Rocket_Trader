@@ -34,8 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-alpaca.txt
+          pip install 'alpaca-py>=0.43,<1.0'
       - name: Compile
         run: python -m py_compile rocket_trader_core.py rocket_trader_paper_execution.py rocket_trader_paper_execution_test.py rocket_trader_live_mode_guard_test.py
       - name: Offline execution safety tests (no broker connection and no orders)
