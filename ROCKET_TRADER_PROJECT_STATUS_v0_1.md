@@ -13,7 +13,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 
 - Initial strategy capital: **MXN 1,000**. All user-facing capital, profit, reserve, payout and MXN 100,000 milestone amounts are denominated in MXN. Alpaca's broker account and asset notionals are denominated in USD.
 - Before any strategy-driven Paper order is enabled, the MXN ledger must be converted into a USD risk budget using a timestamped, sourced FX quote. Alpaca's virtual Paper buying power must never be treated as the user's funded strategy capital.
-- PR #15 adds a standalone Decimal-based FX conversion and conservative USD position-budget module. It blocks missing/invalid/future/stale FX, applies per-position, total-exposure, stop-risk and available-cash caps, and blocks budgets below the configured broker minimum. It is not yet wired into the Core or execution adapter; therefore it does not yet authorize orders.
+- PR #15 added a Decimal-based FX conversion and USD position-budget module. PR #19 wires it into Core position sizing: broker equity/cash/exposure are explicitly USD; strategy capital is separately MXN; a sourced, timezone-aware FX quote no older than 24 hours is required; and USD notional is capped by MXN capital, per-position risk, total exposure, stop-risk and broker cash. Missing/stale/invalid FX and below-minimum orders fail closed. This remains a sizing gate, not a strategy approval or permission to trade.
 - **Updated compounding rule (merged in PR #17):** before operating capital first reaches MXN 100,000, 100% of realized net profits is retained/reinvested; personal withdrawals = 0% and separate reserve allocation = 0%. Uninvested cash remains inside operating capital and is not automatically forced into positions.
 - Once MXN 100,000 is reached for the first time: the target policy remains 50% reinvestment / 10% reserve / 40% personal distribution. The milestone latches permanently.
 - The transition is permanent even if capital later falls below MXN 100,000.
@@ -96,13 +96,23 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - Test: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42688090094
 - Integrated PR: https://github.com/marcodurzov/Rocket_Trader/pull/8
 
+### 9. MXN/USD budget wired into Core
+- PR #19 integrates the Decimal currency budget into Core position sizing.
+- Broker equity, cash and position notionals are explicitly USD; strategy capital is separately MXN.
+- The Core requires a timezone-aware, sourced FX quote no older than 24 hours and caps order notional using MXN capital converted to USD, per-position risk, total exposure, stop-risk and broker cash.
+- Missing FX, missing MXN ledger capital, stale/future FX and below-minimum notional all fail closed.
+- The initial MXN 1,000 under the current novel-risk budget may be below Alpaca's USD 1 minimum order; in that case the correct behavior is no order, not rounding up or using virtual Paper buying power.
+- PR #19 also closes a legacy Core adapter gap by blocking fractional equity bracket orders until compatibility and exit lifecycle are verified.
+- Capital/FX CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42694328611
+- Execution safety CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42694496153
+
 ## Current blockers before end-to-end Paper Trading
 
 1. **Account and data permissions:** the read-only Alpaca Paper check confirmed account status ACTIVE, crypto status ACTIVE, USD account currency, and BTC/USD, ETH/USD and SOL/USD assets reported tradable=true. No crypto order was submitted. SIP stock-data access remains unverified; current stock research uses IEX, whose coverage is not equivalent to SIP.
 2. **Persistent runtime:** implement a long-running service with stock and crypto streams, reconnect logic, market calendars, state recovery and health monitoring. GitHub Actions is not the trading runtime.
-3. **Execution safety — partial implementation completed:** PR #14 added AlpacaPaperExecutionAdapter, a SQLite-backed idempotency journal, broker lookup by client_order_id, fail-closed handling for ambiguous submission outcomes, and read-only Paper account verification. The Core now rejects LIVE mode unconditionally, including when ALPACA_LIVE_ENABLED=true. PR #16 additionally blocks fractional equity bracket orders because Alpaca's published fractional-order docs do not explicitly confirm bracket compatibility. Offline CI passed. The adapter is not yet connected to a persistent runtime or approved strategy and does not yet provide complete fill/position reconciliation or partial-fill exit management.
+3. **Execution safety — partial implementation completed:** PR #14 added AlpacaPaperExecutionAdapter, a SQLite-backed idempotency journal, broker lookup by client_order_id, fail-closed handling for ambiguous submission outcomes, and read-only Paper account verification. The Core now rejects LIVE mode unconditionally, including when ALPACA_LIVE_ENABLED=true. PR #16 and PR #19 block fractional equity bracket orders in both the standalone Paper adapter and legacy Core Alpaca adapter because published fractional docs do not explicitly confirm bracket compatibility. The adapter is not yet connected to a persistent runtime or approved strategy and does not yet provide complete fill/position reconciliation or partial-fill exit management.
 4. **Separate execution adapters:** equities and crypto have different supported order types and exit mechanics. Crypto spot requires a dedicated position/exit state machine; do not reuse equity bracket assumptions blindly.
-5. **Risk/capital integration:** account equity in USD to MXN FX conversion, shared capital manager, per-market exposure caps and durable milestone state.
+5. **Risk/capital integration — partially complete:** PR #19 connects the timestamped MXN/USD position budget to Core sizing. Still required: persistent realized-P&L ledger, authoritative broker-to-ledger reconciliation, one shared exposure/capital manager across equities and crypto, and durable cross-engine state.
 6. **Strategy benchmarking:** implement the quantitative references as reproducible baselines on the same dates, data, universe and costs. Do not populate the Core's trader-event repository with fabricated results.
 7. **Point-in-time news intelligence:** add source corroboration, article-age logic, event classification, validated NLP, filing/macro data and timestamp-safe replay. News must remain informational until validated.
 8. **Crypto strategy research:** obtain multi-year crypto bars, run separate walk-forward tests and apply the crypto fee/spread/slippage model. No crypto strategy has passed.
