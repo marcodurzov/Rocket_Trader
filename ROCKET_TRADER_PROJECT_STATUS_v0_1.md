@@ -265,3 +265,11 @@ The original project-start document still says the first permanent floor is MXN 
 
 ### Diagnostic improvement in this audit branch
 PR #33 adds the returned date range, approximate weekday coverage, missing weekday count and maximum calendar gap to the ten-year history failure message. This makes the next read-only run diagnostic rather than merely reporting a bar-count mismatch. It does not weaken the evidence gate or enable orders.
+
+
+### Core risk audit — 2026-11-09
+- A code audit found that the `DecisionEngine` applied the minimum signal score/confidence check only to precedent-backed signals. The `NOVEL_RISK` branch bypassed it, so sufficiently funded low-quality novel signals could proceed under the reduced novelty budget. PR #34 applies the same minimum gate to all signals and adds regression checks for low score and low confidence.
+- Current `RiskConfig` contains prototype numeric defaults: maximum position 25%, total exposure 80%, maximum loss per trade 2%, daily loss lock 5%, stop 2%, take-profit 4%, trailing-stop parameter 1.5%, maximum 10 trades/day, maximum 3 consecutive losses, and novel-risk budget 1%. These are not calibrated or approved production limits.
+- The current Core does not implement a persistent peak-to-trough drawdown lock. The trailing-stop percentage is configured but there is no complete durable trailing-stop/partial-fill position manager. Daily loss state and kill-switch recovery are not yet connected to a persistent runtime.
+- `BenchmarkEngine` defaults to an empty in-memory repository. The six-entry reference registry contains academic/institutional strategy hypotheses and qualitative investor references; it is not a live database of successful traders or their verified trades. No trader events may be fabricated. Building a source-backed, point-in-time trader-intelligence feed remains open work.
+- The novel-signal path is intentional for genuinely new market regimes, but it must remain smaller-risk and quality-gated; novelty does not waive minimum signal quality or the broader Paper acceptance process.

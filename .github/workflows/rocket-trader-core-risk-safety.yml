@@ -1,0 +1,38 @@
+name: Rocket Trader - Core Risk Safety
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_currency.py"
+      - "rocket_trader_core_risk_safety.yml"
+      - ".github/workflows/rocket-trader-core-risk-safety.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_currency.py"
+      - ".github/workflows/rocket-trader-core-risk-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-risk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Core and currency modules
+        run: python -m py_compile rocket_trader_core.py rocket_trader_currency.py
+      - name: Core safety and capital policy regression
+        run: python rocket_trader_core.py
+      - name: Currency budget regression
+        run: python rocket_trader_currency_test.py

@@ -1262,6 +1262,34 @@ class DecisionEngine:
                 ),
             )
 
+        # Apply the same minimum signal-quality gate to precedent-based and
+        # novel setups. The previous novel branch bypassed this check and could
+        # approve low-score/low-confidence signals at the reduced novelty budget.
+        minimum_quality = self.risk_engine.config.min_signal_score
+        if signal.score < minimum_quality or signal.confidence < minimum_quality:
+            return Decision(
+                decision_id=decision_id,
+                timestamp=utc_now(),
+                status=DecisionStatus.REJECTED,
+                evidence_class=EvidenceClass.INSUFFICIENT,
+                symbol=snapshot.symbol,
+                side=Side.HOLD,
+                quantity=0.0,
+                entry_price=snapshot.price,
+                stop_price=None,
+                take_profit_price=None,
+                combined_score=0.0,
+                signal_score=signal.score,
+                benchmark_score=0.0,
+                benchmark_confidence=0.0,
+                adaptive_multiplier=0.0,
+                adaptive_reason="Minimum signal-quality gate.",
+                reason=(
+                    f"Signal score/confidence below minimum "
+                    f"{minimum_quality:.4f}."
+                ),
+            )
+
         assessment = (
             self.benchmark_engine.assess(signal)
         )
@@ -2018,6 +2046,30 @@ def self_test() -> Dict[str, Any]:
         strategy_id="demo",
         setup_signature="NOVEL_SETUP_A",
     )
+
+    # Novel setups must not bypass the minimum score/confidence gate.
+    quality_gate_account = AccountState(
+        equity=10000.0,
+        cash=10000.0,
+        account_currency="USD",
+        strategy_capital_mxn=100000.0,
+        fx_quote=FXQuote(
+            mxn_per_usd=Decimal("18.00"),
+            observed_at=datetime.now(timezone.utc),
+            source="OFFLINE_TEST_FIXTURE",
+        ),
+    )
+    low_score_signal = dataclasses.replace(signal, score=0.59)
+    low_confidence_signal = dataclasses.replace(signal, confidence=0.59)
+    for weak_signal in (low_score_signal, low_confidence_signal):
+        weak_decision = core.decision_engine.evaluate(
+            account=quality_gate_account,
+            snapshot=snapshot,
+            signal=weak_signal,
+        )
+        assert weak_decision.status == DecisionStatus.REJECTED
+        assert weak_decision.quantity == 0.0
+        assert weak_decision.evidence_class == EvidenceClass.INSUFFICIENT
 
     decision = (
         core.evaluate_and_maybe_execute(
