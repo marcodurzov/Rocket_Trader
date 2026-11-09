@@ -490,15 +490,16 @@ class AccountState:
     # Broker-side account values and position notionals are USD (Alpaca account currency).
     equity: float
     cash: float
+
+    # Preserve the original third positional field for compatibility.
+    # Broker-side emergency floor remains denominated in USD.
+    protected_floor: float = 0.0
     account_currency: str = "USD"
 
     # Strategy capital is maintained separately in MXN. A sourced, timestamped
     # FX quote is mandatory before this capital can authorize a USD order.
     strategy_capital_mxn: Optional[float] = None
     fx_quote: Optional[FXQuote] = None
-
-    # Broker-side emergency floor remains denominated in USD.
-    protected_floor: float = 0.0
 
     positions: Dict[str, Position] = field(default_factory=dict)
 
