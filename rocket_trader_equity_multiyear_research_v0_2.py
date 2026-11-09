@@ -180,7 +180,17 @@ def fetch_daily_bars(
     combined = combined.sort_values("timestamp").drop_duplicates("timestamp", keep="last").reset_index(drop=True)
     minimum_rows = max(900, int(years * 252 * 0.65))
     if len(combined) < minimum_rows:
-        raise EquityResearchError(f"{clean}: only {len(combined)} daily bars; minimum {minimum_rows} for {years} requested years.")
+        quality = data_quality_metrics(combined)
+        first_seen = combined.iloc[0]["timestamp"].isoformat()
+        last_seen = combined.iloc[-1]["timestamp"].isoformat()
+        raise EquityResearchError(
+            f"{clean}: only {len(combined)} daily bars; minimum {minimum_rows} "
+            f"for {years} requested years. Returned range={first_seen}..{last_seen}; "
+            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
+            f"missing_weekdays_approx={quality['missing_weekday_bars_approx']}; "
+            f"max_calendar_gap_days={quality['max_calendar_gap_days']}. "
+            "Do not treat this partial history as full-period evidence."
+        )
     if combined.iloc[0]["timestamp"] > start_at + timedelta(days=60):
         raise EquityResearchError(f"{clean}: returned history does not cover the requested {years}-year start date.")
     return combined
