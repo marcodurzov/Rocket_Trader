@@ -1,0 +1,38 @@
+name: Rocket Trader - Paper Reconciliation Gate
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/paper-account-reconciliation-gate"
+    paths:
+      - "rocket_trader_paper_reconciliation.py"
+      - "rocket_trader_paper_reconciliation_test.py"
+      - "rocket_trader_currency.py"
+      - ".github/workflows/rocket-trader-paper-reconciliation.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_paper_reconciliation.py"
+      - "rocket_trader_paper_reconciliation_test.py"
+      - "rocket_trader_currency.py"
+      - ".github/workflows/rocket-trader-paper-reconciliation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paper-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile rocket_trader_paper_reconciliation.py rocket_trader_paper_reconciliation_test.py
+      - name: Run offline reconciliation tests
+        run: python -m unittest -v rocket_trader_paper_reconciliation_test.py
