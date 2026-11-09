@@ -268,19 +268,23 @@ class FeatureEngine:
 class TemporalDataset:
     def __init__(self, config: EngineConfig) -> None:
         self.config = config
+        self.row_positions: List[int] = []
 
     def build(self, features: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
-        df = features.copy()
+        df = features.copy().reset_index(drop=True)
         h = self.config.horizon_bars
         future_return = df["close"].shift(-h) / df["close"] - 1
         target = (future_return >= self.config.target_return).astype(int)
         usable = df[FEATURE_COLUMNS].notna().all(axis=1) & future_return.notna()
+        positions = np.flatnonzero(usable.to_numpy())
         X = df.loc[usable, FEATURE_COLUMNS].copy()
         y = target.loc[usable].astype(int)
         if len(X) > self.config.max_training_rows:
             idx = np.linspace(0, len(X) - 1, self.config.max_training_rows, dtype=int)
             X = X.iloc[idx]
             y = y.iloc[idx]
+            positions = positions[idx]
+        self.row_positions = positions.astype(int).tolist()
         if len(X) < self.config.min_training_rows:
             raise ValueError(
                 f"Dataset insuficiente: {len(X)} filas; mínimo {self.config.min_training_rows}"
@@ -491,6 +495,18 @@ class WalkForwardResearch:
         probabilities, _ = model.predict_proba(X_test)
         predictions = (probabilities >= self.config.probability_threshold).astype(int)
 
+        test_start = int(len(X) * (1.0 - self.config.validation_fraction))
+        test_positions = dataset.row_positions[test_start:]
+        raw = (
+            features.reset_index(drop=True)["close"]
+            .pct_change(self.config.horizon_bars)
+            .shift(-self.config.horizon_bars)
+            .iloc[test_positions]
+            .reset_index(drop=True)
+        )
+        if len(raw) != len(predictions) or raw.isna().any():
+            raise RuntimeError("La alineación temporal de rendimientos y predicciones falló")
+
         auc = None
         if len(np.unique(y_test)) > 1:
             auc = float(roc_auc_score(y_test, probabilities))
@@ -499,8 +515,6 @@ class WalkForwardResearch:
 
         # Estrategia simplificada de investigación: entra solo cuando el modelo
         # supera el umbral. Se descuenta un coste conservador por operación.
-        raw = features["close"].pct_change(self.config.horizon_bars).shift(-self.config.horizon_bars)
-        raw = raw.dropna().iloc[-len(X_test):].reset_index(drop=True)
         strat_returns = raw.where(predictions == 1, 0.0)
         strategy_return = float((1 + strat_returns.fillna(0)).prod() - 1)
         buy_hold_return = float((1 + raw.fillna(0)).prod() - 1)
