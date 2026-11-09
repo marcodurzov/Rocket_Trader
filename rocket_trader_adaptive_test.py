@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from rocket_trader_core import ProfitAllocator, ProfitDistributionConfig
 from rocket_trader_adaptive import (
     CapitalPolicy,
     NewsEngine,
@@ -15,15 +16,17 @@ def main() -> None:
 
     policy = CapitalPolicy()
 
-    # Debajo de 100k: 70% reinversión, 20% personal, 10% reserva
+    # Antes de 100k: 100% de utilidades netas realizadas se reinvierte.
     test_1 = policy.allocation(
         operating_capital=50_000,
         profit=10_000,
     )
 
-    assert test_1.reinvestment_amount == 7_000
-    assert test_1.personal_amount == 2_000
-    assert test_1.reserve_amount == 1_000
+    assert test_1.reinvestment_amount == 10_000
+    assert test_1.personal_amount == 0
+    assert test_1.reserve_amount == 0
+    assert test_1.reinvestment_pct == 1.0
+    assert test_1.threshold_reached is False
 
     # En 100k: cambia automáticamente a 50/40/10
     test_2 = policy.allocation(
@@ -34,6 +37,55 @@ def main() -> None:
     assert test_2.reinvestment_amount == 5_000
     assert test_2.personal_amount == 4_000
     assert test_2.reserve_amount == 1_000
+
+    # Core allocator: 100% compounding below the milestone.
+    allocator = ProfitAllocator()
+    before = allocator.plan(
+        distributable_profit=10_000,
+        operating_capital=50_000,
+        period="2026-11",
+    )
+    assert before.reinvestment_amount == 10_000
+    assert before.personal_amount == 0
+    assert before.reserve_amount == 0
+    assert before.reinvestment_pct == 1.0
+    assert before.threshold_reached is False
+
+    # At first crossing, the permanent post-milestone 50/40/10 policy activates.
+    crossed = allocator.plan(
+        distributable_profit=10_000,
+        operating_capital=100_000,
+        period="2026-12",
+    )
+    assert crossed.threshold_reached is True
+    assert crossed.target_reinvestment_pct == 0.50
+    assert crossed.target_personal_pct == 0.40
+    assert crossed.target_reserve_pct == 0.10
+    assert crossed.payouts_suspended is True
+    assert crossed.reinvestment_pct == 1.0
+    assert crossed.operating_capital_after_distribution == 100_000
+
+    # Once reached, the milestone stays latched after a drawdown.
+    after_drawdown = allocator.plan(
+        distributable_profit=1_000,
+        operating_capital=90_000,
+        period="2027-01",
+    )
+    assert after_drawdown.threshold_reached is True
+    assert after_drawdown.payouts_suspended is True
+    assert after_drawdown.reinvestment_pct == 1.0
+
+    # With sufficient headroom, target 50/40/10 distributions can begin.
+    with_headroom = allocator.plan(
+        distributable_profit=10_000,
+        operating_capital=110_000,
+        period="2027-02",
+    )
+    assert with_headroom.threshold_reached is True
+    assert with_headroom.reinvestment_amount == 5_000
+    assert with_headroom.personal_amount == 4_000
+    assert with_headroom.reserve_amount == 1_000
+    assert with_headroom.operating_capital_after_distribution == 105_000
 
     # Noticia positiva
     news = NewsEngine().assess(

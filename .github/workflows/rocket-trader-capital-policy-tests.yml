@@ -3,7 +3,16 @@ name: Rocket Trader - Capital Policy Tests
 on:
   push:
     branches:
-      - "fix/capital-policy-70-10-20-and-50-10-40"
+      - main
+      - "feat/100-percent-compounding-to-100k"
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_adaptive.py"
+      - "rocket_trader_adaptive_test.py"
+      - ".github/workflows/rocket-trader-capital-policy-tests.yml"
+  pull_request:
+    branches:
+      - main
     paths:
       - "rocket_trader_core.py"
       - "rocket_trader_adaptive.py"
