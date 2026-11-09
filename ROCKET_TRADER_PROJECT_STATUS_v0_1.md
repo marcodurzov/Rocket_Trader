@@ -107,6 +107,16 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - It is the exact value that must be passed into Core's `monthly_distribution_plan`; operating capital remains a separate input for the protected-floor calculation.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699294872
 
+### 21. First five-year adjusted ETF research report
+- Full read-only run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42700263040
+- Artifact ID: `13710094727` (`rocket-trader-equity-multiyear-research-v0-1`).
+- IEX feed, `Adjustment.ALL`, five-year period; all eight ETFs passed the approximate weekday coverage gate (about 96.16%, maximum calendar gap 4 days).
+- Final holdout contains 251 sessions. Cross-sectional top-1 momentum returned +10.79%, but equal-weight buy-and-hold returned +11.18%; top-1 had worse max drawdown (-19.59% vs -9.41%) and a much weaker bootstrap 5th percentile (-31.53% vs -12.22%).
+- Best isolated result was GLD Donchian 55/20 at +15.05%, but the bootstrap 5th percentile was -16.42% and there were only two entries. This is not robust evidence.
+- No strategy demonstrated a sufficiently robust advantage over its benchmark. All reported bootstrap 5th-percentile holdout returns were negative.
+- IEX is a single-exchange feed, not SIP consolidated data. SIP parity remains a required validation before any strategy approval.
+- No strategy approved, no Paper orders, no LIVE orders.
+
 ### 20. Multi-year adjusted ETF research v0.1
 - PR #30 adds five-year daily research for SPY, QQQ, IWM, DIA, TLT, GLD, EFA and EEM.
 - Uses Alpaca `Adjustment.ALL` to account for splits, dividends and spin-offs. IEX is the default feed; SIP remains optional and requires the corresponding entitlement.
