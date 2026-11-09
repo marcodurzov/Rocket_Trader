@@ -83,13 +83,13 @@ class CapitalPolicyConfig:
     threshold_mxn: float = 100_000.0
 
     # Antes de llegar a 100,000 MXN
-    below_threshold_reinvestment_pct: float = 1.00
-    below_threshold_personal_pct: float = 0.00
-    below_threshold_reserve_pct: float = 0.00
+    below_threshold_reinvestment_pct: float = 0.70
+    below_threshold_personal_pct: float = 0.20
+    below_threshold_reserve_pct: float = 0.10
 
     # Desde 100,000 MXN
-    above_threshold_reinvestment_pct: float = 0.70
-    above_threshold_personal_pct: float = 0.20
+    above_threshold_reinvestment_pct: float = 0.50
+    above_threshold_personal_pct: float = 0.40
     above_threshold_reserve_pct: float = 0.10
 
     def validate(self) -> None:
@@ -136,13 +136,13 @@ class CapitalPolicy:
     Regla automática de crecimiento del capital.
 
     < 100,000 MXN:
-        100% reinversión
-        0% personal
-        0% reserva
-
-    >= 100,000 MXN:
         70% reinversión
         20% personal
+        10% reserva
+
+    >= 100,000 MXN:
+        50% reinversión
+        40% personal
         10% reserva
     """
 
@@ -704,25 +704,25 @@ def self_test() -> dict:
         profit=10_000,
     )
 
-    assert below.reinvestment_pct == 1.00
-    assert below.personal_pct == 0.00
-    assert below.reserve_pct == 0.00
+    assert below.reinvestment_pct == 0.70
+    assert below.personal_pct == 0.20
+    assert below.reserve_pct == 0.10
 
-    assert below.reinvestment_amount == 10_000
-    assert below.personal_amount == 0
-    assert below.reserve_amount == 0
+    assert below.reinvestment_amount == 7_000
+    assert below.personal_amount == 2_000
+    assert below.reserve_amount == 1_000
 
     above = policy.allocation(
         operating_capital=100_000,
         profit=10_000,
     )
 
-    assert above.reinvestment_pct == 0.70
-    assert above.personal_pct == 0.20
+    assert above.reinvestment_pct == 0.50
+    assert above.personal_pct == 0.40
     assert above.reserve_pct == 0.10
 
-    assert above.reinvestment_amount == 7_000
-    assert above.personal_amount == 2_000
+    assert above.reinvestment_amount == 5_000
+    assert above.personal_amount == 4_000
     assert above.reserve_amount == 1_000
 
     # ----------------------------------------------------------------------
@@ -795,8 +795,8 @@ def self_test() -> dict:
     return {
         "ok": True,
         "capital_policy": (
-            "100% reinvestment below "
-            "100,000 MXN; 70/20/10 at or above"
+            "70/20/10 below 100,000 MXN; "
+            "50/40/10 at or above"
         ),
         "news_engine": "heuristic_paper_only",
         "adaptive_risk": "passed",

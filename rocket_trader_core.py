@@ -181,13 +181,13 @@ class RiskConfig:
 class ProfitDistributionConfig:
     threshold_mxn: float = 100000.0
 
-    below_threshold_reserve_pct: float = 0.00
-    below_threshold_reinvestment_pct: float = 1.00
-    below_threshold_personal_pct: float = 0.00
+    below_threshold_reserve_pct: float = 0.10
+    below_threshold_reinvestment_pct: float = 0.70
+    below_threshold_personal_pct: float = 0.20
 
     at_or_above_threshold_reserve_pct: float = 0.10
-    at_or_above_threshold_reinvestment_pct: float = 0.70
-    at_or_above_threshold_personal_pct: float = 0.20
+    at_or_above_threshold_reinvestment_pct: float = 0.50
+    at_or_above_threshold_personal_pct: float = 0.40
 
     frequency: str = "MONTHLY"
 
@@ -247,11 +247,13 @@ class ProfitAllocator:
     Regla automática:
 
     capital operativo < 100,000:
-        100% reinversión
-
-    capital operativo >= 100,000:
         70% reinversión
         20% personal
+        10% reserva
+
+    capital operativo >= 100,000:
+        50% reinversión
+        40% personal
         10% reserva
     """
 
@@ -1779,13 +1781,13 @@ def build_demo_core() -> RocketTraderCore:
         ProfitDistributionConfig(
             threshold_mxn=100000.0,
 
-            below_threshold_reserve_pct=0.00,
-            below_threshold_reinvestment_pct=1.00,
-            below_threshold_personal_pct=0.00,
+            below_threshold_reserve_pct=0.10,
+            below_threshold_reinvestment_pct=0.70,
+            below_threshold_personal_pct=0.20,
 
             at_or_above_threshold_reserve_pct=0.10,
-            at_or_above_threshold_reinvestment_pct=0.70,
-            at_or_above_threshold_personal_pct=0.20,
+            at_or_above_threshold_reinvestment_pct=0.50,
+            at_or_above_threshold_personal_pct=0.40,
 
             frequency="MONTHLY",
         )
@@ -1885,17 +1887,17 @@ def self_test() -> Dict[str, Any]:
 
     assert (
         plan_accumulation.reserve_amount
-        == 0.0
+        == 100.0
     )
 
     assert (
         plan_accumulation.reinvestment_amount
-        == 1000.0
+        == 700.0
     )
 
     assert (
         plan_accumulation.personal_amount
-        == 0.0
+        == 200.0
     )
 
     assert (
@@ -1922,12 +1924,12 @@ def self_test() -> Dict[str, Any]:
 
     assert (
         plan_distribution.reinvestment_amount
-        == 700.0
+        == 500.0
     )
 
     assert (
         plan_distribution.personal_amount
-        == 200.0
+        == 400.0
     )
 
     assert (

@@ -1,0 +1,38 @@
+name: Rocket Trader - Capital Policy Tests
+
+on:
+  push:
+    branches:
+      - "fix/capital-policy-70-10-20-and-50-10-40"
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_adaptive.py"
+      - "rocket_trader_adaptive_test.py"
+      - ".github/workflows/rocket-trader-capital-policy-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capital-policy-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile changed modules
+        run: |
+          python -m py_compile rocket_trader_core.py rocket_trader_adaptive.py rocket_trader_adaptive_test.py
+
+      - name: Test core capital allocation and safety
+        run: python rocket_trader_core.py
+
+      - name: Test adaptive capital allocation
+        run: python rocket_trader_adaptive_test.py
