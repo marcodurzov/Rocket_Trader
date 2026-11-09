@@ -268,6 +268,7 @@ class RealizedPnLLedger:
         price_usd: Any,
         fee_usd: Any,
         fx: LedgerFX,
+        fee_asset_qty: Any = "0",
         occurred_at: datetime,
         asset_class: str,
     ) -> bool:
@@ -277,12 +278,19 @@ class RealizedPnLLedger:
         qty = _d(quantity, "quantity")
         price = _d(price_usd, "price_usd")
         fee = _d(fee_usd, "fee_usd")
+        fee_asset = _d(fee_asset_qty, "fee_asset_qty")
         if not symbol or side not in {"BUY", "SELL"}:
             raise LedgerError("Fill requires a symbol and BUY/SELL side")
         if asset_class not in {"US_EQUITY", "CRYPTO_SPOT"}:
             raise LedgerError("Only US_EQUITY and CRYPTO_SPOT are supported")
         if qty <= 0 or price <= 0 or fee < 0:
             raise LedgerError("Fill quantity/price must be positive and fee non-negative")
+        if fee_asset > 0:
+            raise LedgerError("fee_asset_qty must be zero or negative (asset withheld)")
+        if side == "SELL" and fee_asset != 0:
+            raise LedgerError("For USD-quoted spot SELLs, fee_asset_qty must be zero")
+        if side == "BUY" and qty + fee_asset <= 0:
+            raise LedgerError("Crypto asset fee consumes the entire acquired quantity")
         fill_time = _utc(occurred_at)
         fx_time = _utc(fx.observed_at)
         fill_dt = datetime.fromisoformat(fill_time)
@@ -300,6 +308,8 @@ class RealizedPnLLedger:
             "price_usd": str(price),
             "gross_usd": str(_money(qty * price)),
             "fee_usd": str(_money(fee)),
+            "fee_asset_qty": str(fee_asset),
+            "net_acquired_quantity": str(qty + fee_asset if side == "BUY" else qty),
             "asset_class": asset_class,
             "fx": fx.as_dict(),
             "currency": "USD",
@@ -326,7 +336,10 @@ class RealizedPnLLedger:
                 p = event["payload"]
                 if event["event_type"] != "FILL" or p["symbol"] != symbol:
                     continue
-                delta = Decimal(p["quantity"])
+                delta = (
+                    Decimal(p.get("net_acquired_quantity", p["quantity"]))
+                    if p["side"] == "BUY" else Decimal(p["quantity"])
+                )
                 held += delta if p["side"] == "BUY" else -delta
             if qty > held:
                 raise LedgerError(
@@ -369,9 +382,12 @@ class RealizedPnLLedger:
                 fee = Decimal(p["fee_usd"])
                 rate = Decimal(p["fx"]["mxn_per_usd"])
                 if p["side"] == "BUY":
+                    net_qty = Decimal(p.get("net_acquired_quantity", p["quantity"]))
+                    if net_qty <= 0:
+                        raise LedgerError(f"Invalid net acquired quantity in fill {event['event_id']}")
                     lots.setdefault(symbol, []).append({
-                        "qty": qty,
-                        "unit_cost_usd": (gross + fee) / qty,
+                        "qty": net_qty,
+                        "unit_cost_usd": (gross + fee) / net_qty,
                     })
                 else:
                     remaining = qty

@@ -51,6 +51,35 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.assertEqual(s.operating_capital_mxn, Decimal("1567.00"))
         self.assertEqual(s.open_positions["BTC/USD"]["quantity"], "0.005")
 
+    def test_crypto_buy_fee_withheld_in_base_asset_reduces_owned_quantity(self):
+        self.ledger.record_fill(
+            fill_id="crypto-buy-with-base-fee", symbol="BTC/USD", side="BUY",
+            quantity="0.01", price_usd="10000", fee_usd="0",
+            fee_asset_qty="-0.0001", fx=FX, occurred_at=NOW,
+            asset_class="CRYPTO_SPOT",
+        )
+        self.assertEqual(
+            self.ledger.snapshot().open_positions["BTC/USD"]["quantity"], "0.0099"
+        )
+        self.ledger.record_fill(
+            fill_id="crypto-sell-after-base-fee", symbol="BTC/USD", side="SELL",
+            quantity="0.0099", price_usd="11000", fee_usd="0.01",
+            fx=FX, occurred_at=NOW, asset_class="CRYPTO_SPOT",
+        )
+        snap = self.ledger.snapshot()
+        self.assertEqual(snap.realized_net_pnl_mxn, Decimal("160.02"))
+        self.assertEqual(snap.open_positions, {})
+
+    def test_crypto_sell_rejects_base_asset_fee_field_for_usd_pair(self):
+        with self.assertRaisesRegex(LedgerError, "fee_asset_qty must be zero"):
+            self.ledger.record_fill(
+                fill_id="crypto-sell-invalid-fee", symbol="BTC/USD", side="SELL",
+                quantity="0.001", price_usd="10000", fee_usd="0",
+                fee_asset_qty="-0.00001", fx=FX, occurred_at=NOW,
+                asset_class="CRYPTO_SPOT",
+            )
+        self.assertEqual(self.ledger.snapshot().event_count, 1)
+
     def test_short_sell_is_blocked(self):
         with self.assertRaisesRegex(LedgerError, "exceeds FIFO inventory"):
             self.fill("sell-no-inventory", "SELL", "0.001", "10000")
