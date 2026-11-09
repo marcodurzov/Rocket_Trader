@@ -83,7 +83,9 @@ The existing Rocket Trader Engine had several issues identified during audit:
 
 The correction branch moves `novelty_score` to the class level, adds a horizon-sized purge, preserves original row positions for exact OOS alignment, marks expected return as `NOT_ESTIMATED` until a separate return model is validated, and reserves `PRECEDENTED` for independently validated strategy evidence.
 
-The current `NewsEngine` is a keyword-count heuristic, not a real news ingestion or NLP system. It has no source lineage, publication/first-seen timestamps, point-in-time archive, deduplication or corroboration. It must remain a placeholder and must not drive trading decisions until a proper news pipeline is built.
+A first Alpaca News API ingestion layer and SQLite revision ledger now exist. It records provider timestamps separately from live first-seen time, preserves article revisions and marks historical backfills as not point-in-time eligible until the collector observes an article live. This is one provider feed, not comprehensive news coverage.
+
+The previous keyword-count NewsEngine has been disabled. It now returns `UNKNOWN` with zero score, confidence and urgency. There is no validated sentiment/NLP model, corroboration layer or event-impact model yet. News ingestion must not drive trading decisions until those components are independently validated.
 
 The current classifier-only `WalkForwardResearch` output is not an executable trading backtest: it does not model non-overlapping positions, capital allocation, spreads, fees, slippage or partial fills. Its `passed` flag is therefore hard-disabled to `False`; the output remains diagnostic research only.
 
