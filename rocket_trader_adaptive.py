@@ -6,7 +6,7 @@ Rocket Trader — Adaptive Risk & Capital Policy v0.1
 
 Capa independiente para:
 
-- Regla de distribución 70/20/10 antes del primer hito de 100,000 MXN.
+- Capitalización 100/0/0 antes del primer hito de 100,000 MXN.
 - Regla de distribución 50/40/10 después de alcanzar el hito.
 - El motor Core es la fuente de verdad persistente del hito.
 - Clasificación básica de régimen de mercado.
@@ -84,9 +84,10 @@ class CapitalPolicyConfig:
     threshold_mxn: float = 100_000.0
 
     # Antes de llegar a 100,000 MXN
-    below_threshold_reinvestment_pct: float = 0.70
-    below_threshold_personal_pct: float = 0.20
-    below_threshold_reserve_pct: float = 0.10
+    # 100% de las utilidades netas realizadas se conserva en el capital operativo.
+    below_threshold_reinvestment_pct: float = 1.00
+    below_threshold_personal_pct: float = 0.00
+    below_threshold_reserve_pct: float = 0.00
 
     # Desde 100,000 MXN
     above_threshold_reinvestment_pct: float = 0.50
@@ -137,9 +138,9 @@ class CapitalPolicy:
     Regla automática de crecimiento del capital.
 
     < 100,000 MXN:
-        70% reinversión
-        20% personal
-        10% reserva
+        100% reinversión
+        0% personal
+        0% reserva separada
 
     >= 100,000 MXN:
         50% reinversión
