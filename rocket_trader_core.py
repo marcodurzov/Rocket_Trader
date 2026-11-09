@@ -14,14 +14,15 @@ REGLAS:
 - SIN SHORT
 - PAPER por defecto
 - LIVE requiere habilitación explícita
-- Capital operativo < 100,000 MXN:
-    100% reinversión
-    0% personal
-    0% reserva
-- Capital operativo >= 100,000 MXN:
+- Antes del primer hito de 100,000 MXN:
     70% reinversión
     20% personal
     10% reserva
+- Después de alcanzar 100,000 MXN una vez:
+    50% reinversión
+    40% personal
+    10% reserva
+- El cambio de política es irreversible y se persiste en un estado durable.
 - La distribución es mensual.
 - Las transferencias reales están deshabilitadas.
 - Adaptive Risk puede reducir o bloquear riesgo.
