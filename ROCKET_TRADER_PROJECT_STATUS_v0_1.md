@@ -107,6 +107,14 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - It is the exact value that must be passed into Core's `monthly_distribution_plan`; operating capital remains a separate input for the protected-floor calculation.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699294872
 
+### 20. Multi-year adjusted ETF research v0.1
+- PR #30 adds five-year daily research for SPY, QQQ, IWM, DIA, TLT, GLD, EFA and EEM.
+- Uses Alpaca `Adjustment.ALL` to account for splits, dividends and spin-offs. IEX is the default feed; SIP remains optional and requires the corresponding entitlement.
+- Benchmarks 63/126/252-session time-series momentum, 50/200 SMA trend, 55/20 Donchian breakout, volatility-targeted momentum and cross-sectional top-1 momentum against buy-and-hold.
+- Uses next-session signal timing, chronological 60/20/20 windows, data-coverage checks, 5 bps per-side base friction and 2x stress.
+- Offline CI passed: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42700108435
+- Full adjusted daily research is running after the main merge; results have not yet been reviewed. No strategy promotion or Paper approval is enabled.
+
 ### 19. First five-year crypto report with coverage gate
 - Full read-only run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699725144
 - Artifact ID: `13711705647` (`rocket-trader-crypto-multiyear-research-v0-1`).
