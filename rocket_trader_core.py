@@ -249,15 +249,13 @@ class ProfitAllocator:
     """
     Regla automática:
 
-    capital operativo < 100,000:
-        70% reinversión
-        20% personal
-        10% reserva
+    antes del primer hito de 100,000 MXN:
+        70% reinversión / 20% personal / 10% reserva
 
-    capital operativo >= 100,000:
-        50% reinversión
-        40% personal
-        10% reserva
+    después de alcanzar el hito una vez:
+        50% reinversión / 40% personal / 10% reserva
+
+    El hito no se revierte si el capital cae posteriormente.
     """
 
     def __init__(
