@@ -1,0 +1,48 @@
+name: Rocket Trader - Engine and Capital Regression
+
+on:
+  push:
+    branches:
+      - "fix/engine-temporal-validation-and-permanent-capital-milestone"
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_adaptive.py"
+      - "rocket_trader_engine.py"
+      - "rocket_trader_signal_quality_test.py"
+      - "ROCKET_TRADER_JEFE_MAESTRO_TRANSFER_SPEC_v0_1.md"
+      - ".github/workflows/rocket-trader-engine-capital-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile modules
+        run: |
+          python -m py_compile rocket_trader_core.py rocket_trader_adaptive.py rocket_trader_engine.py rocket_trader_signal_quality_test.py
+
+      - name: Core safety and persistent capital milestone tests
+        run: python rocket_trader_core.py
+
+      - name: Adaptive capital and risk tests
+        run: python rocket_trader_adaptive_test.py
+
+      - name: Engine synthetic regression tests
+        run: python rocket_trader_engine.py
