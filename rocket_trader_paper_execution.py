@@ -188,6 +188,10 @@ class AlpacaPaperExecutionAdapter:
             raise PaperExecutionError("Only BUY/LONG entries are supported.")
         if order.quantity <= 0:
             raise PaperExecutionError("Order quantity must be positive.")
+        if order.entry_price <= 0 or float(order.stop_price or 0) <= 0 or float(order.take_profit_price or 0) <= 0:
+            raise PaperExecutionError("Entry, stop-loss and take-profit prices must be positive.")
+        if not float(order.stop_price) < float(order.take_profit_price):
+            raise PaperExecutionError("For a BUY bracket, stop-loss must be below take-profit.")
         if order.order_type != "MARKET_BRACKET":
             raise PaperExecutionError("Only MARKET_BRACKET equity orders are supported.")
         if order.stop_price is None or order.take_profit_price is None:
