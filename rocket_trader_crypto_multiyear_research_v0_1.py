@@ -273,7 +273,8 @@ def cross_sectional_top1(frames: Dict[str, pd.DataFrame]) -> tuple[pd.DataFrame,
         s: f.set_index("timestamp")["close"] for s, f in frames.items()
     }).dropna()
     momentum = close.pct_change(90).shift(1)
-    top, max_mom = momentum.idxmax(axis=1), momentum.max(axis=1)
+    safe_momentum = momentum.fillna(-np.inf)
+    top, max_mom = safe_momentum.idxmax(axis=1), safe_momentum.max(axis=1)
     weights = pd.DataFrame(0.0, index=close.index, columns=close.columns)
     for symbol in close.columns:
         weights.loc[(top == symbol) & (max_mom > 0), symbol] = 1.0
