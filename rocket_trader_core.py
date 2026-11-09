@@ -39,9 +39,16 @@ import math
 import os
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
+
+from rocket_trader_currency import (
+    CurrencyBudgetError,
+    FXQuote,
+    calculate_position_budget,
+)
 
 
 # ============================================================================
@@ -480,10 +487,19 @@ class Position:
 
 @dataclass
 class AccountState:
+    # Broker-side account values and position notionals are USD (Alpaca account currency).
     equity: float
     cash: float
 
+    # Preserve the original third positional field for compatibility.
+    # Broker-side emergency floor remains denominated in USD.
     protected_floor: float = 0.0
+    account_currency: str = "USD"
+
+    # Strategy capital is maintained separately in MXN. A sourced, timestamped
+    # FX quote is mandatory before this capital can authorize a USD order.
+    strategy_capital_mxn: Optional[float] = None
+    fx_quote: Optional[FXQuote] = None
 
     positions: Dict[str, Position] = field(default_factory=dict)
 
@@ -494,6 +510,18 @@ class AccountState:
     realized_pnl_today: float = 0.0
 
     def __post_init__(self) -> None:
+        if self.account_currency.upper() != "USD":
+            raise ValueError("Rocket Trader broker AccountState must be denominated in USD")
+
+        if self.strategy_capital_mxn is not None and self.strategy_capital_mxn < 0:
+            raise ValueError("strategy_capital_mxn no puede ser negativo")
+
+        if self.fx_quote is not None and self.strategy_capital_mxn is None:
+            raise ValueError("fx_quote requiere strategy_capital_mxn explícito")
+
+        if self.fx_quote is not None and not isinstance(self.fx_quote, FXQuote):
+            raise ValueError("fx_quote debe ser una instancia FXQuote validada")
+
         if self.equity < 0:
             raise ValueError("equity no puede ser negativa")
 
@@ -1008,16 +1036,13 @@ class RiskEngine:
         adaptive_multiplier: float = 1.0,
     ) -> float:
 
-        operating = account.operating_capital
-
-        if operating <= 0:
-            return 0.0
-
-        available_cash = (
-            self.available_operating_cash(account)
-        )
-
-        if available_cash <= 0:
+        # No se permite inferir capital MXN a partir del buying power Paper.
+        # Sin ledger MXN explícito y FX reciente/fuenteado, el sizing se bloquea.
+        if (
+            account.strategy_capital_mxn is None
+            or account.fx_quote is None
+            or account.cash <= 0
+        ):
             return 0.0
 
         base_pct = self.config.max_position_pct
@@ -1049,34 +1074,34 @@ class RiskEngine:
             1.0,
         )
 
-        max_notional = (
-            operating
-            * base_pct
-            * confidence_multiplier
-        )
-
-        remaining_exposure = max(
-            0.0,
-            (
-                operating
-                * self.config.max_total_exposure_pct
-            )
-            - account.total_exposure,
-        )
-
-        notional = min(
-            max_notional,
-            remaining_exposure,
-            available_cash,
-        )
-
         if snapshot.price <= 0:
             return 0.0
 
-        return max(
-            0.0,
-            notional / snapshot.price,
-        )
+        effective_position_pct = base_pct * confidence_multiplier
+        if effective_position_pct <= 0:
+            return 0.0
+
+        try:
+            budget = calculate_position_budget(
+                capital_mxn=account.strategy_capital_mxn,
+                available_cash_usd=account.cash,
+                current_exposure_usd=account.total_exposure,
+                fx_quote=account.fx_quote,
+                max_position_pct=effective_position_pct,
+                max_total_exposure_pct=self.config.max_total_exposure_pct,
+                max_loss_per_trade_pct=self.config.max_loss_per_trade_pct,
+                stop_distance_pct=self.config.stop_loss_pct,
+                min_order_usd=Decimal("1.00"),
+                max_fx_age=timedelta(hours=24),
+            )
+        except CurrencyBudgetError:
+            return 0.0
+
+        if not budget.allowed:
+            return 0.0
+
+        # Alpaca equity orders are sized in USD notional; quantity is shares.
+        return float(budget.max_notional_usd) / snapshot.price
 
     def prices_for_long(
         self,
@@ -1525,6 +1550,13 @@ class AlpacaExecutionAdapter:
                 "quantity debe ser > 0"
             )
 
+        if not float(order.quantity).is_integer():
+            raise RuntimeError(
+                "Fractional MARKET_BRACKET orders are blocked until Alpaca "
+                "fractional bracket compatibility and the full fractional "
+                "exit lifecycle are independently verified."
+            )
+
         if (
             order.stop_price is None
             or order.take_profit_price is None
@@ -1927,6 +1959,13 @@ def self_test() -> Dict[str, Any]:
     account = AccountState(
         equity=1000.0,
         cash=1000.0,
+        account_currency="USD",
+        strategy_capital_mxn=1000.0,
+        fx_quote=FXQuote(
+            mxn_per_usd=Decimal("18.00"),
+            observed_at=datetime.now(timezone.utc),
+            source="OFFLINE_TEST_FIXTURE",
+        ),
         protected_floor=0.0,
     )
 
@@ -1962,20 +2001,76 @@ def self_test() -> Dict[str, Any]:
         )
     )
 
-    assert decision.status in {
-        DecisionStatus.NOVEL_RISK,
-        DecisionStatus.SAFE_MODE,
-    }
+    # MXN 1,000 converts to less than USD 1 of allowed novel-risk notional;
+    # the broker minimum therefore blocks the order rather than rounding up.
+    assert decision.status == DecisionStatus.REJECTED
 
     assert decision.evidence_class == (
         EvidenceClass.NOVEL
     )
 
-    if decision.status == DecisionStatus.NOVEL_RISK:
-        assert decision.quantity > 0
-        assert decision.quantity <= 0.1
-        assert decision.stop_price == 98.0
-        assert decision.take_profit_price == 104.0
+    assert decision.quantity == 0.0
+    assert decision.stop_price is None
+    assert decision.take_profit_price is None
+
+    # A larger explicit MXN ledger can pass the USD minimum-order gate.
+    larger_account = AccountState(
+        equity=1000.0,
+        cash=1000.0,
+        account_currency="USD",
+        strategy_capital_mxn=6000.0,
+        fx_quote=FXQuote(
+            mxn_per_usd=Decimal("18.00"),
+            observed_at=datetime.now(timezone.utc),
+            source="OFFLINE_TEST_FIXTURE",
+        ),
+    )
+    larger_budget_decision = core.evaluate_and_maybe_execute(
+        account=larger_account,
+        snapshot=snapshot,
+        signal=signal,
+        execute=False,
+    )
+    assert larger_budget_decision.status == DecisionStatus.NOVEL_RISK
+    assert larger_budget_decision.quantity * snapshot.price >= 1.0
+    assert larger_budget_decision.quantity * snapshot.price <= (6000.0 / 18.0) * 0.01 * larger_budget_decision.adaptive_multiplier * 0.80 + 1e-9
+
+    # Missing FX must fail closed even if the broker reports abundant Paper cash.
+    missing_fx_account = AccountState(
+        equity=1000.0,
+        cash=1000.0,
+        strategy_capital_mxn=6000.0,
+    )
+    missing_fx_decision = core.evaluate_and_maybe_execute(
+        account=missing_fx_account,
+        snapshot=snapshot,
+        signal=signal,
+        execute=False,
+    )
+    assert missing_fx_decision.status == DecisionStatus.REJECTED
+    assert missing_fx_decision.quantity == 0.0
+
+    # The legacy Core Alpaca adapter must also block fractional equity brackets.
+    fractional_adapter = object.__new__(AlpacaExecutionAdapter)
+    fractional_adapter.mode = ExecutionMode.PAPER
+    fractional_order_blocked = False
+    try:
+        fractional_adapter.submit(
+            ExecutionOrder(
+                client_order_id="fractional_core_guard_test",
+                symbol="SPY",
+                side=Side.BUY,
+                quantity=0.5,
+                order_type="MARKET_BRACKET",
+                entry_price=100.0,
+                stop_price=98.0,
+                take_profit_price=104.0,
+                mode=ExecutionMode.PAPER,
+            )
+        )
+    except RuntimeError as exc:
+        fractional_order_blocked = "Fractional MARKET_BRACKET" in str(exc)
+    assert fractional_order_blocked is True
 
     # ------------------------------------------------
     # CAPITAL POLICY < 100K
