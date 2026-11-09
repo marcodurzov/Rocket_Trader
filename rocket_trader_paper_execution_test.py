@@ -58,12 +58,12 @@ class PaperExecutionTests(unittest.TestCase):
         self.tmp.cleanup()
 
     @staticmethod
-    def order(client_id="rt-test-order-001", mode=ExecutionMode.PAPER, side=Side.BUY):
+    def order(client_id="rt-test-order-001", mode=ExecutionMode.PAPER, side=Side.BUY, quantity=1.0):
         return ExecutionOrder(
             client_order_id=client_id,
             symbol="SPY",
             side=side,
-            quantity=1.0,
+            quantity=quantity,
             order_type="MARKET_BRACKET",
             entry_price=100.0,
             stop_price=98.0,
@@ -101,7 +101,7 @@ class PaperExecutionTests(unittest.TestCase):
 
     def test_fractional_bracket_orders_fail_closed(self):
         with self.assertRaisesRegex(PaperExecutionError, "Fractional MARKET_BRACKET"):
-            self.adapter.submit(self.order())
+            self.adapter.submit(self.order(quantity=0.1))
         self.assertEqual(self.client.submit_count, 0)
 
     def test_rejects_non_paper_and_sell_orders(self):
