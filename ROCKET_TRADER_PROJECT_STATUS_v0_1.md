@@ -101,6 +101,19 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - This avoids overstating crypto inventory and understating cost basis.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697135231
 
+### 17. Ledger exposes earned growth capital
+- PR #28 adds `earned_growth_capital_mxn` directly to `LedgerSnapshot` and monthly close reports.
+- This is calculated as original seed capital plus realized net trading P&L. External deposits and withdrawals are excluded from the milestone qualification metric.
+- It is the exact value that must be passed into Core's `monthly_distribution_plan`; operating capital remains a separate input for the protected-floor calculation.
+- CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699294872
+
+### 18. Crypto historical data quality gate
+- PR #29 adds calendar coverage, missing-day and maximum-gap checks to daily crypto research.
+- A symbol needs at least 95% calendar coverage and no gap longer than 3 days to qualify as strategy evidence.
+- Incomplete single-asset histories remain visible as diagnostics but are ineligible for evidence and excluded from cross-sectional tests.
+- CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699567711
+- A new full research run is triggered on the latest main merge to regenerate results under this gate.
+
 ### 16. Multi-year crypto research v0.1
 - PR #26 adds five-year daily research for BTC/USD, ETH/USD and SOL/USD using Alpaca CryptoFeed.US.
 - Tests pre-defined time-series momentum (90/180/365 days), 50/200 SMA trend, 55/20 Donchian breakout, volatility-targeted momentum and cross-sectional top-1 momentum against buy-and-hold.
