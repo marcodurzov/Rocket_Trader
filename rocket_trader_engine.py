@@ -658,11 +658,24 @@ def self_test() -> Dict[str, Any]:
     assert len(features) == len(raw)
     assert all(c in features.columns for c in FEATURE_COLUMNS)
 
+    dataset = TemporalDataset(config)
+    X, y = dataset.build(features)
+    X_train, X_test, y_train, y_test = dataset.purged_split(
+        X, y, test_fraction=config.validation_fraction
+    )
+    assert len(X_train) + config.horizon_bars < len(X_train) + len(X_test) + config.horizon_bars
+    assert len(X_train) == int(len(X) * (1.0 - config.validation_fraction)) - config.horizon_bars
+    assert len(X_test) == len(X) - int(len(X) * (1.0 - config.validation_fraction))
+
     research = WalkForwardResearch(config).evaluate(features)
     engine = SignalEngine(config)
     training = engine.train(raw)
     signal = engine.generate_signal(raw, "DEMO")
 
+    assert hasattr(EnsembleModel, "novelty_score")
+    assert engine.model.novelty_score(
+        pd.DataFrame([{col: features.iloc[-1][col] for col in FEATURE_COLUMNS}])
+    ) >= 0.0
     assert training["rows"] >= config.min_training_rows
     assert 0 <= signal.probability_up <= 1
     assert 0 <= signal.confidence <= 1
