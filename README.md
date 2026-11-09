@@ -1,27 +1,25 @@
-[README.md](https://github.com/user-attachments/files/33259974/README.md)
-# Rocket Trader — Signal Research v0.3
+# Rocket Trader
 
-Research-only update. No trading API/client is imported; this script cannot submit orders.
+Autonomous trading research and execution project. Current stage: **research + safety infrastructure; not yet an autonomous Paper Trading service**.
 
-## Install in the existing repository
+## Governing decisions
+- Authoritative user decisions: `ROCKET_TRADER_BASELINE_DECISIONS_v0_2.md`.
+- Current implementation and blockers: `ROCKET_TRADER_PROJECT_STATUS_v0_1.md`.
+- Investment research standards: `ROCKET_TRADER_INVESTMENT_RESEARCH_FRAMEWORK_v0_1.md`.
+- Jefe Maestro methodology transfer: `ROCKET_TRADER_JEFE_MAESTRO_TRANSFER_SPEC_v0_1.md`.
 
-1. Replace the repository-root file `rocket_trader_signal_research.py` with the file in this package.
-2. Put `.github/workflows/rocket-trader-signal-research.yml` into the same path in the repository.
-3. Confirm `rocket_trader_engine.py`, `rocket_trader_market_data.py`, `requirements.txt`, and `requirements-alpaca.txt` remain at repository root and are the working versions already used by Rocket Trader.
-4. Commit and push.
-5. Open GitHub Actions → `Rocket Trader - Signal Research v0.3` → `Run workflow`.
+## Capital policy
+Initial capital is MXN 1,000. Retain 100% of realized net trading profits until earned trading growth first reaches MXN 100,000; only then does the target 50/10/40 reinvestment/reserve/personal allocation activate. Deposits do not count as earned growth. The MXN 100,000 floor is a withdrawal policy, not a guarantee against market losses.
 
-## What changed
+## Safety
+- Alpaca Paper only during development.
+- LIVE orders disabled.
+- No leverage, margin, shorts, options, futures or perpetuals.
+- Research pass is not Paper approval; Paper approval is not LIVE authorization.
+- GitHub Actions is not a continuous trading runtime.
 
-- Signal at bar close, entry at next bar open.
-- Exit at the close of the fifth holding bar by default.
-- Non-overlapping long-only positions.
-- Training labels are constrained to data inside each training fold.
-- Threshold chosen using only the earlier OOS selection segment; final later OOS segment is held out from threshold selection.
-- Round-trip transaction friction plus slippage charged on both entry and exit.
-- Holdout must pass minimum trade/fold, profit factor, drawdown, and same-window buy-and-hold checks to get `research_pass=true`.
-- Writes `rocket_trader_signal_research_results.json`, uploaded by Actions as an artifact.
+## Research
+All strategies must be evaluated out of sample, net of realistic costs, against same-period benchmarks and under data-quality, uncertainty and multiple-testing controls. Famous traders/investors provide hypotheses, not automatic trade signals. No strategy is currently approved.
 
-## Important
-
-A workflow that completes successfully means the code ran, not that the strategy is profitable. A research pass is not authorization to trade live. Keep execution disabled and continue paper testing before considering any live trading.
+## Current status
+See `ROCKET_TRADER_PROJECT_STATUS_v0_1.md` for merged work, research results, latest CI evidence and remaining blockers.
