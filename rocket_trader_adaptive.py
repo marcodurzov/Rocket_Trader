@@ -6,8 +6,9 @@ Rocket Trader — Adaptive Risk & Capital Policy v0.1
 
 Capa independiente para:
 
-- Regla automática de capitalización hasta 100,000 MXN.
-- Distribución mensual 70/20/10 después del umbral.
+- Regla de distribución 70/20/10 antes del primer hito de 100,000 MXN.
+- Regla de distribución 50/40/10 después de alcanzar el hito.
+- El motor Core es la fuente de verdad persistente del hito.
 - Clasificación básica de régimen de mercado.
 - Evaluación inicial de noticias.
 - Sizing dinámico condicionado por convicción.
