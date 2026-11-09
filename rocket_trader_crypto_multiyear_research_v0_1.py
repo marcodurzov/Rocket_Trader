@@ -468,11 +468,17 @@ def self_test() -> Dict[str, Any]:
             "close": close, "volume": rng.lognormal(8, .5, n),
         })
         frames[symbol] = normalize_frame(raw, symbol, min_rows=MIN_DAILY_BARS)
+        quality = data_quality_metrics(frames[symbol])
+        assert quality["eligible_for_strategy_evidence"] is True
         pos = strategy_positions(frames[symbol])
         assert len(pos) == 7
         assert all(((w >= 0) & (w <= 1)).all() for w in pos.values())
     cross = evaluate_cross_sectional(frames)
     assert cross["bars"] > 0
+    gappy = frames["BTC/USD"].drop(index=range(0, n, 10)).reset_index(drop=True)
+    gappy_quality = data_quality_metrics(gappy)
+    assert gappy_quality["eligible_for_strategy_evidence"] is False
+    assert gappy_quality["calendar_coverage_pct"] < MIN_CALENDAR_COVERAGE
     metric, _ = evaluate_weights(
         frames["BTC/USD"]["close"],
         strategy_positions(frames["BTC/USD"])["buy_and_hold"],
