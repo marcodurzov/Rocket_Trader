@@ -184,7 +184,7 @@ class SQLiteNewsStore:
     def ingest(
         self,
         articles: Iterable[Any],
-        observation_mode: str = "LIVE",
+        observation_mode: str,
         observed_at: Optional[str] = None,
     ) -> Dict[str, int]:
         mode = str(observation_mode).strip().upper()
@@ -378,7 +378,7 @@ class AlpacaNewsCollector:
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
         limit: int = 50,
-        observation_mode: str = "LIVE",
+        observation_mode: str,
     ) -> Dict[str, int]:
         articles = self.fetch(
             symbols=symbols,
