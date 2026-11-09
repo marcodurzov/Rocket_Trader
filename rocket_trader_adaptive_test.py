@@ -13,24 +13,24 @@ def main() -> None:
 
     policy = CapitalPolicy()
 
-    # Debajo de 100k: 100% reinversión
+    # Debajo de 100k: 70% reinversión, 20% personal, 10% reserva
     test_1 = policy.allocation(
         operating_capital=50_000,
         profit=10_000,
     )
 
-    assert test_1.reinvestment_amount == 10_000
-    assert test_1.personal_amount == 0
-    assert test_1.reserve_amount == 0
+    assert test_1.reinvestment_amount == 7_000
+    assert test_1.personal_amount == 2_000
+    assert test_1.reserve_amount == 1_000
 
-    # En 100k: cambia automáticamente a 70/20/10
+    # En 100k: cambia automáticamente a 50/40/10
     test_2 = policy.allocation(
         operating_capital=100_000,
         profit=10_000,
     )
 
-    assert test_2.reinvestment_amount == 7_000
-    assert test_2.personal_amount == 2_000
+    assert test_2.reinvestment_amount == 5_000
+    assert test_2.personal_amount == 4_000
     assert test_2.reserve_amount == 1_000
 
     # Noticia positiva
