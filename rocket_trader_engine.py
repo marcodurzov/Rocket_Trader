@@ -663,8 +663,9 @@ def self_test() -> Dict[str, Any]:
     X_train, X_test, y_train, y_test = dataset.purged_split(
         X, y, test_fraction=config.validation_fraction
     )
-    assert len(X_train) + config.horizon_bars < len(X_train) + len(X_test) + config.horizon_bars
-    assert len(X_train) == int(len(X) * (1.0 - config.validation_fraction)) - config.horizon_bars
+    split_at = int(len(X) * (1.0 - config.validation_fraction))
+    assert len(X_train) + config.horizon_bars == split_at
+    assert len(X_test) == len(X) - split_at
     assert len(X_test) == len(X) - int(len(X) * (1.0 - config.validation_fraction))
 
     research = WalkForwardResearch(config).evaluate(features)
