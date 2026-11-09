@@ -128,12 +128,18 @@ class ReferenceStrategyRegistry:
         self,
         reference_id: str,
         comparable_out_of_sample_events: int,
+        independent_implementations: int,
+        independent_validation_passed: bool,
+        risk_adjusted_benchmark_passed: bool,
     ) -> bool:
-        """A source citation alone can never create PRECEDENTED evidence."""
+        """A citation alone never creates PRECEDENTED; independent tests are required."""
         reference = self.get(reference_id)
         return bool(
             reference.quantitative_reference
-            and comparable_out_of_sample_events > 0
+            and comparable_out_of_sample_events >= 20
+            and independent_implementations >= 3
+            and independent_validation_passed
+            and risk_adjusted_benchmark_passed
         )
 
 
@@ -150,13 +156,25 @@ def self_test() -> Dict[str, Any]:
     assert len(crypto_quant) >= 2
     assert qualitative
     assert registry.can_create_precedent_evidence(
-        "time_series_momentum_12m", comparable_out_of_sample_events=1
+        "time_series_momentum_12m",
+        comparable_out_of_sample_events=100,
+        independent_implementations=3,
+        independent_validation_passed=True,
+        risk_adjusted_benchmark_passed=True,
     ) is True
     assert registry.can_create_precedent_evidence(
-        "jesse_livermore_trend_principle", comparable_out_of_sample_events=1000
+        "jesse_livermore_trend_principle",
+        comparable_out_of_sample_events=1000,
+        independent_implementations=10,
+        independent_validation_passed=True,
+        risk_adjusted_benchmark_passed=True,
     ) is False
     assert registry.can_create_precedent_evidence(
-        "time_series_momentum_12m", comparable_out_of_sample_events=0
+        "time_series_momentum_12m",
+        comparable_out_of_sample_events=19,
+        independent_implementations=3,
+        independent_validation_passed=True,
+        risk_adjusted_benchmark_passed=True,
     ) is False
     return {
         "ok": True,
