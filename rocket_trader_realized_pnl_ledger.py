@@ -14,7 +14,7 @@ import json
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
@@ -250,12 +250,13 @@ class RealizedPnLLedger:
         amount = _money(_d(amount_mxn, "amount_mxn"))
         if amount <= 0:
             raise LedgerError("Withdrawal must be positive")
-        snap = self.snapshot()
-        if amount > snap.operating_capital_mxn:
-            raise LedgerError("Withdrawal exceeds operating capital")
-        return self._append(event_id, "WITHDRAWAL_MXN", occurred_at, {
-            "amount_mxn": str(amount), "currency": "MXN"
-        })
+        with self._lock:
+            snap = self.snapshot()
+            if amount > snap.operating_capital_mxn:
+                raise LedgerError("Withdrawal exceeds operating capital")
+            return self._append(event_id, "WITHDRAWAL_MXN", occurred_at, {
+                "amount_mxn": str(amount), "currency": "MXN"
+            })
 
     def record_fill(
         self,
@@ -282,6 +283,15 @@ class RealizedPnLLedger:
             raise LedgerError("Only US_EQUITY and CRYPTO_SPOT are supported")
         if qty <= 0 or price <= 0 or fee < 0:
             raise LedgerError("Fill quantity/price must be positive and fee non-negative")
+        fill_time = _utc(occurred_at)
+        fx_time = _utc(fx.observed_at)
+        fill_dt = datetime.fromisoformat(fill_time)
+        fx_dt = datetime.fromisoformat(fx_time)
+        fx_age = fill_dt - fx_dt
+        if fx_age < timedelta(0):
+            raise LedgerError("FX quote timestamp cannot be after the fill")
+        if fx_age > timedelta(hours=24):
+            raise LedgerError("FX quote is stale for the fill timestamp")
         payload = {
             "fill_id": fill_id,
             "symbol": symbol,
@@ -294,7 +304,7 @@ class RealizedPnLLedger:
             "fx": fx.as_dict(),
             "currency": "USD",
         }
-        occurred_iso = _utc(occurred_at)
+        occurred_iso = fill_time
         # Idempotent replay must be checked before inventory validation: the
         # original SELL may already have consumed the position.
         with self._connect() as conn:
