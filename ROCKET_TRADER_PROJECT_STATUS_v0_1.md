@@ -96,6 +96,18 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - Test: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42688090094
 - Integrated PR: https://github.com/marcodurzov/Rocket_Trader/pull/8
 
+### 12. Crypto fee denomination correction
+- PR #22 extends FIFO accounting to crypto BUY fees withheld in the credited base asset. For USD-quoted crypto, the acquired quantity is reduced by the base-asset fee; the full USD acquisition cost is allocated over the net quantity actually received. SELL-side USD fees remain in quote currency.
+- This avoids overstating crypto inventory and understating cost basis.
+- CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697135231
+
+### 13. Alpaca Paper account activity stager
+- PR #23 adds a read-only PAPER-only client for Alpaca Trading API account activities, with ascending pagination, durable cursor, immutable SQLite staging and idempotent redelivery.
+- FILL, CFEE and FEE are staged. Unsupported activity types, non-final statuses and malformed fills are marked blocked.
+- It deliberately does not post fills to the P&L ledger yet. Alpaca documents that crypto CFEE can be posted end-of-day and may be denominated in the asset received; other fees may be parent-linked or volume-based. Trade corrections/busts and corporate actions also require explicit handling.
+- CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697315589
+- No broker order, cancellation or position modification is performed.
+
 ### 11. Append-only realized P&L ledger
 - PR #21 adds `rocket_trader_realized_pnl_ledger.py`: durable SQLite append-only events for seed capital, deposits, withdrawals and fills.
 - Uses FIFO lots for partial exits. Buy-side fees enter cost basis; sell-side fees reduce proceeds. Net realized P&L is converted to MXN using a sourced, timezone-aware FX quote no older than 24 hours at fill time.
