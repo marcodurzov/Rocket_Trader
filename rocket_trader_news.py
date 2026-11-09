@@ -11,6 +11,7 @@ No sentiment score or trading decision is produced by this module.
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
 import json
 import os
 import sqlite3
@@ -121,8 +122,20 @@ class SQLiteNewsStore:
         connection.row_factory = sqlite3.Row
         return connection
 
+    @contextmanager
+    def _connection(self):
+        db = self._connect()
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
     def _initialize(self) -> None:
-        with self._connect() as db:
+        with self._connection() as db:
             db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS news_articles (
@@ -178,12 +191,14 @@ class SQLiteNewsStore:
         if mode not in {"LIVE", "HISTORICAL_BACKFILL"}:
             raise ValueError("observation_mode debe ser LIVE o HISTORICAL_BACKFILL.")
         observed = observed_at or utc_now()
+        received = 0
         inserted = 0
         versions_added = 0
         eligible = 0
 
-        with self._connect() as db:
+        with self._connection() as db:
             for raw in articles:
+                received += 1
                 article = (
                     raw if isinstance(raw, NewsArticleRecord)
                     else NewsArticleRecord.from_article(raw)
@@ -285,7 +300,7 @@ class SQLiteNewsStore:
                     eligible += 1
 
         return {
-            "articles_received": inserted + 0,
+            "articles_received": received,
             "new_articles": inserted,
             "new_versions": versions_added,
             "live_observations": eligible,
