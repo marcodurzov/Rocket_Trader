@@ -150,7 +150,8 @@ def fetch_daily_bars(
     end_at = end or datetime.now(timezone.utc)
     if end_at.tzinfo is None or end_at.utcoffset() is None:
         raise ValueError("end must be timezone-aware")
-    cursor = end_at - timedelta(days=365 * years)
+    start_at = end_at - timedelta(days=365 * years)
+    cursor = start_at
     chunks: List[pd.DataFrame] = []
     while cursor < end_at:
         chunk_end = min(cursor + timedelta(days=chunk_days), end_at)
@@ -515,9 +516,14 @@ def self_test() -> Dict[str, Any]:
         frames["SPY"]["close"], strategy_positions(frames["SPY"])["buy_and_hold"]
     )
     assert metrics.bars == n
+    relative_q05 = bootstrap_q05_relative(
+        np.full(250, 0.001, dtype=float),
+        np.zeros(250, dtype=float),
+    )
+    assert relative_q05 > 0
     return {
         "ok": True, "version": VERSION,
-        "pipeline": "rocket_trader_equity_multiyear_research",
+        "pipeline": "rocket_trader_equity_multiyear_research_v0_2",
         "mode": "RESEARCH_ONLY", "synthetic_daily_bars": n,
         "bootstrap_excess_diagnostic_tested": True,
         "symbols": list(frames), "strategy_hypotheses": 8,
