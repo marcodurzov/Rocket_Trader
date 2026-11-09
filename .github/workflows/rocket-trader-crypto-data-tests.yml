@@ -37,3 +37,6 @@ jobs:
 
       - name: Run read-only crypto data tests
         run: python rocket_trader_crypto_market_data_test.py
+
+      - name: Verify real BTC/USD historical data access
+        run: python rocket_trader_crypto_market_data_test.py --market-data
