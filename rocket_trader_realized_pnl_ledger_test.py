@@ -120,6 +120,44 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             with sqlite3.connect(self.db) as conn:
                 conn.execute("UPDATE monthly_closes SET close_json='{}' WHERE period='2026-11'")
 
+    def test_external_deposit_does_not_fake_the_100k_growth_milestone(self):
+        self.ledger.record_deposit(
+            event_id="large-external-deposit", amount_mxn="150000", occurred_at=NOW
+        )
+        snap = self.ledger.snapshot()
+        self.assertEqual(snap.operating_capital_mxn, Decimal("151000.00"))
+        self.assertFalse(snap.milestone_reached)
+
+    def test_monthly_realized_loss_is_not_reported_as_negative_reinvestment(self):
+        self.fill("buy-losing-trade", "BUY", "0.1", "10000")
+        self.fill("sell-losing-trade", "SELL", "0.1", "9000")
+        close = self.ledger.close_month("2026-11")
+        self.assertLess(Decimal(close["realized_net_pnl_mxn"]), Decimal("0"))
+        self.assertEqual(close["reinvestment_mxn"], "0.00")
+        self.assertEqual(close["personal_distribution_mxn"], "0.00")
+        self.assertEqual(close["reserve_mxn"], "0.00")
+
+    def test_fifo_replay_uses_fill_timestamps_not_arrival_order(self):
+        later = datetime(2026, 11, 10, 16, 0, tzinfo=timezone.utc)
+        earlier = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
+        # Deliberately insert the later fill first; event-time order is authoritative.
+        self.ledger.record_fill(
+            fill_id="later-buy", symbol="BTC/USD", side="BUY",
+            quantity="0.01", price_usd="12000", fee_usd="0",
+            fx=FX, occurred_at=later, asset_class="CRYPTO_SPOT",
+        )
+        self.ledger.record_fill(
+            fill_id="earlier-buy", symbol="BTC/USD", side="BUY",
+            quantity="0.01", price_usd="10000", fee_usd="0",
+            fx=FX, occurred_at=earlier, asset_class="CRYPTO_SPOT",
+        )
+        self.ledger.record_fill(
+            fill_id="fifo-sell", symbol="BTC/USD", side="SELL",
+            quantity="0.01", price_usd="11000", fee_usd="0",
+            fx=FX, occurred_at=later, asset_class="CRYPTO_SPOT",
+        )
+        self.assertEqual(self.ledger.snapshot().realized_net_pnl_mxn, Decimal("1800.00"))
+
     def test_fx_timestamp_must_be_aware_and_source_present(self):
         with self.assertRaises(LedgerError):
             LedgerFX(Decimal("18"), datetime(2026, 11, 9), "fixture")
