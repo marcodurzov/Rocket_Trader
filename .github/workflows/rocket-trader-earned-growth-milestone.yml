@@ -1,0 +1,36 @@
+name: Rocket Trader - Earned Growth Milestone Guard
+
+on:
+  push:
+    branches:
+      - main
+      - "fix/earned-growth-milestone-core"
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_earned_growth_milestone_test.py"
+      - ".github/workflows/rocket-trader-earned-growth-milestone.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_earned_growth_milestone_test.py"
+      - ".github/workflows/rocket-trader-earned-growth-milestone.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  earned-growth-milestone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile rocket_trader_core.py rocket_trader_earned_growth_milestone_test.py
+      - name: Run milestone source tests
+        run: python -m unittest -v rocket_trader_earned_growth_milestone_test.py
