@@ -7,6 +7,8 @@ on:
     paths:
       - "rocket_trader_paper_execution.py"
       - "rocket_trader_paper_execution_test.py"
+      - "rocket_trader_core.py"
+      - "rocket_trader_live_mode_guard_test.py"
       - ".github/workflows/rocket-trader-paper-execution-safety.yml"
   pull_request:
     paths:
@@ -33,6 +35,8 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
       - name: Compile
-        run: python -m py_compile rocket_trader_paper_execution.py rocket_trader_paper_execution_test.py
+        run: python -m py_compile rocket_trader_core.py rocket_trader_paper_execution.py rocket_trader_paper_execution_test.py rocket_trader_live_mode_guard_test.py
       - name: Offline execution safety tests (no broker connection and no orders)
-        run: python rocket_trader_paper_execution_test.py
+        run: |
+          python rocket_trader_paper_execution_test.py
+          python rocket_trader_live_mode_guard_test.py
