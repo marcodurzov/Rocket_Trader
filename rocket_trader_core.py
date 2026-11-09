@@ -1781,13 +1781,13 @@ def build_demo_core() -> RocketTraderCore:
         ProfitDistributionConfig(
             threshold_mxn=100000.0,
 
-            below_threshold_reserve_pct=0.00,
-            below_threshold_reinvestment_pct=1.00,
-            below_threshold_personal_pct=0.00,
+            below_threshold_reserve_pct=0.10,
+            below_threshold_reinvestment_pct=0.70,
+            below_threshold_personal_pct=0.20,
 
             at_or_above_threshold_reserve_pct=0.10,
-            at_or_above_threshold_reinvestment_pct=0.70,
-            at_or_above_threshold_personal_pct=0.20,
+            at_or_above_threshold_reinvestment_pct=0.50,
+            at_or_above_threshold_personal_pct=0.40,
 
             frequency="MONTHLY",
         )
