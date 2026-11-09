@@ -285,3 +285,7 @@ The post-PR #33 diagnostic run established the actual IEX coverage boundary:
 
 ### Yahoo historical provider correction — 2026-11-09
 The first live Yahoo workflow failed for every ETF inside yfinance's optional `repair=True` processing with `ValueError: output array is read-only`. Offline regression tests had passed but could not expose this provider-runtime incompatibility. The source now requests auto-adjusted OHLC and corporate-action metadata with `repair=False`; data-quality checks remain mandatory. This avoids the failing repair transformation rather than weakening history coverage or performance acceptance. A fresh live workflow run is required before treating Yahoo history as usable.
+
+
+### Crypto history gap diagnostics — 2026-11-09
+The existing five-year crypto run reports SOL/USD at 77.10% calendar coverage, 418 missing calendar days and a 417-day maximum gap. Summary metrics alone do not show whether this is a missing listing-history period or a provider outage. PR #38 adds first/last timestamps and the 20 largest exact gap intervals per symbol. The source remains Alpaca CryptoFeed.US; no provider series are blended. The existing 95% coverage and maximum-three-day-gap eligibility gate is unchanged.
