@@ -79,6 +79,8 @@ jobs:
           assert data.get('paper_approval') is False
           assert data.get('ok') is True
           print('Research-only report verified:', data['symbols_processed'])
+          print('Data quality pass:', data.get('data_quality_pass'))
+          print('Symbols with data-quality issues:', data.get('symbols_with_data_quality_issues'))
           PY
       - uses: actions/upload-artifact@v4
         if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
