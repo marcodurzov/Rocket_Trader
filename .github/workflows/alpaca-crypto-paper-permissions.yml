@@ -1,0 +1,41 @@
+name: Rocket Trader - Alpaca Crypto Paper Permissions
+
+on:
+  push:
+    branches:
+      - "test/alpaca-crypto-paper-permissions"
+    paths:
+      - "alpaca_crypto_paper_permissions_test.py"
+      - ".github/workflows/alpaca-crypto-paper-permissions.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crypto-permissions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Alpaca SDK
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-alpaca.txt
+
+      - name: Compile permission test
+        run: python -m py_compile alpaca_crypto_paper_permissions_test.py
+
+      - name: Query Paper account and crypto assets (read-only)
+        run: python alpaca_crypto_paper_permissions_test.py
