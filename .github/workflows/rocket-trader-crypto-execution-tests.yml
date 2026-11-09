@@ -36,6 +36,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Alpaca SDK
+        run: pip install "alpaca-py>=0.43,<1.0"
+
       - name: Compile
         run: |
           python -m py_compile rocket_trader_crypto_paper_execution.py rocket_trader_crypto_paper_execution_test.py
