@@ -260,6 +260,7 @@ class DistributionPlan:
     payouts_suspended: bool
     payout_suspension_reason: Optional[str]
     operating_capital_after_distribution: float
+    milestone_qualifying_capital_mxn: Optional[float] = None
 
 
 class ProfitAllocator:
@@ -317,11 +318,19 @@ class ProfitAllocator:
     def percentages_for_capital(
         self,
         operating_capital: float,
+        earned_growth_capital_mxn: Optional[float] = None,
     ) -> Tuple[float, float, float, str, bool]:
 
         if operating_capital < 0:
             raise ValueError("operating_capital no puede ser negativo")
-        if operating_capital >= self.config.threshold_mxn and not self._threshold_reached:
+        qualifying_capital = (
+            operating_capital
+            if earned_growth_capital_mxn is None
+            else float(earned_growth_capital_mxn)
+        )
+        if qualifying_capital < 0:
+            raise ValueError("earned_growth_capital_mxn no puede ser negativo")
+        if qualifying_capital >= self.config.threshold_mxn and not self._threshold_reached:
             self._threshold_reached = True
             self._threshold_reached_at = utc_now()
             self._persist_milestone()
@@ -348,6 +357,7 @@ class ProfitAllocator:
         distributable_profit: float,
         operating_capital: float,
         period: Optional[str] = None,
+        earned_growth_capital_mxn: Optional[float] = None,
     ) -> DistributionPlan:
 
         if distributable_profit < 0:
@@ -356,7 +366,10 @@ class ProfitAllocator:
             )
 
         target_reserve_pct, target_reinvestment_pct, target_personal_pct, policy, threshold_reached = (
-            self.percentages_for_capital(operating_capital)
+            self.percentages_for_capital(
+                operating_capital,
+                earned_growth_capital_mxn=earned_growth_capital_mxn,
+            )
         )
 
         amount = float(distributable_profit)
@@ -409,6 +422,10 @@ class ProfitAllocator:
             payouts_suspended=payouts_suspended,
             payout_suspension_reason=suspension_reason,
             operating_capital_after_distribution=round(capital_after, 2),
+            milestone_qualifying_capital_mxn=round(
+                operating_capital if earned_growth_capital_mxn is None
+                else float(earned_growth_capital_mxn), 2
+            ),
         )
 
 
@@ -1726,6 +1743,7 @@ class RocketTraderCore:
         require_persistent_milestone: bool = True,
     ) -> None:
 
+        self.require_persistent_milestone = bool(require_persistent_milestone)
         configured_milestone_path = (
             capital_milestone_path
             or os.getenv("ROCKET_TRADER_CAPITAL_MILESTONE_PATH")
@@ -1838,7 +1856,15 @@ class RocketTraderCore:
         distributable_profit: float,
         operating_capital: float,
         period: Optional[str] = None,
+        earned_growth_capital_mxn: Optional[float] = None,
     ) -> DistributionPlan:
+
+        if self.require_persistent_milestone and earned_growth_capital_mxn is None:
+            raise RuntimeError(
+                "SAFETY STOP: monthly_distribution_plan requiere "
+                "earned_growth_capital_mxn del ledger para excluir depósitos externos "
+                "del hito de MXN 100,000."
+            )
 
         plan = self.profit_allocator.plan(
             distributable_profit=(
@@ -1848,6 +1874,7 @@ class RocketTraderCore:
                 operating_capital
             ),
             period=period,
+            earned_growth_capital_mxn=earned_growth_capital_mxn,
         )
 
         self.audit.write(
