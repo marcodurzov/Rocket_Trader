@@ -299,7 +299,7 @@ class RealizedPnLLedger:
     def _events(self) -> list[Dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT seq,event_id,event_type,occurred_at,payload_json FROM ledger_events ORDER BY seq"
+                "SELECT seq,event_id,event_type,occurred_at,payload_json FROM ledger_events ORDER BY occurred_at,seq"
             ).fetchall()
         return [{
             "seq": row["seq"], "event_id": row["event_id"],
@@ -367,8 +367,10 @@ class RealizedPnLLedger:
                         "fx_mxn_per_usd": str(rate),
                         "realized_net_pnl_mxn": str(pnl_mxn),
                     })
-            capital = initial + deposits - withdrawals + realized_mxn
-            if not threshold_seen and capital >= self.milestone_mxn:
+            # The 100k growth milestone must be earned through net trading
+            # performance from the original seed, not inflated by later deposits.
+            growth_capital = initial + realized_mxn
+            if not threshold_seen and growth_capital >= self.milestone_mxn:
                 threshold_seen = True
                 milestone_at = event["occurred_at"]
         open_positions: Dict[str, Dict[str, str]] = {}
@@ -432,8 +434,11 @@ class RealizedPnLLedger:
         elif not threshold_reached:
             reserve_pct, reinvest_pct, personal_pct = Decimal("0"), Decimal("1"), Decimal("0")
             reserve = personal = Decimal("0")
-            reinvest = Decimal(summary["realized_net_pnl_mxn"])
-            policy = "ACCUMULATION_100_PERCENT_REINVESTMENT"
+            reinvest = max(Decimal("0"), Decimal(summary["realized_net_pnl_mxn"]))
+            policy = (
+                "ACCUMULATION_100_PERCENT_REINVESTMENT"
+                if reinvest > 0 else "ACCUMULATION_NO_POSITIVE_REALIZED_PROFIT"
+            )
             suspended = False
         else:
             profit = max(Decimal("0"), Decimal(summary["realized_net_pnl_mxn"]))
