@@ -336,7 +336,10 @@ class RealizedPnLLedger:
                 p = event["payload"]
                 if event["event_type"] != "FILL" or p["symbol"] != symbol:
                     continue
-                delta = Decimal(p["quantity"])
+                delta = (
+                    Decimal(p.get("net_acquired_quantity", p["quantity"]))
+                    if p["side"] == "BUY" else Decimal(p["quantity"])
+                )
                 held += delta if p["side"] == "BUY" else -delta
             if qty > held:
                 raise LedgerError(
