@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "registry_name": "Rocket Trader Public Reference Strategy Registry",
+  "policy": {
+    "references_are_hypotheses_not_orders": true,
+    "successful_trader_returns_must_not_be_invented": true,
+    "same_market_same_dates_same_costs_required": true,
+    "no_reference_is_automatically_paper_approved": true,
+    "qualitative_references_cannot_create_quantitative_evidence": true
+  },
+  "references": [
+    {
+      "id": "time_series_momentum_12m",
+      "name": "Time-series momentum / trend following",
+      "reference_type": "peer_reviewed_academic_and_institutional_research",
+      "authors": ["Tobias J. Moskowitz", "Yao Hua Ooi", "Lasse H. Pedersen"],
+      "organization": "AQR Capital Management / Journal of Financial Economics",
+      "published_at": "2012-05-01",
+      "source_url": "https://www.aqr.com/insights/research/journal-article/time-series-momentum",
+      "original_scope": "58 liquid futures and forward contracts across equity indexes, currencies, commodities and sovereign bonds; return persistence over approximately 1 to 12 months with partial reversal at longer horizons.",
+      "rule_hypothesis": "Measure each instrument's own trailing excess return over multiple lookbacks. Positive trend may support a long position; negative trend is cash/flat in Rocket Trader's initial long-only implementation.",
+      "rocket_trader_adaptation": "Test long-only versions on US equities/ETFs and crypto spot separately. Do not copy futures short exposure, leverage, contract roll assumptions or published results into spot markets.",
+      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "The original study is not a proof that the same rule works on SPY, QQQ or crypto spot.",
+        "Its multi-month horizons are not directly comparable to intraday signals.",
+        "All adaptations require new out-of-sample tests after costs."
+      ]
+    },
+    {
+      "id": "cross_sectional_momentum_3_12m",
+      "name": "Cross-sectional stock momentum",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": ["Narasimhan Jegadeesh", "Sheridan Titman"],
+      "organization": "The Journal of Finance",
+      "published_at": "1993-03-01",
+      "source_url": "https://onlinelibrary.wiley.com/doi/full/10.1111/j.1540-6261.1993.tb04702.x",
+      "original_scope": "US stock winner/loser portfolios with holding horizons in the 3-to-12-month range.",
+      "rule_hypothesis": "Rank a point-in-time eligible equity universe by trailing relative performance, with a skip/reversal window tested separately. Compare top-ranked securities against the broad-market benchmark.",
+      "rocket_trader_adaptation": "Long-only top-ranked basket; no shorting. Universe membership, delisted securities, corporate actions, survivorship bias, turnover, spread and borrow-free assumptions must be handled explicitly.",
+      "markets_to_test": ["us_equities_etfs"],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "The published long-short strategy cannot be copied as-is because Rocket Trader starts without short selling.",
+        "Historical results may not survive current costs, universe changes or a different holding period.",
+        "Do not rank today's constituents in historical periods unless point-in-time membership is reconstructed."
+      ]
+    },
+    {
+      "id": "trend_following_long_history",
+      "name": "Long-history trend-following reference",
+      "reference_type": "institutional_historical_research",
+      "authors": ["Brian K. Hurst", "Yao Hua Ooi", "Lasse H. Pedersen"],
+      "organization": "AQR Capital Management",
+      "published_at": "2017-10-31",
+      "source_url": "https://www.aqr.com/insights/research/journal-article/a-century-of-evidence-on-trend-following-investing",
+      "original_scope": "Historical trend-following analysis across multiple markets and long periods, extending back to the nineteenth century.",
+      "rule_hypothesis": "Use diversified trend-following rules and risk scaling as a reference family; test robustness across market regimes rather than optimize one instrument.",
+      "rocket_trader_adaptation": "Treat as a research design reference. Build separate long-only stock/ETF and crypto-spot variants; no futures, shorts or leverage.",
+      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Historical reconstructed performance is not a guarantee of future returns.",
+        "The source includes markets and instruments not available in the initial Rocket Trader scope.",
+        "Costs, execution and data quality must be re-estimated for each target market."
+      ]
+    },
+    {
+      "id": "buffett_long_horizon_value_quality",
+      "name": "Long-horizon value, business quality and capital stewardship",
+      "reference_type": "public_investor_primary_source_qualitative",
+      "authors": ["Warren E. Buffett", "Charlie Munger"],
+      "organization": "Berkshire Hathaway",
+      "published_at": "1996-06-01",
+      "source_url": "https://www.berkshirehathaway.com/1996ar/manual.html",
+      "original_scope": "Long-term business ownership, intrinsic value, capital allocation and shareholder stewardship; not an intraday trading system.",
+      "rule_hypothesis": "Use business quality, durable economics, valuation discipline and long-term capital allocation as a separate slow-horizon reference.",
+      "rocket_trader_adaptation": "Do not use this qualitative reference as an intraday signal. It can inform a distinct long-horizon ETF/equity research sleeve only after reliable point-in-time fundamental data is available.",
+      "markets_to_test": ["us_equities_etfs"],
+      "quantitative_reference": false,
+      "status": "QUALITATIVE_REFERENCE_ONLY",
+      "limitations": [
+        "This is not a fully specified algorithmic rule set.",
+        "Berkshire's historical results are not an achievable benchmark for a small automated account.",
+        "Do not infer current positions from delayed public disclosures as if they were real-time orders."
+      ]
+    },
+    {
+      "id": "jesse_livermore_trend_principle",
+      "name": "Jesse Livermore — trend and loss discipline",
+      "reference_type": "historical_practitioner_qualitative",
+      "authors": ["Jesse Livermore"],
+      "organization": "Historical practitioner reference, summarized in AQR research",
+      "published_at": "2017-10-31",
+      "source_url": "https://www.aqr.com/insights/research/journal-article/a-century-of-evidence-on-trend-following-investing",
+      "original_scope": "Qualitative emphasis on assessing the broad market trend, cutting losses and letting profitable trends continue.",
+      "rule_hypothesis": "Test explicit trend filters, predefined exits and risk limits as separate hypotheses.",
+      "rocket_trader_adaptation": "Use only to formulate testable rules. Do not treat quotations, anecdotes or claimed historical returns as statistical evidence.",
+      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "quantitative_reference": false,
+      "status": "QUALITATIVE_REFERENCE_ONLY",
+      "limitations": [
+        "No verified machine-readable trade ledger is supplied by this source.",
+        "Anecdotal success cannot populate BenchmarkEvent records.",
+        "Only independently tested quantitative rules may affect strategy selection."
+      ]
+    },
+    {
+      "id": "buy_and_hold_market_baseline",
+      "name": "Buy-and-hold benchmark",
+      "reference_type": "market_baseline",
+      "authors": [],
+      "organization": "Broad-market index / underlying asset",
+      "published_at": null,
+      "source_url": "https://www.spglobal.com/spdji/en/indices/equity/sp-500/",
+      "original_scope": "Passive holding-period return of the same asset or broad-market proxy.",
+      "rule_hypothesis": "Measure whether active strategies add net value over holding the same asset through the same dates.",
+      "rocket_trader_adaptation": "Use as a mandatory benchmark for SPY/QQQ and as an asset-specific buy-and-hold comparator for crypto spot.",
+      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "quantitative_reference": true,
+      "status": "MANDATORY_BASELINE",
+      "limitations": [
+        "Use identical dates and include dividends/corporate actions where applicable.",
+        "A risk-matched cash or volatility-matched baseline is also required when exposures differ."
+      ]
+    }
+  ]
+}
