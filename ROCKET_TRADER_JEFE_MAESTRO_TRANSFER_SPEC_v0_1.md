@@ -85,6 +85,8 @@ The correction branch moves `novelty_score` to the class level, adds a horizon-s
 
 The current `NewsEngine` is a keyword-count heuristic, not a real news ingestion or NLP system. It has no source lineage, publication/first-seen timestamps, point-in-time archive, deduplication or corroboration. It must remain a placeholder and must not drive trading decisions until a proper news pipeline is built.
 
+The current classifier-only `WalkForwardResearch` output is not an executable trading backtest: it does not model non-overlapping positions, capital allocation, spreads, fees, slippage or partial fills. Its `passed` flag is therefore hard-disabled to `False`; the output remains diagnostic research only.
+
 These fixes require passing CI and further review before merge.
 
 ## Non-negotiable safety
