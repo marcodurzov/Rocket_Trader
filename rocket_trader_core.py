@@ -15,9 +15,9 @@ REGLAS:
 - PAPER por defecto
 - LIVE requiere habilitación explícita
 - Antes del primer hito de 100,000 MXN:
-    70% reinversión
-    20% personal
-    10% reserva
+    100% reinversión de utilidades netas realizadas
+    0% retiros personales
+    0% reserva separada (la liquidez no invertida sigue dentro del capital operativo)
 - Después de alcanzar 100,000 MXN una vez:
     50% reinversión
     40% personal
@@ -183,9 +183,11 @@ class RiskConfig:
 class ProfitDistributionConfig:
     threshold_mxn: float = 100000.0
 
-    below_threshold_reserve_pct: float = 0.10
-    below_threshold_reinvestment_pct: float = 0.70
-    below_threshold_personal_pct: float = 0.20
+    # Fase de capitalización: cada peso de utilidad neta realizada permanece
+    # dentro del capital operativo hasta alcanzar por primera vez el hito.
+    below_threshold_reserve_pct: float = 0.00
+    below_threshold_reinvestment_pct: float = 1.00
+    below_threshold_personal_pct: float = 0.00
 
     at_or_above_threshold_reserve_pct: float = 0.10
     at_or_above_threshold_reinvestment_pct: float = 0.50
@@ -258,7 +260,7 @@ class ProfitAllocator:
     Regla automática:
 
     antes del primer hito de 100,000 MXN:
-        70% reinversión / 20% personal / 10% reserva
+        100% reinversión / 0% personal / 0% reserva separada
 
     después de alcanzar el hito una vez:
         50% reinversión / 40% personal / 10% reserva
@@ -361,7 +363,7 @@ class ProfitAllocator:
         payouts_suspended = False
         suspension_reason: Optional[str] = None
 
-        # operating_capital is the MXN operating balance after realized profit
+        # operating_capital is the MXN operating balance after realized net profit
         # is credited but before this period's reserve/personal transfers.
         # Once the milestone is reached, never let a payout take the operating
         # balance below the protected floor. The target 50/10/40 rule remains
