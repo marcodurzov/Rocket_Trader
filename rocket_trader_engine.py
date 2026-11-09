@@ -520,12 +520,14 @@ class WalkForwardResearch:
         strategy_return = float((1 + strat_returns.fillna(0)).prod() - 1)
         buy_hold_return = float((1 + raw.fillna(0)).prod() - 1)
         max_dd = self._max_drawdown(strat_returns)
-        passed = bool(
-            len(X_test) >= 50
-            and (auc is None or auc >= 0.52)
-            and strategy_return > -0.10
+        # This classifier-only evaluation does not simulate executable positions,
+        # non-overlapping capital, bid/ask spread, fees, slippage or partial fills.
+        # Therefore it must never approve a strategy for Paper based on these metrics.
+        passed = False
+        reason = (
+            "RESEARCH_ONLY: falta un simulador de ejecución con posiciones no "
+            "solapadas, costos, spread, slippage y fills realistas"
         )
-        reason = "OOS research dentro de límites mínimos" if passed else "OOS insuficiente o desempeño fuera de límites"
 
         return BacktestResult(
             rows=len(X),
@@ -693,6 +695,8 @@ def self_test() -> Dict[str, Any]:
     assert len(X_test) == len(X) - int(len(X) * (1.0 - config.validation_fraction))
 
     research = WalkForwardResearch(config).evaluate(features)
+    assert research.passed is False
+    assert research.reason.startswith("RESEARCH_ONLY")
     engine = SignalEngine(config)
     training = engine.train(raw)
     signal = engine.generate_signal(raw, "DEMO")
