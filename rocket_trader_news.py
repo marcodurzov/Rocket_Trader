@@ -15,7 +15,7 @@ from contextlib import contextmanager
 import json
 import os
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
@@ -352,7 +352,7 @@ class SQLiteNewsStore:
         }
 
     def get_article(self, source: str, article_id: int) -> Optional[Dict[str, Any]]:
-        with self._connect() as db:
+        with self._connection() as db:
             row = db.execute(
                 "SELECT * FROM news_articles WHERE source = ? AND article_id = ?",
                 (source.strip().lower(), int(article_id)),
@@ -360,7 +360,7 @@ class SQLiteNewsStore:
         return dict(row) if row else None
 
     def count_versions(self, source: str, article_id: int) -> int:
-        with self._connect() as db:
+        with self._connection() as db:
             row = db.execute(
                 """
                 SELECT COUNT(*) AS n FROM news_article_versions
