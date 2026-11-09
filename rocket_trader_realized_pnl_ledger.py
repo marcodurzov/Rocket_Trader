@@ -79,6 +79,7 @@ class LedgerSnapshot:
     withdrawals_mxn: Decimal
     realized_net_pnl_mxn: Decimal
     operating_capital_mxn: Decimal
+    earned_growth_capital_mxn: Decimal
     open_positions: Dict[str, Dict[str, str]]
     milestone_reached: bool
     milestone_reached_at: Optional[str]
@@ -455,6 +456,9 @@ class RealizedPnLLedger:
             withdrawals_mxn=_money(state["withdrawals"]),
             realized_net_pnl_mxn=_money(state["realized_mxn"]),
             operating_capital_mxn=_money(state["operating_capital"]),
+            earned_growth_capital_mxn=_money(
+                state["initial"] + state["realized_mxn"]
+            ),
             open_positions=state["open_positions"],
             milestone_reached=state["milestone_reached"],
             milestone_reached_at=state["milestone_reached_at"],
@@ -512,6 +516,9 @@ class RealizedPnLLedger:
         close = {
             **summary,
             "operating_capital_mxn": str(capital),
+            "earned_growth_capital_mxn": str(
+                _money(state["initial"] + state["realized_mxn"])
+            ),
             "milestone_mxn": str(self.milestone_mxn),
             "milestone_reached": bool(threshold_reached),
             "policy": policy,
