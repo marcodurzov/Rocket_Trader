@@ -107,6 +107,16 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - It is the exact value that must be passed into Core's `monthly_distribution_plan`; operating capital remains a separate input for the protected-floor calculation.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699294872
 
+### 19. First five-year crypto report with coverage gate
+- Full read-only run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699725144
+- Artifact ID: `13711705647` (`rocket-trader-crypto-multiyear-research-v0-1`).
+- BTC/USD and ETH/USD: 1,825/1,825 daily bars each, 100% calendar coverage, maximum gap 1 day.
+- SOL/USD: 1,407/1,825 bars, 77.10% coverage, 418 missing calendar days and a 417-day maximum gap. It is excluded from cross-sectional evidence and its single-asset metrics are diagnostic only.
+- BTC 180-day time-series momentum produced +1.89% on the final holdout, but its moving-block bootstrap 5th percentile was -21.79%; it does not pass robustness.
+- ETH strategies were negative on the final holdout. Cross-sectional top-1 momentum on the eligible BTC/ETH universe returned -29.85%, versus -34.48% for equal-weight buy-and-hold; bootstrap 5th percentile was -50.20%.
+- No strategy passed. `data_quality_pass=false` because SOL history is incomplete. `candidate_promotion_allowed=false`, `paper_approval=false`, `orders_enabled=false`.
+- Conclusion: the pipeline correctly identifies that relative outperformance during a falling market is not a positive-return strategy. More independent strategy research and reliable datasets are required before Paper.
+
 ### 18. Crypto historical data quality gate
 - PR #29 adds calendar coverage, missing-day and maximum-gap checks to daily crypto research.
 - A symbol needs at least 95% calendar coverage and no gap longer than 3 days to qualify as strategy evidence.
