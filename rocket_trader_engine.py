@@ -587,7 +587,13 @@ class SignalEngine:
         # validated return model exists, never mislabel past momentum as expected return.
         expected_return = 0.0
         novelty = self.model.novelty_score(X)
-        evidence = "PRECEDENTED" if novelty <= self.config.novelty_distance_threshold else "NOVEL"
+        # Similarity to prior feature vectors is not proof of a validated edge.
+        # PRECEDENTED is reserved for strategies with independent benchmark evidence.
+        evidence = (
+            "NOVEL"
+            if novelty > self.config.novelty_distance_threshold
+            else "INSUFFICIENT"
+        )
         confidence = float(abs(p - 0.5) * 2)
         score = float(p * confidence)
 
