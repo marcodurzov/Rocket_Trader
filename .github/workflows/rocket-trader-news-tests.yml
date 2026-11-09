@@ -37,3 +37,9 @@ jobs:
 
       - name: Run point-in-time and deduplication tests
         run: python rocket_trader_news_test.py
+
+      - name: Verify read-only Alpaca News API access
+        run: python rocket_trader_news_test.py --alpaca-api
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
