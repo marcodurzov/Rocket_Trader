@@ -1,0 +1,52 @@
+name: Rocket Trader - Alpaca SIP Entitlement Probe
+
+on:
+  push:
+    branches:
+      - main
+      - "ops/alpaca-sip-entitlement-check"
+    paths:
+      - "rocket_trader_market_data_entitlement_probe.py"
+      - ".github/workflows/rocket-trader-sip-entitlement-probe.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_market_data_entitlement_probe.py"
+      - ".github/workflows/rocket-trader-sip-entitlement-probe.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: '30 16 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  feed-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-alpaca.txt
+      - name: Offline self-test
+        run: python rocket_trader_market_data_entitlement_probe.py --self-test
+      - name: Read-only IEX and SIP probe
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python rocket_trader_market_data_entitlement_probe.py --output research_artifacts/market_data_entitlements.json
+      - uses: actions/upload-artifact@v4
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        with:
+          name: rocket-trader-market-data-entitlement-probe
+          path: research_artifacts/
+          if-no-files-found: warn
+          retention-days: 30
