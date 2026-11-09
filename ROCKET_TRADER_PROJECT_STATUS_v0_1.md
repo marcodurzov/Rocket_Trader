@@ -27,7 +27,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 ## Work integrated into main
 
 ### 1. Core capital policy
-- Core and Adaptive defaults now use 70/10/20 before the first threshold hit and 50/10/40 after it.
+- Core and Adaptive defaults use 100/0/0 before the first earned-growth milestone and 50/10/40 after it. No reserve or personal distribution is taken before the milestone.
 - Core has a permanent milestone latch and regression tests covering drawdown and process restart when a durable state path is configured.
 - GitHub Actions: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42683172988
 - Earlier capital policy PR: https://github.com/marcodurzov/Rocket_Trader/pull/1
@@ -147,7 +147,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 6. **Strategy benchmarking:** implement the quantitative references as reproducible baselines on the same dates, data, universe and costs. Do not populate the Core's trader-event repository with fabricated results.
 7. **Point-in-time news intelligence:** add source corroboration, article-age logic, event classification, validated NLP, filing/macro data and timestamp-safe replay. News must remain informational until validated.
 8. **Crypto strategy research:** obtain multi-year crypto bars, run separate walk-forward tests and apply the crypto fee/spread/slippage model. No crypto strategy has passed.
-9. **Realized-P&L ledger and payouts:** monthly net-profit accounting, protected operating capital, 70/10/20 then 50/10/40, reserve tracking and a manual payout email/report if automatic withdrawal is unsupported.
+9. **Realized-P&L ledger and payouts:** monthly net-profit accounting, protected operating capital, 100/0/0 until the earned-growth milestone then 50/10/40, reserve tracking and a manual payout email/report if automatic withdrawal is unsupported.
 10. **Paper acceptance gate:** require a sustained period of Paper operation, reliable order reconciliation, positive net performance after realistic costs, bounded drawdown, and reproducible results before any separate live-trading authorization.
 
 ## Safety boundary
