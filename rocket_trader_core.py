@@ -1459,8 +1459,8 @@ class AlpacaExecutionAdapter:
 
     PAPER es el default.
 
-    LIVE solamente si:
-        ALPACA_LIVE_ENABLED=true
+    LIVE está bloqueado de forma absoluta en esta fase.
+    No se permite habilitarlo mediante variables de entorno.
 
     Rocket Trader no envía SELL/SHORT.
     """
@@ -1476,18 +1476,11 @@ class AlpacaExecutionAdapter:
         self.api_secret = api_secret
         self.mode = mode
 
-        if (
-            self.mode == ExecutionMode.LIVE
-            and os.getenv(
-                "ALPACA_LIVE_ENABLED",
-                "false",
-            ).lower()
-            != "true"
-        ):
+        if self.mode == ExecutionMode.LIVE:
             raise RuntimeError(
-                "LIVE está bloqueado. "
-                "ALPACA_LIVE_ENABLED=true "
-                "es requerido explícitamente."
+                "SAFETY STOP: LIVE está deshabilitado en esta fase. "
+                "Rocket Trader solo permite Paper Trading hasta que exista "
+                "una autorización independiente y un cambio revisado."
             )
 
         try:
