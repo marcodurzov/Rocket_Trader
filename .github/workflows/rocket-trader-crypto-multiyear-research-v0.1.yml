@@ -1,0 +1,89 @@
+name: Rocket Trader - Crypto Multi-year Benchmark Research v0.1
+
+on:
+  push:
+    branches:
+      - main
+      - "research/crypto-multiyear-benchmarks-v0-1"
+    paths:
+      - "rocket_trader_crypto_multiyear_research_v0_1.py"
+      - ".github/workflows/rocket-trader-crypto-multiyear-research-v0.1.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_crypto_multiyear_research_v0_1.py"
+      - ".github/workflows/rocket-trader-crypto-multiyear-research-v0.1.yml"
+  workflow_dispatch:
+    inputs:
+      years:
+        description: Calendar years of daily crypto data (minimum 3)
+        required: false
+        default: '5'
+        type: string
+      symbols:
+        description: Space-separated USD crypto pairs
+        required: false
+        default: 'BTC/USD ETH/USD SOL/USD'
+        type: string
+  schedule:
+    - cron: '0 16 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocket-trader-crypto-multiyear-research
+  cancel-in-progress: false
+
+jobs:
+  crypto-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-alpaca.txt
+      - name: Offline self-test
+        run: python rocket_trader_crypto_multiyear_research_v0_1.py --self-test
+      - name: Run multi-year crypto research
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        env:
+          YEARS_INPUT: ${{ inputs.years || '5' }}
+          SYMBOLS_INPUT: ${{ inputs.symbols || 'BTC/USD ETH/USD SOL/USD' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r -a symbols <<< "$SYMBOLS_INPUT"
+          python rocket_trader_crypto_multiyear_research_v0_1.py \
+            --symbols "${symbols[@]}" \
+            --years "$YEARS_INPUT" \
+            --output research_artifacts/crypto_multiyear_research_v0_1.json
+      - name: Verify research-only report
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('research_artifacts/crypto_multiyear_research_v0_1.json').read_text())
+          assert data.get('orders_enabled') is False
+          assert data.get('orders_submitted') == 0
+          assert data.get('candidate_promotion_allowed') is False
+          assert data.get('paper_approval') is False
+          assert data.get('ok') is True
+          print('Research-only report verified:', data['symbols_processed'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        with:
+          name: rocket-trader-crypto-multiyear-research-v0-1
+          path: research_artifacts/
+          if-no-files-found: warn
+          retention-days: 30
