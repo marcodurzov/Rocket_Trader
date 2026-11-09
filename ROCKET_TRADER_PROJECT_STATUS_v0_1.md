@@ -273,3 +273,11 @@ PR #33 adds the returned date range, approximate weekday coverage, missing weekd
 - The current Core does not implement a persistent peak-to-trough drawdown lock. The trailing-stop percentage is configured but there is no complete durable trailing-stop/partial-fill position manager. Daily loss state and kill-switch recovery are not yet connected to a persistent runtime.
 - `BenchmarkEngine` defaults to an empty in-memory repository. The six-entry reference registry contains academic/institutional strategy hypotheses and qualitative investor references; it is not a live database of successful traders or their verified trades. No trader events may be fabricated. Building a source-backed, point-in-time trader-intelligence feed remains open work.
 - The novel-signal path is intentional for genuinely new market regimes, but it must remain smaller-risk and quality-gated; novelty does not waive minimum signal quality or the broader Paper acceptance process.
+
+
+### Ten-year equity data-source diagnosis — 2026-11-09
+The post-PR #33 diagnostic run established the actual IEX coverage boundary:
+- DIA, EEM, EFA, GLD, IWM, QQQ and TLT returned 1,581 bars from 2020-07-27 through 2026-11-09, with approximately 96.34% weekday coverage. They do not contain ten years of IEX history.
+- SPY returned 1,582 bars, but its first bar was an isolated 2018-11-01 observation followed by a 634-calendar-day gap; overall approximate weekday coverage was 75.59%.
+- The IEX source limitation is consistent with Alpaca support material stating IEX historical bars begin in 2020, while SIP history reaches earlier. This account's SIP probe returned NOT_ENTITLED (403), so the ten-year workflow must not keep treating IEX as a ten-year source.
+- Do not lower the 10-year evidence threshold or use IEX data as if it were consolidated market history. PR #36 adds a separate Yahoo Finance research-only provider using adjusted daily OHLC, corporate-action metadata and explicit data-quality gates. Yahoo data is not an execution feed and must not be silently spliced with Alpaca IEX. The strategy report remains research-only and must pass data quality before its metrics are considered.

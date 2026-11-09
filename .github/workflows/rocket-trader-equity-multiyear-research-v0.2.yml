@@ -8,6 +8,7 @@ on:
     paths:
       - "rocket_trader_equity_multiyear_research_v0_2.py"
       - "rocket_trader_equity_multiyear_research_v0_2_test.py"
+      - "requirements-yahoo.txt"
       - ".github/workflows/rocket-trader-equity-multiyear-research-v0.2.yml"
   pull_request:
     branches:
@@ -18,6 +19,14 @@ on:
       - ".github/workflows/rocket-trader-equity-multiyear-research-v0.2.yml"
   workflow_dispatch:
     inputs:
+      source:
+        description: Historical research source; Yahoo is separate from the Alpaca execution venue
+        required: false
+        default: 'YAHOO'
+        type: choice
+        options:
+          - YAHOO
+          - ALPACA
       years:
         description: Calendar years of adjusted daily ETF data (minimum 3)
         required: false
@@ -56,6 +65,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
+          pip install -r requirements-yahoo.txt
       - name: Offline self-test
         run: python rocket_trader_equity_multiyear_research_v0_2.py --self-test
       - name: Offline regression tests
@@ -67,8 +77,9 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           YEARS_INPUT: ${{ inputs.years || '10' }}
           FEED_INPUT: ${{ inputs.feed || 'IEX' }}
+          SOURCE_INPUT: ${{ inputs.source || 'YAHOO' }}
         run: |
-          python rocket_trader_equity_multiyear_research_v0_2.py --years "$YEARS_INPUT" --feed "$FEED_INPUT" --output research_artifacts/equity_multiyear_research_v0_2.json
+          python rocket_trader_equity_multiyear_research_v0_2.py --years "$YEARS_INPUT" --feed "$FEED_INPUT" --source "$SOURCE_INPUT" --output research_artifacts/equity_multiyear_research_v0_2.json
       - name: Verify research-only report
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         run: |
@@ -77,6 +88,7 @@ jobs:
           from pathlib import Path
           d=json.loads(Path('research_artifacts/equity_multiyear_research_v0_2.json').read_text())
           assert d['ok'] is True
+          assert d['data_quality_pass'] is True
           assert d['orders_enabled'] is False and d['orders_submitted'] == 0
           assert d['candidate_promotion_allowed'] is False and d['paper_approval'] is False
           print('Data quality pass:', d.get('data_quality_pass'))
