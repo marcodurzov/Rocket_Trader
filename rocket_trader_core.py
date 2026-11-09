@@ -2035,6 +2035,43 @@ def self_test() -> Dict[str, Any]:
     assert larger_budget_decision.quantity * snapshot.price >= 1.0
     assert larger_budget_decision.quantity * snapshot.price <= (6000.0 / 18.0) * 0.01 * larger_budget_decision.adaptive_multiplier * 0.80 + 1e-9
 
+    # Missing FX must fail closed even if the broker reports abundant Paper cash.
+    missing_fx_account = AccountState(
+        equity=1000.0,
+        cash=1000.0,
+        strategy_capital_mxn=6000.0,
+    )
+    missing_fx_decision = core.evaluate_and_maybe_execute(
+        account=missing_fx_account,
+        snapshot=snapshot,
+        signal=signal,
+        execute=False,
+    )
+    assert missing_fx_decision.status == DecisionStatus.REJECTED
+    assert missing_fx_decision.quantity == 0.0
+
+    # The legacy Core Alpaca adapter must also block fractional equity brackets.
+    fractional_adapter = object.__new__(AlpacaExecutionAdapter)
+    fractional_adapter.mode = ExecutionMode.PAPER
+    fractional_order_blocked = False
+    try:
+        fractional_adapter.submit(
+            ExecutionOrder(
+                client_order_id="fractional_core_guard_test",
+                symbol="SPY",
+                side=Side.BUY,
+                quantity=0.5,
+                order_type="MARKET_BRACKET",
+                entry_price=100.0,
+                stop_price=98.0,
+                take_profit_price=104.0,
+                mode=ExecutionMode.PAPER,
+            )
+        )
+    except RuntimeError as exc:
+        fractional_order_blocked = "Fractional MARKET_BRACKET" in str(exc)
+    assert fractional_order_blocked is True
+
     # ------------------------------------------------
     # CAPITAL POLICY < 100K
     # ------------------------------------------------
