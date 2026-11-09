@@ -158,6 +158,29 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         )
         self.assertEqual(self.ledger.snapshot().realized_net_pnl_mxn, Decimal("180.00"))
 
+    def test_fill_rejects_stale_or_future_fx(self):
+        stale_fx = LedgerFX(
+            Decimal("18"), datetime(2026, 11, 8, 15, 59, tzinfo=timezone.utc),
+            "STALE_TEST_FIXTURE",
+        )
+        with self.assertRaisesRegex(LedgerError, "stale"):
+            self.ledger.record_fill(
+                fill_id="stale-fx-buy", symbol="BTC/USD", side="BUY",
+                quantity="0.01", price_usd="10000", fee_usd="0",
+                fx=stale_fx, occurred_at=NOW, asset_class="CRYPTO_SPOT",
+            )
+        future_fx = LedgerFX(
+            Decimal("18"), datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc),
+            "FUTURE_TEST_FIXTURE",
+        )
+        with self.assertRaisesRegex(LedgerError, "after the fill"):
+            self.ledger.record_fill(
+                fill_id="future-fx-buy", symbol="BTC/USD", side="BUY",
+                quantity="0.01", price_usd="10000", fee_usd="0",
+                fx=future_fx, occurred_at=NOW, asset_class="CRYPTO_SPOT",
+            )
+        self.assertEqual(self.ledger.snapshot().event_count, 1)
+
     def test_fx_timestamp_must_be_aware_and_source_present(self):
         with self.assertRaises(LedgerError):
             LedgerFX(Decimal("18"), datetime(2026, 11, 9), "fixture")
