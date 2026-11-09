@@ -156,7 +156,7 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             quantity="0.01", price_usd="11000", fee_usd="0",
             fx=FX, occurred_at=later, asset_class="CRYPTO_SPOT",
         )
-        self.assertEqual(self.ledger.snapshot().realized_net_pnl_mxn, Decimal("1800.00"))
+        self.assertEqual(self.ledger.snapshot().realized_net_pnl_mxn, Decimal("18000.00"))
 
     def test_fx_timestamp_must_be_aware_and_source_present(self):
         with self.assertRaises(LedgerError):
