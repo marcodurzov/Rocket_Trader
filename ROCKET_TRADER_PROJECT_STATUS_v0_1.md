@@ -107,6 +107,13 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - It is the exact value that must be passed into Core's `monthly_distribution_plan`; operating capital remains a separate input for the protected-floor calculation.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699294872
 
+### 23. SIP probe result and cost decision
+- Read-only run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42700787964
+- IEX SPY daily bars: `AVAILABLE` (5 bars returned).
+- SIP SPY daily bars: `NOT_ENTITLED` (HTTP 403).
+- Current Alpaca individual Trading API documentation lists Basic as free/IEX and Algo Trader Plus at USD 99/month for full US-exchange coverage. Given the initial strategy capital of MXN 1,000, paying for SIP now is economically unjustified. Continue discovery with IEX, keep the limitation explicit, and revisit SIP only when the strategy/capital scale supports the recurring data cost. <https://docs.alpaca.markets/us/docs/about-market-data-api>
+- Do not confuse IEX-only historical research with consolidated market coverage.
+
 ### 22. SIP entitlement probe
 - PR #31 adds a read-only SPY daily-bar test against both IEX and SIP using the connected Alpaca market-data credentials.
 - It reports availability/entitlement status without exposing credentials or accessing account balances.
