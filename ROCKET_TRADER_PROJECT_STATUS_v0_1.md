@@ -96,6 +96,15 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - Test: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42688090094
 - Integrated PR: https://github.com/marcodurzov/Rocket_Trader/pull/8
 
+### 10. Separate crypto Paper execution adapter
+- PR #20 adds `AlpacaCryptoPaperExecutionAdapter`, isolated from equity bracket orders.
+- Initial supported order scope is deliberately narrow: simple crypto spot MARKET + IOC only. Alpaca supports crypto market, limit and stop-limit orders with GTC/IOC, but Rocket Trader starts with IOC market orders to avoid unattended resting orders.
+- BUY entries are USD-notional based; SELL exits require a broker-held crypto quantity and cannot exceed the quantity currently held.
+- Requires Paper account ACTIVE, USD account currency, crypto_status ACTIVE, and tradable crypto asset.
+- Adds SQLite idempotency, broker lookup by client_order_id, ambiguous-outcome fail-closed handling, order reconciliation and read-only crypto position reconciliation.
+- Offline CI passed: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42695001753
+- **Not yet connected to Core/runtime.** No automated stop-loss/target lifecycle, durable portfolio position ledger, or order submission in production runtime. No Paper or LIVE orders were submitted by these tests.
+
 ### 9. MXN/USD budget wired into Core
 - PR #19 integrates the Decimal currency budget into Core position sizing.
 - Broker equity, cash and position notionals are explicitly USD; strategy capital is separately MXN.
@@ -111,7 +120,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 1. **Account and data permissions:** the read-only Alpaca Paper check confirmed account status ACTIVE, crypto status ACTIVE, USD account currency, and BTC/USD, ETH/USD and SOL/USD assets reported tradable=true. No crypto order was submitted. SIP stock-data access remains unverified; current stock research uses IEX, whose coverage is not equivalent to SIP.
 2. **Persistent runtime:** implement a long-running service with stock and crypto streams, reconnect logic, market calendars, state recovery and health monitoring. GitHub Actions is not the trading runtime.
 3. **Execution safety — partial implementation completed:** PR #14 added AlpacaPaperExecutionAdapter, a SQLite-backed idempotency journal, broker lookup by client_order_id, fail-closed handling for ambiguous submission outcomes, and read-only Paper account verification. The Core now rejects LIVE mode unconditionally, including when ALPACA_LIVE_ENABLED=true. PR #16 and PR #19 block fractional equity bracket orders in both the standalone Paper adapter and legacy Core Alpaca adapter because published fractional docs do not explicitly confirm bracket compatibility. The adapter is not yet connected to a persistent runtime or approved strategy and does not yet provide complete fill/position reconciliation or partial-fill exit management.
-4. **Separate execution adapters:** equities and crypto have different supported order types and exit mechanics. Crypto spot requires a dedicated position/exit state machine; do not reuse equity bracket assumptions blindly.
+4. **Separate execution adapters — partially complete:** equities and crypto now have isolated Paper order adapters. The crypto adapter currently supports market IOC primitives and owned-quantity SELL checks only. Still required: durable strategy position state, fill-driven entry/exit lifecycle, stop/target triggers, recovery after restart and Core/runtime integration.
 5. **Risk/capital integration — partially complete:** PR #19 connects the timestamped MXN/USD position budget to Core sizing. Still required: persistent realized-P&L ledger, authoritative broker-to-ledger reconciliation, one shared exposure/capital manager across equities and crypto, and durable cross-engine state.
 6. **Strategy benchmarking:** implement the quantitative references as reproducible baselines on the same dates, data, universe and costs. Do not populate the Core's trader-event repository with fabricated results.
 7. **Point-in-time news intelligence:** add source corroboration, article-age logic, event classification, validated NLP, filing/macro data and timestamp-safe replay. News must remain informational until validated.
