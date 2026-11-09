@@ -74,11 +74,18 @@ News and social information must include `published_at`, `first_seen_at`, `retri
 
 ## Current known engineering gates
 
-The existing Rocket Trader Engine had two issues identified during audit:
+The existing Rocket Trader Engine had several issues identified during audit:
 - `novelty_score` was nested below a return inside `predict_proba`, making it inaccessible as a model method;
-- the validation split did not purge the forward-label horizon.
+- the validation split did not purge the forward-label horizon;
+- OOS returns were selected by tail length rather than preserved source-row positions;
+- historical `ret_5` momentum was being exposed as if it were a forward expected-return forecast;
+- feature-space similarity alone was being labelled `PRECEDENTED`, although similarity is not proof of a validated trading edge.
 
-The correction branch moves `novelty_score` to the class level, adds a horizon-sized purge, and preserves original row positions so OOS returns can be aligned with the exact prediction timestamps. These fixes require passing CI and further review before merge.
+The correction branch moves `novelty_score` to the class level, adds a horizon-sized purge, preserves original row positions for exact OOS alignment, marks expected return as `NOT_ESTIMATED` until a separate return model is validated, and reserves `PRECEDENTED` for independently validated strategy evidence.
+
+The current `NewsEngine` is a keyword-count heuristic, not a real news ingestion or NLP system. It has no source lineage, publication/first-seen timestamps, point-in-time archive, deduplication or corroboration. It must remain a placeholder and must not drive trading decisions until a proper news pipeline is built.
+
+These fixes require passing CI and further review before merge.
 
 ## Non-negotiable safety
 
