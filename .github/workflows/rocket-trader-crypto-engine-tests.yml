@@ -1,0 +1,42 @@
+name: Rocket Trader - Crypto Research Engine Tests
+
+on:
+  push:
+    branches:
+      - "feat/crypto-research-engine-and-cost-model"
+    paths:
+      - "rocket_trader_crypto_market_data.py"
+      - "rocket_trader_crypto_engine.py"
+      - "rocket_trader_crypto_engine_test.py"
+      - "rocket_trader_engine.py"
+      - "requirements-alpaca.txt"
+      - ".github/workflows/rocket-trader-crypto-engine-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crypto-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Alpaca SDK and research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-alpaca.txt
+
+      - name: Compile crypto research modules
+        run: |
+          python -m py_compile rocket_trader_crypto_market_data.py rocket_trader_crypto_engine.py rocket_trader_crypto_engine_test.py rocket_trader_engine.py
+
+      - name: Run crypto cost and research-engine tests
+        run: python rocket_trader_crypto_engine_test.py
