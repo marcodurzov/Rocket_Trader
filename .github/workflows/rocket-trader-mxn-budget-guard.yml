@@ -1,0 +1,32 @@
+name: Rocket Trader - MXN Currency Budget Guard
+
+on:
+  push:
+    branches:
+      - "feat/mxn-capital-budget-fx-guard"
+    paths:
+      - "rocket_trader_currency.py"
+      - "rocket_trader_currency_test.py"
+      - ".github/workflows/rocket-trader-mxn-budget-guard.yml"
+  pull_request:
+    paths:
+      - "rocket_trader_currency.py"
+      - "rocket_trader_currency_test.py"
+      - ".github/workflows/rocket-trader-mxn-budget-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  mxn-budget-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile rocket_trader_currency.py rocket_trader_currency_test.py
+      - name: Offline currency and sizing tests (no broker connection and no orders)
+        run: python rocket_trader_currency_test.py
