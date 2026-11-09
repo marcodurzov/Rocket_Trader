@@ -420,10 +420,10 @@ class AlpacaNewsCollector:
         self,
         store: SQLiteNewsStore,
         symbols: Sequence[str],
+        observation_mode: str,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
         limit: int = 50,
-        observation_mode: str,
     ) -> Dict[str, int]:
         articles = self.fetch(
             symbols=symbols,
