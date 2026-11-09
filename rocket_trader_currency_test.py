@@ -62,7 +62,7 @@ class CurrencyBudgetTests(unittest.TestCase):
         budget = calculate_position_budget(
             capital_mxn="1000",
             available_cash_usd="100",
-            current_exposure_usd="20",
+            current_exposure_usd="30",
             fx_quote=self.fx,
             max_position_pct="0.50",
             max_total_exposure_pct="0.50",
