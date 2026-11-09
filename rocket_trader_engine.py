@@ -287,6 +287,30 @@ class TemporalDataset:
             )
         return X.reset_index(drop=True), y.reset_index(drop=True)
 
+    def purged_split(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        test_fraction: float = 0.20,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+        """Chronological split with an embargo equal to the forward-label horizon."""
+        if not 0 < test_fraction < 0.5:
+            raise ValueError("test_fraction debe estar entre 0 y 0.5")
+        if len(X) != len(y):
+            raise ValueError("X e y deben tener la misma longitud")
+        split_at = int(len(X) * (1.0 - test_fraction))
+        train_end = split_at - self.config.horizon_bars
+        if train_end < self.config.min_training_rows:
+            raise ValueError("Datos insuficientes después del purge temporal")
+        if len(X) - split_at < 1:
+            raise ValueError("No hay bloque de prueba")
+        return (
+            X.iloc[:train_end].copy(),
+            X.iloc[split_at:].copy(),
+            y.iloc[:train_end].copy(),
+            y.iloc[split_at:].copy(),
+        )
+
 
 class EnsembleModel:
     def __init__(self, config: EngineConfig) -> None:
@@ -433,17 +457,17 @@ class EnsembleModel:
             combined = self.calibrator.predict_proba(logits)[:, 1]
         return np.asarray(combined, dtype=float), votes
 
-        def novelty_score(self, X: pd.DataFrame) -> float:
-            if self.reference_matrix is None or len(self.reference_matrix) == 0:
-                return float("inf")
-            X_s = self.scaler.transform(self.imputer.transform(X))
-            # Distancia normalizada al centro de los datos históricos. No se pretende
-            # que esto sea una probabilidad; es una señal de novedad para control de riesgo.
-            center = self.reference_matrix.mean(axis=0)
-            scale = self.reference_matrix.std(axis=0)
-            scale[scale < 1e-8] = 1.0
-            z = np.abs((X_s[0] - center) / scale)
-            return float(np.mean(z))
+    def novelty_score(self, X: pd.DataFrame) -> float:
+        """Return a normalized distance from the fitted training feature distribution."""
+        if not self.fitted or self.reference_matrix is None or len(self.reference_matrix) == 0:
+            return float("inf")
+        X_s = self.scaler.transform(self.imputer.transform(X))
+        center = self.reference_matrix.mean(axis=0)
+        scale = self.reference_matrix.std(axis=0)
+        scale[scale < 1e-8] = 1.0
+        z = np.abs((X_s[0] - center) / scale)
+        return float(np.mean(z))
+
 
 class WalkForwardResearch:
     def __init__(self, config: EngineConfig) -> None:
@@ -459,9 +483,9 @@ class WalkForwardResearch:
     def evaluate(self, features: pd.DataFrame) -> BacktestResult:
         dataset = TemporalDataset(self.config)
         X, y = dataset.build(features)
-        split = int(len(X) * (1 - self.config.validation_fraction))
-        X_train, X_test = X.iloc[:split], X.iloc[split:]
-        y_train, y_test = y.iloc[:split], y.iloc[split:]
+        X_train, X_test, y_train, y_test = dataset.purged_split(
+            X, y, test_fraction=self.config.validation_fraction
+        )
         model = EnsembleModel(self.config)
         model.fit(X_train, y_train)
         probabilities, _ = model.predict_proba(X_test)
