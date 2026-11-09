@@ -107,7 +107,7 @@ class EquityResearchV02Tests(unittest.TestCase):
         self.assertEqual(ticker.calls[0]["interval"], "1d")
         self.assertIs(ticker.calls[0]["auto_adjust"], True)
         self.assertIs(ticker.calls[0]["actions"], True)
-        self.assertIs(ticker.calls[0]["repair"], True)
+        self.assertIs(ticker.calls[0]["repair"], False)
         self.assertEqual(ticker.calls[0]["end"], end.date().isoformat())
 
     def test_yahoo_short_history_fails_closed(self):
