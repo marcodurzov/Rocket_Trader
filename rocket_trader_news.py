@@ -42,6 +42,14 @@ def _iso(value: Any) -> Optional[str]:
     return str(value)
 
 
+def _utc_datetime(value: str) -> datetime:
+    normalized = value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 @dataclass(frozen=True)
 class NewsArticleRecord:
     article_id: int
@@ -233,45 +241,82 @@ class SQLiteNewsStore:
                 if cursor.rowcount == 1:
                     inserted += 1
 
-                db.execute(
+                existing = db.execute(
                     """
-                    UPDATE news_articles
-                    SET author = ?,
-                        provider_updated_at = ?,
-                        live_first_seen_at = CASE
-                            WHEN ? = 'LIVE' THEN COALESCE(live_first_seen_at, ?)
-                            ELSE live_first_seen_at
-                        END,
-                        last_seen_at = ?,
-                        headline = ?,
-                        summary = ?,
-                        content = ?,
-                        url = ?,
-                        symbols_json = ?,
-                        latest_content_hash = ?,
-                        point_in_time_eligible = CASE
-                            WHEN ? = 'LIVE' THEN 1
-                            ELSE point_in_time_eligible
-                        END
+                    SELECT provider_updated_at FROM news_articles
                     WHERE source = ? AND article_id = ?
                     """,
-                    (
-                        article.author,
-                        article.updated_at,
-                        mode,
-                        observed,
-                        observed,
-                        article.headline,
-                        article.summary,
-                        article.content,
-                        article.url,
-                        json.dumps(article.symbols, ensure_ascii=False),
-                        article.content_hash,
-                        mode,
-                        article.source,
-                        article.article_id,
-                    ),
+                    (article.source, article.article_id),
+                ).fetchone()
+                use_new_revision = (
+                    existing is None
+                    or _utc_datetime(article.updated_at)
+                    >= _utc_datetime(existing["provider_updated_at"])
                 )
+                if use_new_revision:
+                    db.execute(
+                        """
+                        UPDATE news_articles
+                        SET author = ?,
+                            provider_updated_at = ?,
+                            live_first_seen_at = CASE
+                                WHEN ? = 'LIVE' THEN COALESCE(live_first_seen_at, ?)
+                                ELSE live_first_seen_at
+                            END,
+                            last_seen_at = ?,
+                            headline = ?,
+                            summary = ?,
+                            content = ?,
+                            url = ?,
+                            symbols_json = ?,
+                            latest_content_hash = ?,
+                            point_in_time_eligible = CASE
+                                WHEN ? = 'LIVE' THEN 1
+                                ELSE point_in_time_eligible
+                            END
+                        WHERE source = ? AND article_id = ?
+                        """,
+                        (
+                            article.author,
+                            article.updated_at,
+                            mode,
+                            observed,
+                            observed,
+                            article.headline,
+                            article.summary,
+                            article.content,
+                            article.url,
+                            json.dumps(article.symbols, ensure_ascii=False),
+                            article.content_hash,
+                            mode,
+                            article.source,
+                            article.article_id,
+                        ),
+                    )
+                else:
+                    db.execute(
+                        """
+                        UPDATE news_articles
+                        SET live_first_seen_at = CASE
+                                WHEN ? = 'LIVE' THEN COALESCE(live_first_seen_at, ?)
+                                ELSE live_first_seen_at
+                            END,
+                            last_seen_at = ?,
+                            point_in_time_eligible = CASE
+                                WHEN ? = 'LIVE' THEN 1
+                                ELSE point_in_time_eligible
+                            END
+                        WHERE source = ? AND article_id = ?
+                        """,
+                        (
+                            mode,
+                            observed,
+                            observed,
+                            mode,
+                            article.source,
+                            article.article_id,
+                        ),
+                    )
 
                 version_cursor = db.execute(
                     """
