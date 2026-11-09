@@ -33,6 +33,8 @@ SLIPPAGE_BPS_SIDE = 5.0
 BASE_COST_SIDE = (FEE_BPS_SIDE + HALF_SPREAD_BPS_SIDE + SLIPPAGE_BPS_SIDE) / 10000.0
 BOOTSTRAP_REPS = 500
 BOOTSTRAP_BLOCK = 5
+MIN_CALENDAR_COVERAGE = 0.95
+MAX_ALLOWED_GAP_DAYS = 3
 
 
 class CryptoResearchError(RuntimeError):
@@ -147,6 +149,29 @@ def fetch_daily_bars(
     return combined
 
 
+def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
+    dates = pd.to_datetime(frame["timestamp"], utc=True).dt.floor("D").sort_values()
+    if dates.empty:
+        raise CryptoResearchError("Cannot assess an empty daily data frame.")
+    calendar_days = int((dates.iloc[-1] - dates.iloc[0]).days) + 1
+    bars = int(dates.nunique())
+    missing_days = max(0, calendar_days - bars)
+    gaps = dates.diff().dt.days.dropna()
+    max_gap_days = int(gaps.max()) if not gaps.empty else 0
+    coverage = bars / calendar_days if calendar_days else 0.0
+    eligible = coverage >= MIN_CALENDAR_COVERAGE and max_gap_days <= MAX_ALLOWED_GAP_DAYS
+    return {
+        "calendar_days": calendar_days,
+        "daily_bars": bars,
+        "missing_calendar_days": missing_days,
+        "calendar_coverage_pct": coverage,
+        "max_gap_days": max_gap_days,
+        "minimum_coverage_pct": MIN_CALENDAR_COVERAGE,
+        "maximum_allowed_gap_days": MAX_ALLOWED_GAP_DAYS,
+        "eligible_for_strategy_evidence": eligible,
+    }
+
+
 def strategy_positions(frame: pd.DataFrame) -> Dict[str, pd.Series]:
     close, high, low = frame["close"], frame["high"], frame["low"]
     positions: Dict[str, pd.Series] = {
@@ -235,8 +260,14 @@ def evaluate_weights(
     return metrics, net
 
 
-def evaluate_single_asset(symbol: str, frame: pd.DataFrame, cost_multiplier: float = 1.0) -> Dict[str, Any]:
+def evaluate_single_asset(
+    symbol: str,
+    frame: pd.DataFrame,
+    cost_multiplier: float = 1.0,
+    quality: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     frame = frame.reset_index(drop=True)
+    quality = quality or data_quality_metrics(frame)
     n = len(frame)
     train_end, val_end = int(n * 0.60), int(n * 0.80)
     windows = {
@@ -264,6 +295,8 @@ def evaluate_single_asset(symbol: str, frame: pd.DataFrame, cost_multiplier: flo
         "first_timestamp": frame.iloc[0]["timestamp"].isoformat(),
         "last_timestamp": frame.iloc[-1]["timestamp"].isoformat(),
         "cost_per_side_bps": BASE_COST_SIDE * cost_multiplier * 10000.0,
+        "data_quality": quality,
+        "eligible_for_strategy_evidence": quality["eligible_for_strategy_evidence"],
         "strategies": all_results,
     }
 
@@ -351,12 +384,38 @@ def research(symbols: Sequence[str] = DEFAULT_SYMBOLS, years: int = DEFAULT_YEAR
             "symbols_failed": failures, "candidate_promotion_allowed": False,
             "paper_approval": False, "orders_enabled": False, "orders_submitted": 0,
         }
-    base = {s: evaluate_single_asset(s, f) for s, f in frames.items()}
-    stress = {s: evaluate_single_asset(s, f, 2.0) for s, f in frames.items()}
-    cross = evaluate_cross_sectional(frames)
-    cross_stress = evaluate_cross_sectional(frames, 2.0)
+    quality = {s: data_quality_metrics(f) for s, f in frames.items()}
+    eligible_frames = {
+        s: f for s, f in frames.items()
+        if quality[s]["eligible_for_strategy_evidence"]
+    }
+    base = {
+        s: evaluate_single_asset(s, f, quality=quality[s])
+        for s, f in frames.items()
+    }
+    stress = {
+        s: evaluate_single_asset(s, f, 2.0, quality=quality[s])
+        for s, f in frames.items()
+    }
+    cross = (
+        evaluate_cross_sectional(eligible_frames)
+        if len(eligible_frames) >= 2 else None
+    )
+    cross_stress = (
+        evaluate_cross_sectional(eligible_frames, 2.0)
+        if len(eligible_frames) >= 2 else None
+    )
+    quality_issues = sorted(set(frames) - set(eligible_frames))
     return {
         "ok": True,
+        "data_quality_pass": not failures and not quality_issues,
+        "data_quality_by_symbol": quality,
+        "symbols_with_data_quality_issues": quality_issues,
+        "cross_sectional_universe": sorted(eligible_frames),
+        "cross_sectional_skipped_reason": (
+            None if len(eligible_frames) >= 2
+            else "Fewer than two symbols passed daily coverage/continuity checks."
+        ),
         "version": VERSION,
         "pipeline": "rocket_trader_crypto_multiyear_research",
         "mode": "RESEARCH_ONLY",
@@ -409,11 +468,17 @@ def self_test() -> Dict[str, Any]:
             "close": close, "volume": rng.lognormal(8, .5, n),
         })
         frames[symbol] = normalize_frame(raw, symbol, min_rows=MIN_DAILY_BARS)
+        quality = data_quality_metrics(frames[symbol])
+        assert quality["eligible_for_strategy_evidence"] is True
         pos = strategy_positions(frames[symbol])
         assert len(pos) == 7
         assert all(((w >= 0) & (w <= 1)).all() for w in pos.values())
     cross = evaluate_cross_sectional(frames)
     assert cross["bars"] > 0
+    gappy = frames["BTC/USD"].drop(index=range(0, n, 10)).reset_index(drop=True)
+    gappy_quality = data_quality_metrics(gappy)
+    assert gappy_quality["eligible_for_strategy_evidence"] is False
+    assert gappy_quality["calendar_coverage_pct"] < MIN_CALENDAR_COVERAGE
     metric, _ = evaluate_weights(
         frames["BTC/USD"]["close"],
         strategy_positions(frames["BTC/USD"])["buy_and_hold"],
