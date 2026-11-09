@@ -45,10 +45,10 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.fill("buy-2", "BUY", "0.01", "12000", "1.00")
         self.fill("sell-1", "SELL", "0.015", "13000", "2.00")
         s = self.ledger.snapshot()
-        # FIFO cost: 0.01*(10000+100) + 0.005*(12000+100) = 161.00 USD
-        # Net proceeds: 195.00 - 2.00 = 193.00 USD; net P&L = 32 USD * 18.
-        self.assertEqual(s.realized_net_pnl_mxn, Decimal("576.00"))
-        self.assertEqual(s.operating_capital_mxn, Decimal("1576.00"))
+        # FIFO cost: 0.01*(10000+100) + 0.005*(12000+100) = 161.50 USD
+        # Net proceeds: 195.00 - 2.00 = 193.00 USD; net P&L = 31.50 USD * 18.
+        self.assertEqual(s.realized_net_pnl_mxn, Decimal("567.00"))
+        self.assertEqual(s.operating_capital_mxn, Decimal("1567.00"))
         self.assertEqual(s.open_positions["BTC/USD"]["quantity"], "0.005")
 
     def test_short_sell_is_blocked(self):
@@ -87,8 +87,8 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.fill("buy-profit", "BUY", "0.1", "10000")
         self.fill("sell-profit", "SELL", "0.1", "11000")
         close = self.ledger.close_month("2026-11")
-        self.assertEqual(close["realized_net_pnl_mxn"], "18000.00")
-        self.assertEqual(close["reinvestment_mxn"], "18000.00")
+        self.assertEqual(close["realized_net_pnl_mxn"], "1800.00")
+        self.assertEqual(close["reinvestment_mxn"], "1800.00")
         self.assertEqual(close["reserve_mxn"], "0.00")
         self.assertEqual(close["personal_distribution_mxn"], "0.00")
         self.assertFalse(close["milestone_reached"])
