@@ -285,3 +285,7 @@ The post-PR #33 diagnostic run established the actual IEX coverage boundary:
 
 ### Yahoo historical provider correction — 2026-11-09
 The first live Yahoo workflow failed for every ETF inside yfinance's optional `repair=True` processing with `ValueError: output array is read-only`. Offline regression tests had passed but could not expose this provider-runtime incompatibility. The source now requests auto-adjusted OHLC and corporate-action metadata with `repair=False`; data-quality checks remain mandatory. This avoids the failing repair transformation rather than weakening history coverage or performance acceptance. A fresh live workflow run is required before treating Yahoo history as usable.
+
+
+### Adjusted OHLC precision diagnosis — 2026-11-09
+The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed normalization on one row each. Diagnostics show the only violations were floating-point differences of approximately 1e-14 between adjusted close and the high/low field, not material candle corruption. PR #40 introduces a very small relative tolerance (1e-10 of price scale) and regression tests proving that material OHLC inconsistencies still fail closed. No invalid rows are silently discarded.
