@@ -289,3 +289,7 @@ The first live Yahoo workflow failed for every ETF inside yfinance's optional `r
 
 ### Crypto history gap diagnostics — 2026-11-09
 The existing five-year crypto run reports SOL/USD at 77.10% calendar coverage, 418 missing calendar days and a 417-day maximum gap. Summary metrics alone do not show whether this is a missing listing-history period or a provider outage. PR #38 adds first/last timestamps and the 20 largest exact gap intervals per symbol. The source remains Alpaca CryptoFeed.US; no provider series are blended. The existing 95% coverage and maximum-three-day-gap eligibility gate is unchanged.
+
+
+### Adjusted OHLC precision diagnosis — 2026-11-09
+The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed normalization on one row each. Diagnostics show only floating-point differences of approximately 1e-14 between adjusted close and high/low, not material candle corruption. A tiny relative tolerance (1e-10 of price scale) is applied; material candle inconsistencies still fail closed. No invalid rows are silently discarded.

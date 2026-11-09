@@ -13,6 +13,7 @@ from rocket_trader_equity_multiyear_research_v0_2 import (
     data_quality_metrics,
     fetch_daily_bars,
     fetch_yahoo_daily_bars,
+    normalize_frame,
     strategy_positions,
 )
 
@@ -58,6 +59,20 @@ class FakeYahooTicker:
 
 
 class EquityResearchV02Tests(unittest.TestCase):
+    def test_normalize_frame_tolerates_only_float_precision_ohlc_differences(self):
+        frame = pd.DataFrame({
+            "timestamp": pd.date_range("2024-01-01", periods=2, tz="UTC"),
+            "open": [100.0, 100.0],
+            "high": [100.0 - 1e-12, 100.0 - 1e-5],
+            "low": [99.0, 99.0],
+            "close": [100.0, 100.0],
+            "volume": [1000, 1000],
+        })
+        normalized = normalize_frame(frame.iloc[:1], "SPY")
+        self.assertEqual(len(normalized), 1)
+        with self.assertRaisesRegex(Exception, "invalid OHLCV rows"):
+            normalize_frame(frame.iloc[1:], "SPY")
+
     def test_relative_bootstrap_is_positive_for_constant_excess(self):
         strategy = np.full(250, 0.001)
         benchmark = np.zeros(250)
