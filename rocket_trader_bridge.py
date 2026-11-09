@@ -143,6 +143,9 @@ def candidate_to_strategy_signal(
         "source": "rocket_trader_engine",
         "probability_up": probability_up,
         "expected_return": expected_return,
+        "expected_return_status": _get_field(
+            candidate, "expected_return_status", "NOT_ESTIMATED"
+        ),
         "confidence": confidence,
         "model_votes": model_votes,
         "features": features,

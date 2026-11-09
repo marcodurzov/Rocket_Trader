@@ -6,8 +6,9 @@ Rocket Trader — Adaptive Risk & Capital Policy v0.1
 
 Capa independiente para:
 
-- Regla automática de capitalización hasta 100,000 MXN.
-- Distribución mensual 70/20/10 después del umbral.
+- Regla de distribución 70/20/10 antes del primer hito de 100,000 MXN.
+- Regla de distribución 50/40/10 después de alcanzar el hito.
+- El motor Core es la fuente de verdad persistente del hito.
 - Clasificación básica de régimen de mercado.
 - Evaluación inicial de noticias.
 - Sizing dinámico condicionado por convicción.
@@ -153,6 +154,7 @@ class CapitalPolicy:
 
         self.config = config or CapitalPolicyConfig()
         self.config.validate()
+        self._threshold_reached = False
 
     def allocation(
         self,
@@ -170,9 +172,9 @@ class CapitalPolicy:
                 "profit no puede ser negativo"
             )
 
-        threshold_reached = (
-            operating_capital >= self.config.threshold_mxn
-        )
+        if operating_capital >= self.config.threshold_mxn:
+            self._threshold_reached = True
+        threshold_reached = self._threshold_reached
 
         if threshold_reached:
 
@@ -716,6 +718,15 @@ def self_test() -> dict:
         operating_capital=100_000,
         profit=10_000,
     )
+
+    after_drawdown = policy.allocation(
+        operating_capital=70_000,
+        profit=10_000,
+    )
+    assert after_drawdown.threshold_reached is True
+    assert after_drawdown.reinvestment_pct == 0.50
+    assert after_drawdown.personal_pct == 0.40
+    assert after_drawdown.reserve_pct == 0.10
 
     assert above.reinvestment_pct == 0.50
     assert above.personal_pct == 0.40

@@ -14,14 +14,15 @@ REGLAS:
 - SIN SHORT
 - PAPER por defecto
 - LIVE requiere habilitación explícita
-- Capital operativo < 100,000 MXN:
-    100% reinversión
-    0% personal
-    0% reserva
-- Capital operativo >= 100,000 MXN:
+- Antes del primer hito de 100,000 MXN:
     70% reinversión
     20% personal
     10% reserva
+- Después de alcanzar 100,000 MXN una vez:
+    50% reinversión
+    40% personal
+    10% reserva
+- El cambio de política es irreversible y se persiste en un estado durable.
 - La distribución es mensual.
 - Las transferencias reales están deshabilitadas.
 - Adaptive Risk puede reducir o bloquear riesgo.
@@ -36,6 +37,7 @@ import hashlib
 import json
 import math
 import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -240,48 +242,88 @@ class DistributionPlan:
     personal_amount: float
 
     capital_policy: str
+    threshold_reached: bool
 
 
 class ProfitAllocator:
     """
     Regla automática:
 
-    capital operativo < 100,000:
-        70% reinversión
-        20% personal
-        10% reserva
+    antes del primer hito de 100,000 MXN:
+        70% reinversión / 20% personal / 10% reserva
 
-    capital operativo >= 100,000:
-        50% reinversión
-        40% personal
-        10% reserva
+    después de alcanzar el hito una vez:
+        50% reinversión / 40% personal / 10% reserva
+
+    El hito no se revierte si el capital cae posteriormente.
     """
 
     def __init__(
         self,
         config: Optional[ProfitDistributionConfig] = None,
+        milestone_path: Optional[str] = None,
     ) -> None:
         self.config = config or ProfitDistributionConfig()
         self.config.validate()
+        configured_path = milestone_path or os.getenv("ROCKET_TRADER_CAPITAL_MILESTONE_PATH")
+        self.milestone_path = Path(configured_path) if configured_path else None
+        self._threshold_reached = False
+        self._threshold_reached_at: Optional[str] = None
+        if self.milestone_path and self.milestone_path.exists():
+            try:
+                state = json.loads(self.milestone_path.read_text(encoding="utf-8"))
+                if float(state.get("threshold_mxn")) != self.config.threshold_mxn:
+                    raise ValueError("El umbral guardado no coincide con la configuración")
+                self._threshold_reached = bool(state.get("threshold_reached", False))
+                self._threshold_reached_at = state.get("threshold_reached_at")
+            except Exception as exc:
+                raise RuntimeError(
+                    "No se pudo validar el estado persistente del hito de capital; "
+                    "se bloquea la distribución para evitar revertir la política."
+                ) from exc
+
+    def _persist_milestone(self) -> None:
+        if not self.milestone_path:
+            return
+        self.milestone_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "threshold_mxn": self.config.threshold_mxn,
+            "threshold_reached": True,
+            "threshold_reached_at": self._threshold_reached_at or utc_now(),
+        }
+        temporary = self.milestone_path.with_suffix(self.milestone_path.suffix + ".tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        json.loads(temporary.read_text(encoding="utf-8"))
+        temporary.replace(self.milestone_path)
 
     def percentages_for_capital(
         self,
         operating_capital: float,
-    ) -> Tuple[float, float, float, str]:
+    ) -> Tuple[float, float, float, str, bool]:
 
-        if operating_capital < self.config.threshold_mxn:
+        if operating_capital < 0:
+            raise ValueError("operating_capital no puede ser negativo")
+        if operating_capital >= self.config.threshold_mxn and not self._threshold_reached:
+            self._threshold_reached = True
+            self._threshold_reached_at = utc_now()
+            self._persist_milestone()
+
+        if not self._threshold_reached:
             return (
                 self.config.below_threshold_reserve_pct,
                 self.config.below_threshold_reinvestment_pct,
                 self.config.below_threshold_personal_pct,
                 "ACCUMULATION_BELOW_100K",
+                False,
             )
 
         return (
             self.config.at_or_above_threshold_reserve_pct,
             self.config.at_or_above_threshold_reinvestment_pct,
             self.config.at_or_above_threshold_personal_pct,
-            "DISTRIBUTION_AT_OR_ABOVE_100K",
+            "DISTRIBUTION_THRESHOLD_PERMANENTLY_REACHED",
+            True,
         )
 
     def plan(
@@ -296,7 +338,7 @@ class ProfitAllocator:
                 "No se distribuyen pérdidas como utilidades"
             )
 
-        reserve_pct, reinvestment_pct, personal_pct, policy = (
+        reserve_pct, reinvestment_pct, personal_pct, policy, threshold_reached = (
             self.percentages_for_capital(operating_capital)
         )
 
@@ -319,6 +361,7 @@ class ProfitAllocator:
             reinvestment_amount=round(reinvestment, 2),
             personal_amount=round(personal, 2),
             capital_policy=policy,
+            threshold_reached=threshold_reached,
         )
 
 
@@ -1614,6 +1657,7 @@ class RocketTraderCore:
         audit_path: str = (
             "data/rocket_trader_audit.jsonl"
         ),
+        capital_milestone_path: Optional[str] = None,
     ) -> None:
 
         self.risk_engine = RiskEngine(
@@ -1638,8 +1682,8 @@ class RocketTraderCore:
         )
 
         self.profit_allocator = ProfitAllocator(
-            distribution_config
-            or ProfitDistributionConfig()
+            distribution_config or ProfitDistributionConfig(),
+            milestone_path=capital_milestone_path,
         )
 
         self.execution_adapter = (
@@ -1934,8 +1978,28 @@ def self_test() -> Dict[str, Any]:
 
     assert (
         plan_distribution.capital_policy
-        == "DISTRIBUTION_AT_OR_ABOVE_100K"
+        == "DISTRIBUTION_THRESHOLD_PERMANENTLY_REACHED"
     )
+    assert plan_distribution.threshold_reached is True
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        milestone_file = str(Path(temp_dir) / "capital_milestone.json")
+        persistent_allocator = ProfitAllocator(
+            ProfitDistributionConfig(), milestone_path=milestone_file
+        )
+        first_hit = persistent_allocator.plan(1000.0, 100000.0, "2026-11")
+        assert first_hit.threshold_reached is True
+        after_drawdown = persistent_allocator.plan(1000.0, 70000.0, "2026-12")
+        assert after_drawdown.reinvestment_pct == 0.50
+        assert after_drawdown.personal_pct == 0.40
+        assert after_drawdown.reserve_pct == 0.10
+        restarted_allocator = ProfitAllocator(
+            ProfitDistributionConfig(), milestone_path=milestone_file
+        )
+        after_restart = restarted_allocator.plan(1000.0, 70000.0, "2027-01")
+        assert after_restart.threshold_reached is True
+        assert after_restart.reinvestment_pct == 0.50
+        assert after_restart.personal_pct == 0.40
 
     # ------------------------------------------------
     # KILL SWITCH FLOOR

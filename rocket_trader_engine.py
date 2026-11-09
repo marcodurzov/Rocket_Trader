@@ -116,6 +116,7 @@ class SignalCandidate:
     score: float
     setup_signature: str
     evidence_class: str
+    expected_return_status: str = "NOT_ESTIMATED"
     features: Dict[str, float] = field(default_factory=dict)
     model_votes: Dict[str, float] = field(default_factory=dict)
 
@@ -268,24 +269,52 @@ class FeatureEngine:
 class TemporalDataset:
     def __init__(self, config: EngineConfig) -> None:
         self.config = config
+        self.row_positions: List[int] = []
 
     def build(self, features: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
-        df = features.copy()
+        df = features.copy().reset_index(drop=True)
         h = self.config.horizon_bars
         future_return = df["close"].shift(-h) / df["close"] - 1
         target = (future_return >= self.config.target_return).astype(int)
         usable = df[FEATURE_COLUMNS].notna().all(axis=1) & future_return.notna()
+        positions = np.flatnonzero(usable.to_numpy())
         X = df.loc[usable, FEATURE_COLUMNS].copy()
         y = target.loc[usable].astype(int)
         if len(X) > self.config.max_training_rows:
             idx = np.linspace(0, len(X) - 1, self.config.max_training_rows, dtype=int)
             X = X.iloc[idx]
             y = y.iloc[idx]
+            positions = positions[idx]
+        self.row_positions = positions.astype(int).tolist()
         if len(X) < self.config.min_training_rows:
             raise ValueError(
                 f"Dataset insuficiente: {len(X)} filas; mínimo {self.config.min_training_rows}"
             )
         return X.reset_index(drop=True), y.reset_index(drop=True)
+
+    def purged_split(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series,
+        test_fraction: float = 0.20,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+        """Chronological split with an embargo equal to the forward-label horizon."""
+        if not 0 < test_fraction < 0.5:
+            raise ValueError("test_fraction debe estar entre 0 y 0.5")
+        if len(X) != len(y):
+            raise ValueError("X e y deben tener la misma longitud")
+        split_at = int(len(X) * (1.0 - test_fraction))
+        train_end = split_at - self.config.horizon_bars
+        if train_end < self.config.min_training_rows:
+            raise ValueError("Datos insuficientes después del purge temporal")
+        if len(X) - split_at < 1:
+            raise ValueError("No hay bloque de prueba")
+        return (
+            X.iloc[:train_end].copy(),
+            X.iloc[split_at:].copy(),
+            y.iloc[:train_end].copy(),
+            y.iloc[split_at:].copy(),
+        )
 
 
 class EnsembleModel:
@@ -433,17 +462,17 @@ class EnsembleModel:
             combined = self.calibrator.predict_proba(logits)[:, 1]
         return np.asarray(combined, dtype=float), votes
 
-        def novelty_score(self, X: pd.DataFrame) -> float:
-            if self.reference_matrix is None or len(self.reference_matrix) == 0:
-                return float("inf")
-            X_s = self.scaler.transform(self.imputer.transform(X))
-            # Distancia normalizada al centro de los datos históricos. No se pretende
-            # que esto sea una probabilidad; es una señal de novedad para control de riesgo.
-            center = self.reference_matrix.mean(axis=0)
-            scale = self.reference_matrix.std(axis=0)
-            scale[scale < 1e-8] = 1.0
-            z = np.abs((X_s[0] - center) / scale)
-            return float(np.mean(z))
+    def novelty_score(self, X: pd.DataFrame) -> float:
+        """Return a normalized distance from the fitted training feature distribution."""
+        if not self.fitted or self.reference_matrix is None or len(self.reference_matrix) == 0:
+            return float("inf")
+        X_s = self.scaler.transform(self.imputer.transform(X))
+        center = self.reference_matrix.mean(axis=0)
+        scale = self.reference_matrix.std(axis=0)
+        scale[scale < 1e-8] = 1.0
+        z = np.abs((X_s[0] - center) / scale)
+        return float(np.mean(z))
+
 
 class WalkForwardResearch:
     def __init__(self, config: EngineConfig) -> None:
@@ -459,13 +488,25 @@ class WalkForwardResearch:
     def evaluate(self, features: pd.DataFrame) -> BacktestResult:
         dataset = TemporalDataset(self.config)
         X, y = dataset.build(features)
-        split = int(len(X) * (1 - self.config.validation_fraction))
-        X_train, X_test = X.iloc[:split], X.iloc[split:]
-        y_train, y_test = y.iloc[:split], y.iloc[split:]
+        X_train, X_test, y_train, y_test = dataset.purged_split(
+            X, y, test_fraction=self.config.validation_fraction
+        )
         model = EnsembleModel(self.config)
         model.fit(X_train, y_train)
         probabilities, _ = model.predict_proba(X_test)
         predictions = (probabilities >= self.config.probability_threshold).astype(int)
+
+        test_start = int(len(X) * (1.0 - self.config.validation_fraction))
+        test_positions = dataset.row_positions[test_start:]
+        raw = (
+            features.reset_index(drop=True)["close"]
+            .pct_change(self.config.horizon_bars)
+            .shift(-self.config.horizon_bars)
+            .iloc[test_positions]
+            .reset_index(drop=True)
+        )
+        if len(raw) != len(predictions) or raw.isna().any():
+            raise RuntimeError("La alineación temporal de rendimientos y predicciones falló")
 
         auc = None
         if len(np.unique(y_test)) > 1:
@@ -475,18 +516,18 @@ class WalkForwardResearch:
 
         # Estrategia simplificada de investigación: entra solo cuando el modelo
         # supera el umbral. Se descuenta un coste conservador por operación.
-        raw = features["close"].pct_change(self.config.horizon_bars).shift(-self.config.horizon_bars)
-        raw = raw.dropna().iloc[-len(X_test):].reset_index(drop=True)
         strat_returns = raw.where(predictions == 1, 0.0)
         strategy_return = float((1 + strat_returns.fillna(0)).prod() - 1)
         buy_hold_return = float((1 + raw.fillna(0)).prod() - 1)
         max_dd = self._max_drawdown(strat_returns)
-        passed = bool(
-            len(X_test) >= 50
-            and (auc is None or auc >= 0.52)
-            and strategy_return > -0.10
+        # This classifier-only evaluation does not simulate executable positions,
+        # non-overlapping capital, bid/ask spread, fees, slippage or partial fills.
+        # Therefore it must never approve a strategy for Paper based on these metrics.
+        passed = False
+        reason = (
+            "RESEARCH_ONLY: falta un simulador de ejecución con posiciones no "
+            "solapadas, costos, spread, slippage y fills realistas"
         )
-        reason = "OOS research dentro de límites mínimos" if passed else "OOS insuficiente o desempeño fuera de límites"
 
         return BacktestResult(
             rows=len(X),
@@ -544,9 +585,17 @@ class SignalEngine:
         X = pd.DataFrame([{c: latest[c] for c in FEATURE_COLUMNS}])
         probability, votes = self.model.predict_proba(X)
         p = float(probability[0])
-        expected_return = float(latest["ret_5"] if pd.notna(latest["ret_5"]) else 0.0)
+        # ret_5 is a historical feature, not a forecast. Until a separately
+        # validated return model exists, never mislabel past momentum as expected return.
+        expected_return = 0.0
         novelty = self.model.novelty_score(X)
-        evidence = "PRECEDENTED" if novelty <= self.config.novelty_distance_threshold else "NOVEL"
+        # Similarity to prior feature vectors is not proof of a validated edge.
+        # PRECEDENTED is reserved for strategies with independent benchmark evidence.
+        evidence = (
+            "NOVEL"
+            if novelty > self.config.novelty_distance_threshold
+            else "INSUFFICIENT"
+        )
         confidence = float(abs(p - 0.5) * 2)
         score = float(p * confidence)
 
@@ -574,6 +623,7 @@ class SignalEngine:
             score=score,
             setup_signature=setup_signature,
             evidence_class=evidence,
+            expected_return_status="NOT_ESTIMATED",
             features=selected_features,
             model_votes=model_votes,
         )
@@ -634,14 +684,32 @@ def self_test() -> Dict[str, Any]:
     assert len(features) == len(raw)
     assert all(c in features.columns for c in FEATURE_COLUMNS)
 
+    dataset = TemporalDataset(config)
+    X, y = dataset.build(features)
+    X_train, X_test, y_train, y_test = dataset.purged_split(
+        X, y, test_fraction=config.validation_fraction
+    )
+    split_at = int(len(X) * (1.0 - config.validation_fraction))
+    assert len(X_train) + config.horizon_bars == split_at
+    assert len(X_test) == len(X) - split_at
+    assert len(X_test) == len(X) - int(len(X) * (1.0 - config.validation_fraction))
+
     research = WalkForwardResearch(config).evaluate(features)
+    assert research.passed is False
+    assert research.reason.startswith("RESEARCH_ONLY")
     engine = SignalEngine(config)
     training = engine.train(raw)
     signal = engine.generate_signal(raw, "DEMO")
 
+    assert hasattr(EnsembleModel, "novelty_score")
+    assert engine.model.novelty_score(
+        pd.DataFrame([{col: features.iloc[-1][col] for col in FEATURE_COLUMNS}])
+    ) >= 0.0
     assert training["rows"] >= config.min_training_rows
     assert 0 <= signal.probability_up <= 1
     assert 0 <= signal.confidence <= 1
+    assert signal.expected_return == 0.0
+    assert signal.expected_return_status == "NOT_ESTIMATED"
     assert signal.setup_signature
 
     return {
