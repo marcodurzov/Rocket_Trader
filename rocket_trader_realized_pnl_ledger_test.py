@@ -38,6 +38,7 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         s = self.ledger.snapshot()
         self.assertEqual(s.initial_capital_mxn, Decimal("1000.00"))
         self.assertEqual(s.operating_capital_mxn, Decimal("1000.00"))
+        self.assertEqual(s.earned_growth_capital_mxn, Decimal("1000.00"))
         self.assertEqual(s.realized_net_pnl_mxn, Decimal("0.00"))
 
     def test_fifo_realized_net_pnl_includes_entry_and_exit_fees(self):
@@ -49,6 +50,7 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         # Net proceeds: 195.00 - 2.00 = 193.00 USD; net P&L = 31.50 USD * 18.
         self.assertEqual(s.realized_net_pnl_mxn, Decimal("567.00"))
         self.assertEqual(s.operating_capital_mxn, Decimal("1567.00"))
+        self.assertEqual(s.earned_growth_capital_mxn, Decimal("1567.00"))
         self.assertEqual(s.open_positions["BTC/USD"]["quantity"], "0.005")
 
     def test_crypto_buy_fee_withheld_in_base_asset_reduces_owned_quantity(self):
@@ -105,6 +107,7 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.ledger.record_deposit(event_id="deposit-1", amount_mxn="500", occurred_at=NOW)
         self.ledger.record_withdrawal(event_id="withdrawal-1", amount_mxn="100", occurred_at=NOW)
         self.assertEqual(self.ledger.snapshot().operating_capital_mxn, Decimal("1400.00"))
+        self.assertEqual(self.ledger.snapshot().earned_growth_capital_mxn, Decimal("1000.00"))
 
     def test_withdrawal_cannot_exceed_operating_capital(self):
         with self.assertRaisesRegex(LedgerError, "exceeds operating capital"):
