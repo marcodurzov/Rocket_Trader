@@ -224,7 +224,7 @@ def fetch_yahoo_daily_bars(
             interval="1d",
             auto_adjust=True,
             actions=True,
-            repair=True,
+            repair=False,
             raise_errors=True,
         )
     except Exception as exc:
