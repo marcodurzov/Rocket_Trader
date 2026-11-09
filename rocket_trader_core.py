@@ -1696,7 +1696,19 @@ class RocketTraderCore:
             "data/rocket_trader_audit.jsonl"
         ),
         capital_milestone_path: Optional[str] = None,
+        require_persistent_milestone: bool = True,
     ) -> None:
+
+        configured_milestone_path = (
+            capital_milestone_path
+            or os.getenv("ROCKET_TRADER_CAPITAL_MILESTONE_PATH")
+        )
+        if require_persistent_milestone and not configured_milestone_path:
+            raise RuntimeError(
+                "SAFETY STOP: RocketTraderCore requiere "
+                "ROCKET_TRADER_CAPITAL_MILESTONE_PATH apuntando a almacenamiento "
+                "durable para no perder el hito permanente de MXN 100,000."
+            )
 
         self.risk_engine = RiskEngine(
             risk_config
@@ -1721,7 +1733,7 @@ class RocketTraderCore:
 
         self.profit_allocator = ProfitAllocator(
             distribution_config or ProfitDistributionConfig(),
-            milestone_path=capital_milestone_path,
+            milestone_path=configured_milestone_path,
         )
 
         self.execution_adapter = (
@@ -1891,6 +1903,7 @@ def build_demo_core() -> RocketTraderCore:
         audit_path=(
             "data/rocket_trader_audit.jsonl"
         ),
+        require_persistent_milestone=False,
     )
 
 
@@ -1901,6 +1914,20 @@ def build_demo_core() -> RocketTraderCore:
 def self_test() -> Dict[str, Any]:
 
     core = build_demo_core()
+
+    # Production Core must refuse to start without durable milestone storage.
+    production_milestone_guarded = False
+    try:
+        RocketTraderCore(
+            risk_config=core.risk_engine.config,
+            benchmark_config=core.benchmark_engine.config,
+            require_persistent_milestone=True,
+        )
+    except RuntimeError as exc:
+        production_milestone_guarded = (
+            "ROCKET_TRADER_CAPITAL_MILESTONE_PATH" in str(exc)
+        )
+    assert production_milestone_guarded is True
 
     account = AccountState(
         equity=1000.0,

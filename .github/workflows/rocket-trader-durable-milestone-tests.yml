@@ -1,0 +1,32 @@
+name: Rocket Trader - Durable Capital Milestone Guard
+
+on:
+  push:
+    branches:
+      - "fix/require-durable-milestone-in-core"
+    paths:
+      - "rocket_trader_core.py"
+      - ".github/workflows/rocket-trader-durable-milestone-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  durable-milestone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Compile Core
+        run: python -m py_compile rocket_trader_core.py
+
+      - name: Test durable milestone fail-closed guard
+        run: python rocket_trader_core.py
