@@ -196,6 +196,74 @@ def fetch_daily_bars(
     return combined
 
 
+
+def fetch_yahoo_daily_bars(
+    symbol: str,
+    *,
+    years: int = DEFAULT_YEARS,
+    ticker: Any = None,
+    end: Optional[datetime] = None,
+) -> pd.DataFrame:
+    """Fetch adjusted daily history from Yahoo Finance for research only."""
+    if years < 3:
+        raise ValueError("years must be >=3.")
+    clean = normalize_symbol(symbol)
+    end_at = end or datetime.now(timezone.utc)
+    if end_at.tzinfo is None or end_at.utcoffset() is None:
+        raise ValueError("end must be timezone-aware")
+    start_at = end_at - timedelta(days=365 * years)
+    # yfinance end is exclusive; excluding today avoids partial-session bars.
+    end_exclusive = end_at.date().isoformat()
+    try:
+        if ticker is None:
+            import yfinance as yf
+            ticker = yf.Ticker(clean)
+        history = ticker.history(
+            start=start_at.date().isoformat(),
+            end=end_exclusive,
+            interval="1d",
+            auto_adjust=True,
+            actions=True,
+            repair=True,
+            raise_errors=True,
+        )
+    except Exception as exc:
+        raise EquityResearchError(
+            f"{clean}: Yahoo Finance history failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if history is None or history.empty:
+        raise EquityResearchError(f"{clean}: Yahoo Finance returned empty history.")
+    frame = history.copy().reset_index()
+    frame.columns = [str(col).strip().lower() for col in frame.columns]
+    if "timestamp" not in frame.columns:
+        date_col = next((name for name in ("date", "datetime", "index") if name in frame.columns), None)
+        if date_col is None:
+            raise EquityResearchError(f"{clean}: Yahoo history has no Date/Datetime index.")
+        frame = frame.rename(columns={date_col: "timestamp"})
+    normalized = normalize_frame(frame, clean, min_rows=1)
+    minimum_rows = max(900, int(years * 252 * 0.65))
+    quality = data_quality_metrics(normalized)
+    first_seen = normalized.iloc[0]["timestamp"]
+    last_seen = normalized.iloc[-1]["timestamp"]
+    if len(normalized) < minimum_rows:
+        raise EquityResearchError(
+            f"{clean}: Yahoo returned only {len(normalized)} daily bars; "
+            f"minimum {minimum_rows} for {years} requested years. "
+            f"Returned range={first_seen.isoformat()}..{last_seen.isoformat()}; "
+            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
+            f"max_calendar_gap_days={quality['max_calendar_gap_days']}."
+        )
+    if first_seen > pd.Timestamp(start_at).tz_convert("UTC") + pd.Timedelta(days=60):
+        raise EquityResearchError(
+            f"{clean}: Yahoo history does not cover the requested {years}-year start."
+        )
+    if last_seen.date() < end_at.date() - timedelta(days=7):
+        raise EquityResearchError(
+            f"{clean}: Yahoo history is stale; latest daily bar is {last_seen.date()}."
+        )
+    return normalized
+
+
 def strategy_positions(frame: pd.DataFrame) -> Dict[str, pd.Series]:
     close, high, low = frame["close"], frame["high"], frame["low"]
     positions: Dict[str, pd.Series] = {"buy_and_hold": pd.Series(1.0, index=frame.index)}
@@ -426,15 +494,22 @@ def research(
     symbols: Sequence[str] = DEFAULT_SYMBOLS,
     years: int = DEFAULT_YEARS,
     feed_name: str = "IEX",
+    source: str = "ALPACA",
 ) -> Dict[str, Any]:
     clean = sorted({normalize_symbol(s) for s in symbols})
     if len(clean) < 2:
         raise EquityResearchError("Cross-sectional research requires at least two ETFs.")
+    source = str(source).strip().upper()
+    if source not in {"ALPACA", "YAHOO"}:
+        raise ValueError("source must be ALPACA or YAHOO")
     frames: Dict[str, pd.DataFrame] = {}
     failures = []
     for symbol in clean:
         try:
-            frames[symbol] = fetch_daily_bars(symbol, years=years, feed_name=feed_name)
+            if source == "YAHOO":
+                frames[symbol] = fetch_yahoo_daily_bars(symbol, years=years)
+            else:
+                frames[symbol] = fetch_daily_bars(symbol, years=years, feed_name=feed_name)
         except Exception as exc:
             failures.append({"symbol": symbol, "error": f"{type(exc).__name__}: {exc}"})
     if failures:
@@ -457,7 +532,11 @@ def research(
         "version": VERSION,
         "pipeline": "rocket_trader_equity_multiyear_research_v0_2",
         "mode": "RESEARCH_ONLY",
-        "data_source": f"Alpaca US stock daily bars, {feed_name.upper()} feed, Adjustment.ALL",
+        "data_source": (
+            "Yahoo Finance via yfinance, daily auto_adjust=True, actions=True, repair=True (research only)"
+            if source == "YAHOO" else
+            f"Alpaca US stock daily bars, {feed_name.upper()} feed, Adjustment.ALL"
+        ),
         "lookback_years_requested": years,
         "symbols_processed": clean,
         "data_quality_pass": not issues,
@@ -477,7 +556,11 @@ def research(
         "cross_sectional_base_cost": cross,
         "cross_sectional_2x_cost": cross_stress,
         "methodology": {
-            "price_adjustment": "Alpaca Adjustment.ALL (splits, dividends, spin-offs).",
+            "price_adjustment": (
+                "Yahoo Finance yfinance history auto_adjust=True with actions=True; research-only provider."
+                if source == "YAHOO" else
+                "Alpaca Adjustment.ALL (splits, dividends, spin-offs)."
+            ),
             "signal_timing": "Completed daily close signal shifted one session before applying returns.",
             "chronological_windows": "First 60% train, next 20% validation, final 20% holdout.",
             "strategy_hypotheses": [
@@ -548,6 +631,7 @@ def main() -> int:
     parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
     parser.add_argument("--years", type=int, default=DEFAULT_YEARS)
     parser.add_argument("--feed", default="IEX", choices=["IEX", "SIP"])
+    parser.add_argument("--source", default="ALPACA", choices=["ALPACA", "YAHOO"])
     parser.add_argument("--output", default="research_artifacts/equity_multiyear_research_v0_2.json")
     args = parser.parse_args()
     if args.self_test:
@@ -555,7 +639,7 @@ def main() -> int:
         return 0
     if args.years < 3:
         parser.error("--years must be >=3")
-    result = research(args.symbols, args.years, args.feed)
+    result = research(args.symbols, args.years, args.feed, args.source)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
