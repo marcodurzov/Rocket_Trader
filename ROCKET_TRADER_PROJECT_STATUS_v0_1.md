@@ -96,6 +96,16 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - Test: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42688090094
 - Integrated PR: https://github.com/marcodurzov/Rocket_Trader/pull/8
 
+### 11. Append-only realized P&L ledger
+- PR #21 adds `rocket_trader_realized_pnl_ledger.py`: durable SQLite append-only events for seed capital, deposits, withdrawals and fills.
+- Uses FIFO lots for partial exits. Buy-side fees enter cost basis; sell-side fees reduce proceeds. Net realized P&L is converted to MXN using a sourced, timezone-aware FX quote no older than 24 hours at fill time.
+- Fill IDs are idempotent; out-of-order arrival is replayed by execution timestamp; long-only SELL inventory is validated before append.
+- The MXN 100,000 milestone is measured from initial capital plus realized trading P&L, not later external deposits. This prevents an added deposit from falsely satisfying the goal of growing the original MXN 1,000.
+- Implements 100% reinvestment before the milestone and 50% reinvestment / 10% reserve / 40% personal distribution after it, with the MXN 100,000 operating floor. Monthly closes are immutable proposals and never transfer money.
+- CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42696899202 (16 offline tests passed).
+- **Not connected to Alpaca yet.** The broker activity ingestion layer must map actual commissions/fees, corporate actions, trade corrections and busts; reconcile cash/equity/positions; and persist a resumable event cursor before this ledger can be authoritative for runtime decisions.
+- No Paper or LIVE orders are submitted by the ledger.
+
 ### 10. Separate crypto Paper execution adapter
 - PR #20 adds `AlpacaCryptoPaperExecutionAdapter`, isolated from equity bracket orders.
 - Initial supported order scope is deliberately narrow: simple crypto spot MARKET + IOC only. Alpaca supports crypto market, limit and stop-limit orders with GTC/IOC, but Rocket Trader starts with IOC market orders to avoid unattended resting orders.
