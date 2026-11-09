@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "feat/realized-pnl-ledger-v1"
+      - "feat/ledger-earned-growth-field"
       - "feat/crypto-base-asset-fee-accounting"
     paths:
       - "rocket_trader_realized_pnl_ledger.py"
