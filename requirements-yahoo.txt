@@ -1,0 +1,2 @@
+# Yahoo Finance historical data for research-only daily ETF history
+yfinance>=0.2.66,<1.0
