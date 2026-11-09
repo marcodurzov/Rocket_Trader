@@ -155,7 +155,7 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.ledger.record_fill(
             fill_id="fifo-sell", symbol="BTC/USD", side="SELL",
             quantity="0.01", price_usd="11000", fee_usd="0",
-            fx=FX, occurred_at=later, asset_class="CRYPTO_SPOT",
+            fx=later_fx, occurred_at=later, asset_class="CRYPTO_SPOT",
         )
         self.assertEqual(self.ledger.snapshot().realized_net_pnl_mxn, Decimal("180.00"))
 
