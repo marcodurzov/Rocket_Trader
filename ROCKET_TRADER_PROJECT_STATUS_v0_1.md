@@ -16,7 +16,9 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - The transition is permanent even if capital later falls below MXN 100,000.
 - Distributions must be based on realized net profit after fees, spread, slippage and losses, not on unrealized P&L or gross account balance.
 - The MXN 100,000 operating-capital floor is a withdrawal policy, not a guarantee against market losses.
-- Core supports durable milestone persistence through `ROCKET_TRADER_CAPITAL_MILESTONE_PATH`. The eventual runtime must set this to durable storage. If the state file is corrupt or its threshold differs from configuration, allocation fails closed.
+- Production `RocketTraderCore` now refuses to start unless `ROCKET_TRADER_CAPITAL_MILESTONE_PATH` or an explicit durable milestone path is configured. The demo Core is exempt for offline tests only.
+- After the milestone, the target remains 50/10/40 permanently. If reserve and personal transfers would take operating capital below MXN 100,000, both transfers are withheld and actual allocation becomes 100% reinvestment until there is sufficient headroom. The plan records both target and actual percentages.
+- If the state file is corrupt or its threshold differs from configuration, allocation fails closed.
 - The Paper account reports USD values. The production ledger must use a timestamped FX conversion source before comparing USD account equity with the MXN threshold or calculating MXN distributions.
 
 ## Work integrated into main
@@ -26,6 +28,8 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - Core has a permanent milestone latch and regression tests covering drawdown and process restart when a durable state path is configured.
 - GitHub Actions: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42683172988
 - Earlier capital policy PR: https://github.com/marcodurzov/Rocket_Trader/pull/1
+- Protected floor payout gate PR: https://github.com/marcodurzov/Rocket_Trader/pull/11
+- Durable milestone startup guard PR: https://github.com/marcodurzov/Rocket_Trader/pull/12
 
 ### 2. Jefe Maestro / MDV PS transfer
 - Added `ROCKET_TRADER_JEFE_MAESTRO_TRANSFER_SPEC_v0_1.md`.
