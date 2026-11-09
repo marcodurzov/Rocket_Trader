@@ -140,11 +140,12 @@ class RealizedPnLLedgerTests(unittest.TestCase):
     def test_fifo_replay_uses_fill_timestamps_not_arrival_order(self):
         later = datetime(2026, 11, 10, 16, 0, tzinfo=timezone.utc)
         earlier = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
+        later_fx = LedgerFX(Decimal("18.00"), later, "LATER_TEST_FIXTURE")
         # Deliberately insert the later fill first; event-time order is authoritative.
         self.ledger.record_fill(
             fill_id="later-buy", symbol="BTC/USD", side="BUY",
             quantity="0.01", price_usd="12000", fee_usd="0",
-            fx=FX, occurred_at=later, asset_class="CRYPTO_SPOT",
+            fx=later_fx, occurred_at=later, asset_class="CRYPTO_SPOT",
         )
         self.ledger.record_fill(
             fill_id="earlier-buy", symbol="BTC/USD", side="BUY",
