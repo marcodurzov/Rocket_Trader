@@ -96,7 +96,22 @@ def normalize_frame(frame: pd.DataFrame, symbol: str, min_rows: int = 1) -> pd.D
     bad |= df["low"] > df[["open", "close"]].min(axis=1)
     bad |= df["high"] < df["low"]
     if bad.any():
-        raise EquityResearchError(f"{symbol}: {int(bad.sum())} invalid OHLCV rows.")
+        sample = df.loc[bad, required].head(10).copy()
+        sample["timestamp"] = sample["timestamp"].astype(str)
+        diagnostics = sample.to_dict(orient="records")
+        reasons = {
+            "null_or_non_numeric": int(df[required].isna().any(axis=1).sum()),
+            "non_positive_ohlc": int((df[["open", "high", "low", "close"]] <= 0).any(axis=1).sum()),
+            "negative_volume": int((df["volume"] < 0).sum()),
+            "high_below_open_or_close": int((df["high"] < df[["open", "close"]].max(axis=1)).sum()),
+            "low_above_open_or_close": int((df["low"] > df[["open", "close"]].min(axis=1)).sum()),
+            "high_below_low": int((df["high"] < df["low"]).sum()),
+        }
+        raise EquityResearchError(
+            f"{symbol}: {int(bad.sum())} invalid OHLCV rows; "
+            f"reason_counts={json.dumps(reasons, sort_keys=True)}; "
+            f"sample={json.dumps(diagnostics, default=str)}"
+        )
     df = df[required].sort_values("timestamp").drop_duplicates("timestamp", keep="last")
     df = df.reset_index(drop=True)
     if len(df) < min_rows:
