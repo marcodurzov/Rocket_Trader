@@ -1,0 +1,37 @@
+name: Rocket Trader - Protected Capital Floor Tests
+
+on:
+  push:
+    branches:
+      - "fix/protected-capital-floor-payout-gate"
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_adaptive.py"
+      - "rocket_trader_adaptive_test.py"
+      - ".github/workflows/rocket-trader-protected-floor-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capital-floor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Compile Core and Adaptive
+        run: python -m py_compile rocket_trader_core.py rocket_trader_adaptive.py rocket_trader_adaptive_test.py
+
+      - name: Test Core capital allocation and protected floor
+        run: python rocket_trader_core.py
+
+      - name: Test Adaptive capital policy
+        run: python rocket_trader_adaptive_test.py
