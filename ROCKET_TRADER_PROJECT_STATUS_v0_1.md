@@ -107,6 +107,13 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - It is the exact value that must be passed into Core's `monthly_distribution_plan`; operating capital remains a separate input for the protected-floor calculation.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42699294872
 
+### 22. SIP entitlement probe
+- PR #31 adds a read-only SPY daily-bar test against both IEX and SIP using the connected Alpaca market-data credentials.
+- It reports availability/entitlement status without exposing credentials or accessing account balances.
+- The result determines whether equity research can be repeated on consolidated SIP data. IEX results remain preliminary until this is verified.
+- CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42700647281
+- Main-merge probe is running; entitlement result is pending.
+
 ### 21. First five-year adjusted ETF research report
 - Full read-only run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42700263040
 - Artifact ID: `13710094727` (`rocket-trader-equity-multiyear-research-v0-1`).
