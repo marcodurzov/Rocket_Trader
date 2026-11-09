@@ -161,6 +161,21 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         self.assertEqual(result["side"], "sell")
         self.assertEqual(self.client.submit_count, 1)
 
+    def test_duplicate_sell_reconciles_even_after_position_is_consumed(self):
+        self.client.positions = [
+            SimpleNamespace(symbol="BTC/USD", qty="0.001")
+        ]
+        intent = CryptoOrderIntent(
+            client_order_id="crypto-sell-idempotent", symbol="BTC/USD",
+            side=Side.SELL, quantity="0.0005",
+        )
+        first = self.adapter.submit(intent)
+        self.client.positions = []
+        second = self.adapter.submit(intent)
+        self.assertFalse(first["duplicate_prevented"])
+        self.assertTrue(second["duplicate_prevented"])
+        self.assertEqual(self.client.submit_count, 1)
+
     def test_rejects_inactive_crypto_account_and_untradable_asset(self):
         self.client.get_account = lambda: SimpleNamespace(
             status="ACTIVE", currency="USD", crypto_status="INACTIVE",
