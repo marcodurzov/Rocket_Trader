@@ -409,7 +409,7 @@ def self_test() -> Dict[str, Any]:
         })
         frames[symbol] = normalize_frame(raw, symbol, min_rows=MIN_DAILY_BARS)
         pos = strategy_positions(frames[symbol])
-        assert len(pos) == 6
+        assert len(pos) == 7
         assert all(((w >= 0) & (w <= 1)).all() for w in pos.values())
     cross = evaluate_cross_sectional(frames)
     assert cross["bars"] > 0
