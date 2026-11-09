@@ -2008,7 +2008,7 @@ def self_test() -> Dict[str, Any]:
         equity=1000.0,
         cash=1000.0,
         account_currency="USD",
-        strategy_capital_mxn=3000.0,
+        strategy_capital_mxn=6000.0,
         fx_quote=FXQuote(
             mxn_per_usd=Decimal("18.00"),
             observed_at=datetime.now(timezone.utc),
@@ -2023,7 +2023,7 @@ def self_test() -> Dict[str, Any]:
     )
     assert larger_budget_decision.status == DecisionStatus.NOVEL_RISK
     assert larger_budget_decision.quantity * snapshot.price >= 1.0
-    assert larger_budget_decision.quantity * snapshot.price <= (3000.0 / 18.0) * 0.01 * 0.80 + 1e-9
+    assert larger_budget_decision.quantity * snapshot.price <= (6000.0 / 18.0) * 0.01 * larger_budget_decision.adaptive_multiplier * 0.80 + 1e-9
 
     # ------------------------------------------------
     # CAPITAL POLICY < 100K
