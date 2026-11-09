@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Rocket Trader — walk-forward signal research v0.4.
+"""Rocket Trader — walk-forward signal research v0.6.
 
 RESEARCH ONLY. Market-data API only; this module never imports a trading client
 and never submits, modifies, or cancels orders.
@@ -34,7 +34,7 @@ from rocket_trader_engine import (
     MarketDataValidator,
 )
 
-VERSION = "0.5"
+VERSION = "0.6"
 BAR_MINUTES = 5
 DEFAULT_HORIZONS = [3, 6, 12]  # 15, 30, 60 minutes of holding bars
 DEFAULT_THRESHOLDS = [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
@@ -43,8 +43,8 @@ TEST_BLOCK = 800
 MAX_FOLDS = 6
 MIN_SELECTION_TRADES = 20
 MIN_SELECTION_FOLDS = 2
-MIN_HOLDOUT_TRADES = 20
-MIN_HOLDOUT_FOLDS = 2
+MIN_HOLDOUT_TRADES = 30
+MIN_HOLDOUT_FOLDS = 3
 TARGET_RETURN = 0.001  # label threshold: +0.10% over the chosen horizon
 
 
@@ -257,12 +257,67 @@ def simulate_non_overlapping(predictions: pd.DataFrame, raw: pd.DataFrame, symbo
     return metrics_from_trades(trades, f"probability_up>={threshold:.4f}", len(candidates), horizon), trades
 
 
-def buy_and_hold_return(raw: pd.DataFrame, start_idx: int, end_idx: int) -> Optional[float]:
+def bootstrap_trade_returns(
+    trades: Sequence[Trade],
+    samples: int = 2000,
+    block_size: int = 3,
+    seed: int = 20261109,
+) -> Dict[str, Any]:
+    """Circular moving-block bootstrap over the chronological OOS trade sequence."""
+    returns = np.asarray([trade.net_return for trade in trades], dtype=float)
+    if len(returns) < max(10, block_size * 2):
+        return {
+            "valid": False,
+            "reason": "insufficient_trade_sample",
+            "trades": int(len(returns)),
+        }
+    if samples < 100 or block_size < 1:
+        raise ValueError("Bootstrap requiere >=100 muestras y block_size >=1.")
+    rng = np.random.default_rng(seed)
+    n = len(returns)
+    block_count = int(math.ceil(n / block_size))
+    totals = np.empty(samples, dtype=float)
+    for sample_idx in range(samples):
+        selected: List[float] = []
+        for _ in range(block_count):
+            start = int(rng.integers(0, n))
+            selected.extend(
+                float(returns[(start + offset) % n])
+                for offset in range(block_size)
+            )
+        sample_returns = np.asarray(selected[:n], dtype=float)
+        totals[sample_idx] = float(np.prod(1.0 + sample_returns) - 1.0)
+    return {
+        "valid": True,
+        "method": "circular_moving_block_bootstrap",
+        "samples": int(samples),
+        "block_size_trades": int(block_size),
+        "confidence_interval": 0.95,
+        "p05_total_return": float(np.quantile(totals, 0.05)),
+        "median_total_return": float(np.quantile(totals, 0.50)),
+        "p95_total_return": float(np.quantile(totals, 0.95)),
+        "probability_total_return_positive": float(np.mean(totals > 0)),
+    }
+
+
+def buy_and_hold_return(
+    raw: pd.DataFrame,
+    start_idx: int,
+    end_idx: int,
+    round_trip_cost: float = 0.0,
+    slippage_per_side: float = 0.0,
+) -> Optional[float]:
+    """Same-window passive benchmark net of one entry, one exit and slippage."""
     px = raw.reset_index(drop=True)
     if start_idx < 0 or end_idx >= len(px) or end_idx <= start_idx:
         return None
+    if round_trip_cost < 0 or slippage_per_side < 0:
+        raise ValueError("Los costos del benchmark no pueden ser negativos.")
     start, end = float(px.iloc[start_idx]["open"]), float(px.iloc[end_idx]["close"])
-    return end / start - 1.0 if start > 0 else None
+    if start <= 0:
+        return None
+    gross = end / start - 1.0
+    return float(gross - round_trip_cost - 2.0 * slippage_per_side)
 
 
 def evaluate_grid(selection: pd.DataFrame, raw: pd.DataFrame, symbol: str, horizons: Sequence[int],
@@ -332,8 +387,17 @@ def evaluate_symbol(symbol: str, days: int, cost: float, slippage: float,
         holdout_metrics, trades = simulate_non_overlapping(
             holdout, raw, symbol, chosen_threshold, chosen_horizon, cost, slippage,
             min_signal_index=holdout_start, max_signal_index=holdout_end)
-        holdout_benchmark = buy_and_hold_return(raw, holdout_start, holdout_end)
-        holdout_metrics["buy_hold_return_same_window"] = holdout_benchmark
+        holdout_benchmark = buy_and_hold_return(
+            raw, holdout_start, holdout_end, cost, slippage
+        )
+        holdout_metrics["buy_hold_return_same_window_after_costs"] = holdout_benchmark
+        holdout_metrics["benchmark_excess_return_after_costs"] = (
+            holdout_metrics["total_return"] - holdout_benchmark
+            if holdout_benchmark is not None else None
+        )
+        holdout_metrics["bootstrap_uncertainty"] = bootstrap_trade_returns(
+            trades, samples=2000, block_size=3
+        )
         holdout_metrics["threshold_selected_on"] = "earlier_OOS_selection_segment"
         holdout_metrics["horizon_selected_on"] = "earlier_OOS_selection_segment"
         holdout_metrics["holdout_is_untouched_for_selection"] = True
@@ -342,6 +406,8 @@ def evaluate_symbol(symbol: str, days: int, cost: float, slippage: float,
             holdout_metrics["trades"] >= MIN_HOLDOUT_TRADES and
             holdout_metrics["folds_with_trades"] >= MIN_HOLDOUT_FOLDS and
             holdout_metrics["profitable_folds"] >= 2 and
+            holdout_metrics["bootstrap_uncertainty"]["valid"] and
+            holdout_metrics["bootstrap_uncertainty"]["p05_total_return"] > 0 and
             holdout_metrics["avg_net_return"] > 0 and
             holdout_metrics["total_return"] > 0 and
             holdout_metrics["profit_factor"] > 1.10 and
@@ -413,6 +479,19 @@ def self_test() -> Dict[str, Any]:
     actual_gross = float(tiny.iloc[10 + label_horizon]["close"] / tiny.iloc[11]["open"] - 1.0)
     assert expected_label == int(actual_gross >= TARGET_RETURN)
     assert trades[0].gross_return == float(tiny.iloc[13]["close"] / tiny.iloc[11]["open"] - 1.0)
+    gross_benchmark = buy_and_hold_return(tiny, 5, 20, 0.0, 0.0)
+    net_benchmark = buy_and_hold_return(tiny, 5, 20, 0.001, 0.0005)
+    assert gross_benchmark is not None and net_benchmark is not None
+    assert net_benchmark < gross_benchmark
+    bootstrap_test = bootstrap_trade_returns(
+        [Trade("TEST", 1, 3, str(i), str(i + 1), str(i + 3), i, i + 1, i + 3,
+               100.0, 101.0, 0.8, 0.01, 0.0002, 0.0002, 0.0096)
+         for i in range(30)],
+        samples=200,
+        block_size=3,
+    )
+    assert bootstrap_test["valid"] is True
+    assert bootstrap_test["p05_total_return"] > 0
     # Fold anchoring is tested structurally without training expensive models.
     first_test = n - MAX_FOLDS * TEST_BLOCK
     assert first_test >= MIN_TRAIN
