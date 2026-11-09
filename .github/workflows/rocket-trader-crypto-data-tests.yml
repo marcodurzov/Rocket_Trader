@@ -1,0 +1,42 @@
+name: Rocket Trader - Crypto Market Data Tests
+
+on:
+  push:
+    branches:
+      - "feat/crypto-market-data-layer"
+    paths:
+      - "rocket_trader_crypto_market_data.py"
+      - "rocket_trader_crypto_market_data_test.py"
+      - "requirements-alpaca.txt"
+      - ".github/workflows/rocket-trader-crypto-data-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crypto-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Alpaca SDK and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-alpaca.txt
+
+      - name: Compile crypto data layer
+        run: python -m py_compile rocket_trader_crypto_market_data.py rocket_trader_crypto_market_data_test.py
+
+      - name: Run read-only crypto data tests
+        run: python rocket_trader_crypto_market_data_test.py
+
+      - name: Verify real BTC/USD historical data access
+        run: python rocket_trader_crypto_market_data_test.py --market-data
