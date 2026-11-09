@@ -322,65 +322,12 @@ class NewsAssessment:
 
 class NewsEngine:
     """
-    Motor heurístico inicial para PAPER.
+    Fail-closed placeholder.
 
-    No pretende ser un modelo definitivo de sentimiento.
-
-    Su función inicial es transformar noticias en una señal
-    cuantificable, auditable y reproducible.
+    Article ingestion is implemented separately in rocket_trader_news.py.
+    Until a point-in-time NLP/scoring model is validated, this engine must not
+    infer sentiment from keyword counts or influence trading risk.
     """
-
-    POSITIVE_TERMS = {
-        "beat",
-        "beats",
-        "surge",
-        "upgrade",
-        "raises guidance",
-        "raised guidance",
-        "strong demand",
-        "record revenue",
-        "profit",
-        "profits",
-        "approval",
-        "partnership",
-        "buyback",
-        "positive outlook",
-        "contract win",
-    }
-
-    NEGATIVE_TERMS = {
-        "miss",
-        "misses",
-        "downgrade",
-        "cuts guidance",
-        "cut guidance",
-        "weak demand",
-        "layoffs",
-        "lawsuit",
-        "investigation",
-        "recall",
-        "bankruptcy",
-        "fraud",
-        "warning",
-        "negative outlook",
-        "loss",
-        "losses",
-        "default",
-        "regulatory action",
-    }
-
-    HIGH_URGENCY_TERMS = {
-        "halt",
-        "bankruptcy",
-        "fraud",
-        "recall",
-        "investigation",
-        "approval",
-        "earnings",
-        "guidance",
-        "merger",
-        "acquisition",
-    }
 
     def assess(
         self,
@@ -388,73 +335,15 @@ class NewsEngine:
         headline: str,
         summary: str = "",
     ) -> NewsAssessment:
-
-        text = (
-            f"{headline} {summary}"
-        ).lower()
-
-        positive = [
-            term
-            for term in self.POSITIVE_TERMS
-            if term in text
-        ]
-
-        negative = [
-            term
-            for term in self.NEGATIVE_TERMS
-            if term in text
-        ]
-
-        urgent = [
-            term
-            for term in self.HIGH_URGENCY_TERMS
-            if term in text
-        ]
-
-        raw = len(positive) - len(negative)
-
-        if raw > 0:
-            impact = NewsImpact.POSITIVE
-
-        elif raw < 0:
-            impact = NewsImpact.NEGATIVE
-
-        else:
-            impact = NewsImpact.NEUTRAL
-
-        matched = tuple(
-            positive
-            + negative
-            + urgent
-        )
-
-        confidence = min(
-            1.0,
-            0.35
-            + 0.10 * len(matched),
-        )
-
-        score = max(
-            -1.0,
-            min(
-                1.0,
-                raw / 3.0,
-            ),
-        )
-
-        urgency = min(
-            1.0,
-            0.25
-            + 0.20 * len(urgent),
-        )
-
+        # Keep the interface stable, but do not turn words in a headline into
+        # an actionable positive/negative signal.
         return NewsAssessment(
-            symbol=symbol,
-            impact=impact,
-            score=score,
-            confidence=confidence,
-            urgency=urgency,
-            matched_terms=matched,
+            symbol=str(symbol).strip().upper(),
+            impact=NewsImpact.UNKNOWN,
+            score=0.0,
+            confidence=0.0,
+            urgency=0.0,
+            matched_terms=(),
         )
 
 
