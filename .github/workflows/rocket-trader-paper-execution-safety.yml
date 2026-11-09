@@ -14,6 +14,8 @@ on:
     paths:
       - "rocket_trader_paper_execution.py"
       - "rocket_trader_paper_execution_test.py"
+      - "rocket_trader_core.py"
+      - "rocket_trader_live_mode_guard_test.py"
       - ".github/workflows/rocket-trader-paper-execution-safety.yml"
 
 permissions:
