@@ -92,9 +92,14 @@ def normalize_frame(frame: pd.DataFrame, symbol: str, min_rows: int = 1) -> pd.D
     bad = df[required].isna().any(axis=1)
     bad |= (df[["open", "high", "low", "close"]] <= 0).any(axis=1)
     bad |= df["volume"] < 0
-    bad |= df["high"] < df[["open", "close"]].max(axis=1)
-    bad |= df["low"] > df[["open", "close"]].min(axis=1)
-    bad |= df["high"] < df["low"]
+    # Vendor-adjusted OHLC can differ by a few floating-point ULPs.
+    # Permit only a tiny relative tolerance; material candle inconsistencies
+    # still fail closed.
+    price_scale = df[["open", "high", "low", "close"]].abs().max(axis=1)
+    tolerance = price_scale * 1e-10
+    bad |= df["high"] + tolerance < df[["open", "close"]].max(axis=1)
+    bad |= df["low"] - tolerance > df[["open", "close"]].min(axis=1)
+    bad |= df["high"] + tolerance < df["low"]
     if bad.any():
         sample = df.loc[bad, required].head(10).copy()
         sample["timestamp"] = sample["timestamp"].astype(str)
