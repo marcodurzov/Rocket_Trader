@@ -493,7 +493,7 @@ def self_test() -> Dict[str, Any]:
         assert all(((w >= 0) & (w <= 1)).all() for w in pos.values())
     cross = evaluate_cross_sectional(frames)
     assert cross["bars"] > 0
-    gappy = frames["BTC/USD"].drop(index=range(100, 110)).reset_index(drop=True)
+    gappy = frames["BTC/USD"].drop(index=range(100, 200)).reset_index(drop=True)
     gappy_quality = data_quality_metrics(gappy)
     assert gappy_quality["eligible_for_strategy_evidence"] is False
     assert gappy_quality["calendar_coverage_pct"] < MIN_CALENDAR_COVERAGE
