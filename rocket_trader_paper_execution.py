@@ -188,6 +188,12 @@ class AlpacaPaperExecutionAdapter:
             raise PaperExecutionError("Only BUY/LONG entries are supported.")
         if order.quantity <= 0:
             raise PaperExecutionError("Order quantity must be positive.")
+        if not float(order.quantity).is_integer():
+            raise PaperExecutionError(
+                "Fractional MARKET_BRACKET orders are blocked until Alpaca "
+                "fractional bracket compatibility and the full fractional "
+                "exit lifecycle are independently verified."
+            )
         if order.entry_price <= 0 or float(order.stop_price or 0) <= 0 or float(order.take_profit_price or 0) <= 0:
             raise PaperExecutionError("Entry, stop-loss and take-profit prices must be positive.")
         if not float(order.stop_price) < float(order.take_profit_price):
