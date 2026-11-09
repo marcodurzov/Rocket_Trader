@@ -71,11 +71,14 @@ class EquityResearchV02Tests(unittest.TestCase):
     def test_short_history_cannot_pass_as_ten_year_research(self):
         frame = synthetic_frame(start="2021-11-09", periods=1250)
         end = frame["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
-        with self.assertRaisesRegex(Exception, "daily bars|requested 10-year"):
+        with self.assertRaisesRegex(Exception, "daily bars|requested 10-year") as caught:
             fetch_daily_bars(
                 "SPY", years=10, client=FakeStockClient(frame),
                 end=end, chunk_days=365,
             )
+        self.assertIn("Returned range=", str(caught.exception))
+        self.assertIn("approx_weekday_coverage=", str(caught.exception))
+        self.assertIn("max_calendar_gap_days=", str(caught.exception))
 
     def test_252_day_momentum_uses_one_session_lag(self):
         frame = synthetic_frame(periods=2100)

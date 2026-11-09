@@ -235,3 +235,33 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - No leverage, margin, shorts, options, futures or perpetuals in the initial scope.
 - No API secrets in source files or chat.
 - Never claim that CI PASS, a model score, a trader anecdote or a small trade sample proves profitability.
+
+
+## Audit update — 2026-11-09 (PRs #27–#32)
+
+### Repository state verified
+- Current `main` commit at audit: `6130575819bccef9067a77bd4071c7859f921684` (PR #32).
+- PRs #27–#32 are merged. No open pull requests were found at the time of this audit.
+- PR #27 runs crypto multi-year research after main merges.
+- PR #28 exposes `earned_growth_capital_mxn` from the ledger. External deposits/withdrawals do not count toward the MXN 100,000 earned-growth milestone.
+- PR #29 adds a 95% calendar-coverage and maximum-three-day-gap gate for crypto. The five-year run had BTC and ETH at 100% coverage; SOL at 77.10% with 418 missing days and a 417-day maximum gap. SOL is ineligible for evidence; the overall crypto dataset fails quality.
+- PR #30 adds five-year adjusted daily ETF research across SPY, QQQ, IWM, DIA, TLT, GLD, EFA and EEM. No strategy showed robust excess return over the matching benchmark.
+- PR #31 verifies market-data entitlements: IEX available; SIP returned NOT_ENTITLED (HTTP 403). IEX is not consolidated SIP data. Paying for SIP is not justified at the current MXN 1,000 starting capital.
+- PR #32 adds a ten-year ETF research path and benchmark-relative moving-block bootstrap. Its offline tests pass, but the first main-branch data run failed closed: every requested ETF returned only 1,581 daily bars (SPY 1,582), below the 1,638 minimum for ten-year evidence. No research result or strategy approval was produced. Run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42701564813.
+
+### Important documentation reconciliation
+The original project-start document still says the first permanent floor is MXN 5,000 and lists risk controls as undecided. Those statements are superseded by the later explicit user decision recorded in this repository: initial capital MXN 1,000; 100% of realized net trading profits retained until earned-growth capital first reaches MXN 100,000; then target allocation 50% reinvestment / 10% reserve / 40% personal. This later policy governs Rocket Trader. The MXN 100,000 floor is a withdrawal restriction, not a guarantee against market loss.
+
+### Current blockers (not completed)
+1. Diagnose why the ten-year IEX request returns only ~1,581 bars and record exact first/last dates, weekday coverage and maximum gaps. Do not lower the ten-year threshold just to make the workflow green.
+2. Resolve crypto historical coverage using a point-in-time-safe, documented source; never splice different exchanges/providers into one price series without explicit source identity and market comparability controls.
+3. Complete broker activity reconciliation before posting fills into the P&L ledger, including crypto fees in base/quote currency, corrections/busts, corporate actions and duplicate/reordered events.
+4. Connect ledger, account activity stager, position reconciliation, MXN/USD budget, both execution adapters and a shared portfolio risk manager in one persistent runtime. They are currently separate components/gates, not an autonomous end-to-end system.
+5. Define and test explicit risk limits: per-trade risk, maximum position and aggregate exposure, daily loss lock, peak-to-trough drawdown lock, maximum concurrent positions, liquidity/slippage constraints and restart-safe kill switch. Do not invent these from a successful backtest.
+6. Build point-in-time benchmark and trader-intelligence data. Famous traders/investors provide hypotheses and process references, never live order instructions. Quantitative comparisons must be reproducible, same-period and net of costs.
+7. Keep news ingestion informational until point-in-time classification, source corroboration and predictive value pass independent validation.
+8. Deploy a persistent Paper runtime with reconnect/recovery, order-state and partial-fill handling, monitoring and durable state. GitHub Actions is for CI/research, not continuous trading.
+9. Establish Paper acceptance criteria and sustained Paper evidence before any separate LIVE safety review. LIVE remains disabled.
+
+### Diagnostic improvement in this audit branch
+PR #33 adds the returned date range, approximate weekday coverage, missing weekday count and maximum calendar gap to the ten-year history failure message. This makes the next read-only run diagnostic rather than merely reporting a bar-count mismatch. It does not weaken the evidence gate or enable orders.
