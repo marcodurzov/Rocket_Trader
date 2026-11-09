@@ -54,6 +54,7 @@ jobs:
       - name: Offline self-test
         run: python rocket_trader_crypto_multiyear_research_v0_1.py --self-test
       - name: Run multi-year crypto research
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         env:
           YEARS_INPUT: ${{ inputs.years || '5' }}
           SYMBOLS_INPUT: ${{ inputs.symbols || 'BTC/USD ETH/USD SOL/USD' }}
@@ -66,6 +67,7 @@ jobs:
             --years "$YEARS_INPUT" \
             --output research_artifacts/crypto_multiyear_research_v0_1.json
       - name: Verify research-only report
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         run: |
           python - <<'PY'
           import json
@@ -79,7 +81,7 @@ jobs:
           print('Research-only report verified:', data['symbols_processed'])
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         with:
           name: rocket-trader-crypto-multiyear-research-v0-1
           path: research_artifacts/
