@@ -191,7 +191,7 @@ class RealizedPnLLedger:
                     conn,
                     event_id="SYSTEM-INITIAL-CAPITAL",
                     event_type="INITIAL_CAPITAL",
-                    occurred_at=_utc(),
+                    occurred_at="1970-01-01T00:00:00+00:00",
                     payload={"amount_mxn": str(self.initial_capital_mxn), "currency": "MXN"},
                 )
 
@@ -294,6 +294,34 @@ class RealizedPnLLedger:
             "fx": fx.as_dict(),
             "currency": "USD",
         }
+        occurred_iso = _utc(occurred_at)
+        # Idempotent replay must be checked before inventory validation: the
+        # original SELL may already have consumed the position.
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT event_type,payload_hash FROM ledger_events WHERE event_id=?",
+                (fill_id,),
+            ).fetchone()
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        if existing:
+            if existing["event_type"] != "FILL" or existing["payload_hash"] != digest:
+                raise LedgerError("event_id already exists with a different event payload")
+            return False
+        if side == "SELL":
+            held = Decimal("0")
+            for event in self._events():
+                if event["occurred_at"] > occurred_iso:
+                    break
+                p = event["payload"]
+                if event["event_type"] != "FILL" or p["symbol"] != symbol:
+                    continue
+                delta = Decimal(p["quantity"])
+                held += delta if p["side"] == "BUY" else -delta
+            if qty > held:
+                raise LedgerError(
+                    f"SELL fill {fill_id} exceeds FIFO inventory for {symbol}"
+                )
         return self._append(fill_id, "FILL", occurred_at, payload)
 
     def _events(self) -> list[Dict[str, Any]]:
