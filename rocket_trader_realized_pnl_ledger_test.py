@@ -141,6 +141,7 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         later = datetime(2026, 11, 10, 16, 0, tzinfo=timezone.utc)
         earlier = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
         later_fx = LedgerFX(Decimal("18.00"), later, "LATER_TEST_FIXTURE")
+        earlier_fx = LedgerFX(Decimal("18.00"), earlier, "EARLIER_TEST_FIXTURE")
         # Deliberately insert the later fill first; event-time order is authoritative.
         self.ledger.record_fill(
             fill_id="later-buy", symbol="BTC/USD", side="BUY",
@@ -150,7 +151,7 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.ledger.record_fill(
             fill_id="earlier-buy", symbol="BTC/USD", side="BUY",
             quantity="0.01", price_usd="10000", fee_usd="0",
-            fx=FX, occurred_at=earlier, asset_class="CRYPTO_SPOT",
+            fx=earlier_fx, occurred_at=earlier, asset_class="CRYPTO_SPOT",
         )
         self.ledger.record_fill(
             fill_id="fifo-sell", symbol="BTC/USD", side="SELL",
