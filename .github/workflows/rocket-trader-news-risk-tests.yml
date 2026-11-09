@@ -1,0 +1,33 @@
+name: Rocket Trader - Fail Closed News Risk Tests
+
+on:
+  push:
+    branches:
+      - "fix/disable-unvalidated-news-heuristic"
+    paths:
+      - "rocket_trader_adaptive.py"
+      - "rocket_trader_adaptive_test.py"
+      - ".github/workflows/rocket-trader-news-risk-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  news-risk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile adaptive risk modules
+        run: python -m py_compile rocket_trader_adaptive.py rocket_trader_adaptive_test.py
+
+      - name: Run adaptive risk and fail-closed news tests
+        run: python rocket_trader_adaptive_test.py

@@ -4,6 +4,8 @@
 from rocket_trader_adaptive import (
     CapitalPolicy,
     NewsEngine,
+    NewsAssessment,
+    NewsImpact,
     MarketRegimeEngine,
     AdaptiveRiskEngine,
 )
@@ -39,7 +41,11 @@ def main() -> None:
         "Company beats earnings estimates and raises guidance",
     )
 
-    assert news.impact.value == "POSITIVE"
+    assert news.impact == NewsImpact.UNKNOWN
+    assert news.score == 0.0
+    assert news.confidence == 0.0
+    assert news.urgency == 0.0
+    assert news.matched_terms == ()
 
     # Régimen alcista
     regime = MarketRegimeEngine().assess(
@@ -62,10 +68,25 @@ def main() -> None:
     assert risk.allowed
     assert risk.max_position_pct > 0.25
 
-    # Noticia negativa urgente debe bloquear
-    negative_news = NewsEngine().assess(
-        "AAPL",
-        "Company under fraud investigation",
+    # Sin un modelo de noticias validado, la noticia no puede aumentar el riesgo.
+    risk_without_news = AdaptiveRiskEngine().decide(
+        signal_score=0.90,
+        signal_confidence=0.90,
+        evidence_score=0.85,
+        regime=regime,
+        news=None,
+    )
+    assert risk.max_position_pct == risk_without_news.max_position_pct
+    assert risk.risk_multiplier == risk_without_news.risk_multiplier
+
+    # El control de riesgo sigue bloqueando una evaluación negativa validada.
+    negative_news = NewsAssessment(
+        symbol="AAPL",
+        impact=NewsImpact.NEGATIVE,
+        score=-1.0,
+        confidence=1.0,
+        urgency=1.0,
+        matched_terms=("validated_test_event",),
     )
 
     blocked = AdaptiveRiskEngine().decide(
