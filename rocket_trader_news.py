@@ -484,6 +484,18 @@ def self_test() -> Dict[str, Any]:
         assert saved_after["point_in_time_eligible"] == 1
         assert store.count_versions("benzinga", 123) == 2
 
+        stale = dict(article)
+        stale["updated_at"] = "2026-11-09T11:30:00+00:00"
+        stale["summary"] = "Older stale summary"
+        store.ingest(
+            [stale],
+            observation_mode="HISTORICAL_BACKFILL",
+            observed_at="2026-11-09T12:05:00+00:00",
+        )
+        saved_after_stale = store.get_article("benzinga", 123)
+        assert saved_after_stale["summary"] == "Updated summary"
+        assert store.count_versions("benzinga", 123) == 3
+
         duplicate = store.ingest(
             [updated],
             observation_mode="LIVE",
