@@ -101,6 +101,15 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - This avoids overstating crypto inventory and understating cost basis.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697135231
 
+### 14. Paper position reconciliation gate
+- PR #24 adds a read-only reconciliation module comparing broker-reported quantities against the local FIFO ledger.
+- Normalizes crypto pair symbols and detects ledger-only, broker-only and quantity-drift positions.
+- Requires an active, unblocked USD Paper account and a fresh timestamped FX quote.
+- Reports broker cash/equity in USD for diagnostics, but explicitly does not use Paper buying power as strategy capital.
+- Any mismatch blocks reconciliation; the module never submits or modifies orders.
+- CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697539973
+- Still requires integration with a complete broker activity/fee/corporate-action event stream and persistent runtime before it can gate automated execution.
+
 ### 13. Alpaca Paper account activity stager
 - PR #23 adds a read-only PAPER-only client for Alpaca Trading API account activities, with ascending pagination, durable cursor, immutable SQLite staging and idempotent redelivery.
 - FILL, CFEE and FEE are staged. Unsupported activity types, non-final statuses and malformed fills are marked blocked.
