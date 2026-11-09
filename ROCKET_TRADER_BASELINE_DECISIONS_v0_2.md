@@ -1,0 +1,47 @@
+# Rocket Trader — Authoritative Baseline Decisions v0.2
+
+**Effective date:** 2026-11-09  
+**Repository:** https://github.com/marcodurzov/Rocket_Trader  
+**Supersedes conflicting initial planning notes where explicitly stated below.**
+
+## 1. Objective
+Build an autonomous, research-led trading system that seeks sustainable net growth through compounding, while preserving capital and refusing trades without validated positive expected value. The goal is to grow the original MXN 1,000 to MXN 100,000 in earned trading capital as efficiently as risk constraints reasonably permit. There is no guaranteed timeline or return.
+
+## 2. Capital and compounding policy
+- Initial strategy capital: **MXN 1,000**. All strategy capital, P&L, reserve and payout reporting is in MXN. Alpaca broker cash, equity and order notionals are in USD and require fresh, sourced, timestamped FX conversion.
+- Before the first time earned trading growth reaches **MXN 100,000**, retain **100% of realized net trading profits** in operating capital. Personal distributions = 0%; separate reserve distributions = 0%.
+- The earned-growth milestone is initial seed capital plus realized net P&L, after fees, spread, slippage and losses. External deposits do not count toward reaching the milestone.
+- At the first earned-growth crossing of MXN 100,000, the milestone latches permanently. Target allocation thereafter: 50% reinvestment, 10% reserve, 40% personal distribution.
+- After milestone activation, reserve and personal transfers are withheld whenever they would reduce operating capital below MXN 100,000. The actual allocation is then 100% retained until sufficient headroom exists.
+- Unrealized gains are not distributable. Monthly close/reporting may propose amounts; it must not move funds without a separately implemented and authorized transfer process.
+- The MXN 100,000 floor is a withdrawal rule, not a market-loss guarantee. Cash inside the operating account remains exposed to broker, custody and operational risks; uninvested cash must never be forced into a trade.
+- The original draft's MXN 5,000 floor is superseded and must not be used by current code or documentation as the governing milestone.
+
+## 3. Markets and broker scope
+- Initial broker and execution environment: Alpaca Paper.
+- Scope: US listed equities/ETFs and crypto spot, with separate market engines and execution state machines plus one shared portfolio capital/risk manager.
+- Crypto is own-capital spot only. No margin, borrowing, leverage, shorting, futures, perpetuals, options or leveraged/inverse ETFs.
+- Paper account permissions do not establish eligibility for live crypto trading from Mexico. Validate separately before any future live review.
+- SIP market data is currently not entitled; equity research must label IEX limitations explicitly. Do not pay for a higher data tier without a documented expected economic benefit.
+
+## 4. Research and trader intelligence
+- Jefe Maestro contributes engineering/research methods (ensembles, temporal features, walk-forward validation, fingerprints, bootstrap/permutation, multiple-testing correction, attribution and continuity), not lottery datasets or lottery-specific features.
+- Successful traders/investors are reference hypotheses and process benchmarks, not instructions. Record source, observation/publication time, regime and availability at decision time. Do not fabricate trader events or treat delayed public filings as real-time signals.
+- Compare candidates against buy-and-hold, cash and simple systematic baselines over the same periods, universe, risk and costs. Track all trials and apply multiple-testing correction. Final holdout remains untouched.
+- Every candidate must include fees, spread, slippage, liquidity, turnover, exposure, drawdown, uncertainty and benchmark-relative performance. No strategy is currently approved.
+- News and social content cannot independently trigger orders. NewsEngine remains UNKNOWN until point-in-time NLP/event evidence is validated.
+
+## 5. Safety and authorization
+- Research and Paper execution remain separate. Core risk controls cannot be bypassed by an execution adapter.
+- LIVE is disabled. Authorization to continue development and Paper validation is not authorization to place real-money orders. Any future LIVE mode requires a separate explicit authorization after a dedicated safety review.
+- Missing/stale FX, data gaps, ambiguous broker order state, ledger/broker mismatch, unknown fees, stale market data, risk-limit breach or corrupted durable state must fail closed.
+- No API keys or secrets in source code, files, logs or chat.
+
+## 6. Risk policy still to be engineered and validated
+The project has not yet established defensible numeric values for maximum risk per trade, maximum position size, aggregate exposure, daily loss limit, peak-to-trough drawdown stop, concurrent positions, liquidity/slippage thresholds and kill-switch recovery. These must be researched, backtested under stress, implemented centrally and tested through restart/reconciliation scenarios before Paper order enablement. Do not select aggressive numbers merely to force activity.
+
+## 7. Operational state
+- GitHub Actions is for CI, research and read-only probes, not the continuous trading runtime.
+- The realized-P&L ledger, broker activity stager, reconciliation gate, MXN/USD budget and execution adapters exist as separate components but are not yet wired into a persistent end-to-end Paper service.
+- No strategy has passed the current research acceptance gates. No Paper or LIVE orders have been submitted by the research workflows.
+- The current blocker list and run evidence are maintained in `ROCKET_TRADER_PROJECT_STATUS_v0_1.md`.
