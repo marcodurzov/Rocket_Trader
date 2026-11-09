@@ -1,0 +1,44 @@
+name: Rocket Trader - Crypto Paper Execution Safety
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/crypto-paper-execution-adapter"
+    paths:
+      - "rocket_trader_crypto_paper_execution.py"
+      - "rocket_trader_crypto_paper_execution_test.py"
+      - "rocket_trader_core.py"
+      - ".github/workflows/rocket-trader-crypto-execution-tests.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_crypto_paper_execution.py"
+      - "rocket_trader_crypto_paper_execution_test.py"
+      - "rocket_trader_core.py"
+      - ".github/workflows/rocket-trader-crypto-execution-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crypto-paper-execution-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile
+        run: |
+          python -m py_compile rocket_trader_crypto_paper_execution.py rocket_trader_crypto_paper_execution_test.py
+
+      - name: Run offline crypto Paper safety tests
+        run: python -m unittest -v rocket_trader_crypto_paper_execution_test.py
