@@ -101,6 +101,14 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - This avoids overstating crypto inventory and understating cost basis.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697135231
 
+### 16. Multi-year crypto research v0.1
+- PR #26 adds five-year daily research for BTC/USD, ETH/USD and SOL/USD using Alpaca CryptoFeed.US.
+- Tests pre-defined time-series momentum (90/180/365 days), 50/200 SMA trend, 55/20 Donchian breakout, volatility-targeted momentum and cross-sectional top-1 momentum against buy-and-hold.
+- Uses chronological 60/20/20 train/validation/final-holdout windows, next-bar signal timing, 40 bps per-side base friction assumptions and 2x friction stress.
+- Reports CAGR, drawdown, Sharpe, exposure, turnover and moving-block bootstrap diagnostics.
+- Offline CI passed: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42698649553
+- The scheduled/manual research run has not yet produced a five-year market-data report. No strategy is promoted, and the workflow hard-codes `candidate_promotion_allowed=false`, `paper_approval=false`, and `orders_enabled=false`.
+
 ### 15. Core milestone source aligned with the ledger
 - PR #25 closes a subtle policy mismatch: Core previously could activate the 100k payout milestone from operating capital, including external deposits.
 - Production `monthly_distribution_plan` now requires `earned_growth_capital_mxn` from the ledger. Earned trading growth controls milestone activation; actual operating capital still controls the protected withdrawal floor.
