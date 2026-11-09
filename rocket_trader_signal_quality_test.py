@@ -102,9 +102,12 @@ def evaluate_symbol(client: AlpacaMarketDataClient, symbol: str) -> Dict[str, An
     dataset = TemporalDataset(config)
     X, y = dataset.build(features)
 
-    split = int(len(X) * (1.0 - TEST_FRACTION))
-    X_train, X_test = X.iloc[:split], X.iloc[split:]
-    y_train, y_test = y.iloc[:split], y.iloc[split:]
+    X_train, X_test, y_train, y_test = dataset.purged_split(
+        X, y, test_fraction=TEST_FRACTION
+    )
+    split = len(X_train) + config.horizon_bars
+    if split + len(X_test) != len(X):
+        raise AssertionError("Purged temporal split no conserva el tamaño esperado")
 
     if y_train.nunique() < 2 or y_test.nunique() < 2:
         raise ValueError(f"{symbol}: el split temporal no contiene ambas clases")
