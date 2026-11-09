@@ -14,11 +14,11 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - Initial strategy capital: **MXN 1,000**. All user-facing capital, profit, reserve, payout and MXN 100,000 milestone amounts are denominated in MXN. Alpaca's broker account and asset notionals are denominated in USD.
 - Before any strategy-driven Paper order is enabled, the MXN ledger must be converted into a USD risk budget using a timestamped, sourced FX quote. Alpaca's virtual Paper buying power must never be treated as the user's funded strategy capital.
 - PR #15 adds a standalone Decimal-based FX conversion and conservative USD position-budget module. It blocks missing/invalid/future/stale FX, applies per-position, total-exposure, stop-risk and available-cash caps, and blocks budgets below the configured broker minimum. It is not yet wired into the Core or execution adapter; therefore it does not yet authorize orders.
-- Before the first time operating capital reaches MXN 100,000: 70% reinvestment / 10% reserve / 20% personal distribution.
-- Once MXN 100,000 is reached for the first time: 50% reinvestment / 10% reserve / 40% personal distribution.
+- **Updated compounding rule (PR in progress):** before operating capital first reaches MXN 100,000, 100% of realized net profits is retained/reinvested; personal withdrawals = 0% and separate reserve allocation = 0%. Uninvested cash remains inside operating capital and is not automatically forced into positions.
+- Once MXN 100,000 is reached for the first time: the target policy remains 50% reinvestment / 10% reserve / 40% personal distribution. The milestone latches permanently.
 - The transition is permanent even if capital later falls below MXN 100,000.
 - Distributions must be based on realized net profit after fees, spread, slippage and losses, not on unrealized P&L or gross account balance.
-- The MXN 100,000 operating-capital floor is a withdrawal policy, not a guarantee against market losses.
+- The MXN 100,000 operating-capital floor is a withdrawal policy, not a guarantee against market losses. After milestone activation, reserve and personal transfers are withheld whenever they would reduce operating capital below MXN 100,000.
 - Production `RocketTraderCore` now refuses to start unless `ROCKET_TRADER_CAPITAL_MILESTONE_PATH` or an explicit durable milestone path is configured. The demo Core is exempt for offline tests only.
 - After the milestone, the target remains 50/10/40 permanently. If reserve and personal transfers would take operating capital below MXN 100,000, both transfers are withheld and actual allocation becomes 100% reinvestment until there is sufficient headroom. The plan records both target and actual percentages.
 - If the state file is corrupt or its threshold differs from configuration, allocation fails closed.
