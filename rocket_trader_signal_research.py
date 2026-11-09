@@ -309,11 +309,13 @@ def buy_and_hold_return(
 ) -> Optional[float]:
     """Same-window passive benchmark net of one entry, one exit and slippage."""
     px = raw.reset_index(drop=True)
-    if start_idx < 0 or end_idx >= len(px) or end_idx <= start_idx:
+    if start_idx < 0 or end_idx >= len(px) or end_idx <= start_idx + 1:
         return None
     if round_trip_cost < 0 or slippage_per_side < 0:
         raise ValueError("Los costos del benchmark no pueden ser negativos.")
-    start, end = float(px.iloc[start_idx]["open"]), float(px.iloc[end_idx]["close"])
+    # Start at the first tradable bar after the initial signal timestamp,
+    # matching the strategy's next-bar-open execution convention.
+    start, end = float(px.iloc[start_idx + 1]["open"]), float(px.iloc[end_idx]["close"])
     if start <= 0:
         return None
     gross = end / start - 1.0
@@ -482,6 +484,8 @@ def self_test() -> Dict[str, Any]:
     gross_benchmark = buy_and_hold_return(tiny, 5, 20, 0.0, 0.0)
     net_benchmark = buy_and_hold_return(tiny, 5, 20, 0.001, 0.0005)
     assert gross_benchmark is not None and net_benchmark is not None
+    expected_benchmark = float(tiny.iloc[20]["close"] / tiny.iloc[6]["open"] - 1.0)
+    assert math.isclose(gross_benchmark, expected_benchmark, rel_tol=1e-12)
     assert net_benchmark < gross_benchmark
     bootstrap_test = bootstrap_trade_returns(
         [Trade("TEST", 1, 3, str(i), str(i + 1), str(i + 3), i, i + 1, i + 3,
