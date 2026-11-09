@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "research/crypto-multiyear-benchmarks-v0-1"
+      - "fix/crypto-research-data-coverage-gate"
     paths:
       - "rocket_trader_crypto_multiyear_research_v0_1.py"
       - ".github/workflows/rocket-trader-crypto-multiyear-research-v0.1.yml"
