@@ -1,0 +1,36 @@
+name: Rocket Trader - Realized PnL Ledger
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/realized-pnl-ledger-v1"
+    paths:
+      - "rocket_trader_realized_pnl_ledger.py"
+      - "rocket_trader_realized_pnl_ledger_test.py"
+      - ".github/workflows/rocket-trader-realized-pnl-ledger.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_realized_pnl_ledger.py"
+      - "rocket_trader_realized_pnl_ledger_test.py"
+      - ".github/workflows/rocket-trader-realized-pnl-ledger.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  realized-pnl-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_realized_pnl_ledger_test.py
+      - name: Run offline ledger tests
+        run: python -m unittest -v rocket_trader_realized_pnl_ledger_test.py
