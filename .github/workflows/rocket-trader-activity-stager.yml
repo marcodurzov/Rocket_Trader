@@ -1,0 +1,38 @@
+name: Rocket Trader - Alpaca Paper Activity Stager
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/alpaca-paper-activity-stager"
+    paths:
+      - "rocket_trader_alpaca_activity_stager.py"
+      - "rocket_trader_alpaca_activity_stager_test.py"
+      - ".github/workflows/rocket-trader-activity-stager.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_alpaca_activity_stager.py"
+      - "rocket_trader_alpaca_activity_stager_test.py"
+      - ".github/workflows/rocket-trader-activity-stager.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  activity-stager-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install requests
+        run: pip install "requests>=2.32,<3"
+      - name: Compile
+        run: python -m py_compile rocket_trader_alpaca_activity_stager.py rocket_trader_alpaca_activity_stager_test.py
+      - name: Run offline activity staging tests
+        run: python -m unittest -v rocket_trader_alpaca_activity_stager_test.py
