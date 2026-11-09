@@ -257,11 +257,6 @@ class AlpacaCryptoPaperExecutionAdapter:
             quantity = _decimal(intent.quantity, "quantity")
             if quantity <= 0:
                 raise CryptoPaperExecutionError("SELL quantity must be positive.")
-            held = self._available_position_qty(symbol)
-            if quantity > held:
-                raise CryptoPaperExecutionError(
-                    f"SELL quantity {quantity} exceeds broker-held {symbol} quantity {held}."
-                )
             notional = None
 
         payload = {
@@ -318,6 +313,16 @@ class AlpacaCryptoPaperExecutionAdapter:
                         ),
                     )
                 return {"accepted": True, "mode": "PAPER", "duplicate_prevented": True, **broker}
+
+            # Check current owned quantity only for a genuinely new SELL.
+            # Duplicate retries must be reconciled first, because a prior fill may
+            # already have reduced the broker position to zero.
+            if intent.side == Side.SELL:
+                held = self._available_position_qty(symbol)
+                if quantity > held:
+                    raise CryptoPaperExecutionError(
+                        f"SELL quantity {quantity} exceeds broker-held {symbol} quantity {held}."
+                    )
 
             with self._connect() as conn:
                 conn.execute(
