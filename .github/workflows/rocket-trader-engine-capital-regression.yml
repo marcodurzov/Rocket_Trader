@@ -1,8 +1,19 @@
 name: Rocket Trader - Engine and Capital Regression
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_core.py"
+      - "rocket_trader_adaptive.py"
+      - "rocket_trader_engine.py"
+      - "rocket_trader_bridge.py"
+      - "rocket_trader_signal_quality_test.py"
+      - ".github/workflows/rocket-trader-engine-capital-regression.yml"
   push:
     branches:
+      - main
       - "fix/engine-temporal-validation-and-permanent-capital-milestone"
     paths:
       - "rocket_trader_core.py"
