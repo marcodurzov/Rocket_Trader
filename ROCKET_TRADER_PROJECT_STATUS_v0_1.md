@@ -50,6 +50,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - Crypto market data and research do not submit orders.
 - Crypto data test: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42686255611
 - Crypto engine test: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42686520713
+- Read-only Paper permission check: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42688397781
 - Integrated PRs: https://github.com/marcodurzov/Rocket_Trader/pull/3 and https://github.com/marcodurzov/Rocket_Trader/pull/4
 
 ### 5. News ingestion
@@ -90,7 +91,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 
 ## Current blockers before end-to-end Paper Trading
 
-1. **Account and data permissions:** verify the account's crypto Paper asset permissions and whether SIP stock data is available. Current stock research uses IEX; coverage is not equivalent to SIP.
+1. **Account and data permissions:** the read-only Alpaca Paper check confirmed account status ACTIVE, crypto status ACTIVE, USD account currency, and BTC/USD, ETH/USD and SOL/USD assets reported tradable=true. No crypto order was submitted. SIP stock-data access remains unverified; current stock research uses IEX, whose coverage is not equivalent to SIP.
 2. **Persistent runtime:** implement a long-running service with stock and crypto streams, reconnect logic, market calendars, state recovery and health monitoring. GitHub Actions is not the trading runtime.
 3. **Separate execution adapters:** equities and crypto have different supported order types and exit mechanics. Crypto spot requires a dedicated position/exit state machine; do not reuse equity bracket assumptions blindly.
 4. **Order safety:** idempotent client order IDs, order/position reconciliation, partial fills, cancel/replace state, duplicate prevention, kill switch and daily loss limits.
