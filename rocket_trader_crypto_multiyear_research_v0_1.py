@@ -160,12 +160,30 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     max_gap_days = int(gaps.max()) if not gaps.empty else 0
     coverage = bars / calendar_days if calendar_days else 0.0
     eligible = coverage >= MIN_CALENDAR_COVERAGE and max_gap_days <= MAX_ALLOWED_GAP_DAYS
+    gap_intervals = []
+    for index in range(1, len(dates)):
+        gap_days = int((dates.iloc[index] - dates.iloc[index - 1]).days)
+        if gap_days > 1:
+            gap_intervals.append({
+                "previous_bar": dates.iloc[index - 1].isoformat(),
+                "next_bar": dates.iloc[index].isoformat(),
+                "missing_calendar_days": gap_days - 1,
+                "gap_days_between_bars": gap_days,
+            })
     return {
+        "first_timestamp": dates.iloc[0].isoformat(),
+        "last_timestamp": dates.iloc[-1].isoformat(),
         "calendar_days": calendar_days,
         "daily_bars": bars,
         "missing_calendar_days": missing_days,
         "calendar_coverage_pct": coverage,
         "max_gap_days": max_gap_days,
+        "gap_interval_count": len(gap_intervals),
+        "largest_gap_intervals": sorted(
+            gap_intervals,
+            key=lambda item: item["gap_days_between_bars"],
+            reverse=True,
+        )[:20],
         "minimum_coverage_pct": MIN_CALENDAR_COVERAGE,
         "maximum_allowed_gap_days": MAX_ALLOWED_GAP_DAYS,
         "eligible_for_strategy_evidence": eligible,
@@ -475,10 +493,12 @@ def self_test() -> Dict[str, Any]:
         assert all(((w >= 0) & (w <= 1)).all() for w in pos.values())
     cross = evaluate_cross_sectional(frames)
     assert cross["bars"] > 0
-    gappy = frames["BTC/USD"].drop(index=range(0, n, 10)).reset_index(drop=True)
+    gappy = frames["BTC/USD"].drop(index=range(100, 200)).reset_index(drop=True)
     gappy_quality = data_quality_metrics(gappy)
     assert gappy_quality["eligible_for_strategy_evidence"] is False
     assert gappy_quality["calendar_coverage_pct"] < MIN_CALENDAR_COVERAGE
+    assert gappy_quality["gap_interval_count"] > 0
+    assert gappy_quality["largest_gap_intervals"][0]["missing_calendar_days"] >= 9
     metric, _ = evaluate_weights(
         frames["BTC/USD"]["close"],
         strategy_positions(frames["BTC/USD"])["buy_and_hold"],
