@@ -116,6 +116,7 @@ class SignalCandidate:
     score: float
     setup_signature: str
     evidence_class: str
+    expected_return_status: str = "NOT_ESTIMATED"
     features: Dict[str, float] = field(default_factory=dict)
     model_votes: Dict[str, float] = field(default_factory=dict)
 
@@ -582,7 +583,9 @@ class SignalEngine:
         X = pd.DataFrame([{c: latest[c] for c in FEATURE_COLUMNS}])
         probability, votes = self.model.predict_proba(X)
         p = float(probability[0])
-        expected_return = float(latest["ret_5"] if pd.notna(latest["ret_5"]) else 0.0)
+        # ret_5 is a historical feature, not a forecast. Until a separately
+        # validated return model exists, never mislabel past momentum as expected return.
+        expected_return = 0.0
         novelty = self.model.novelty_score(X)
         evidence = "PRECEDENTED" if novelty <= self.config.novelty_distance_threshold else "NOVEL"
         confidence = float(abs(p - 0.5) * 2)
@@ -612,6 +615,7 @@ class SignalEngine:
             score=score,
             setup_signature=setup_signature,
             evidence_class=evidence,
+            expected_return_status="NOT_ESTIMATED",
             features=selected_features,
             model_votes=model_votes,
         )
@@ -694,6 +698,8 @@ def self_test() -> Dict[str, Any]:
     assert training["rows"] >= config.min_training_rows
     assert 0 <= signal.probability_up <= 1
     assert 0 <= signal.confidence <= 1
+    assert signal.expected_return == 0.0
+    assert signal.expected_return_status == "NOT_ESTIMATED"
     assert signal.setup_signature
 
     return {
