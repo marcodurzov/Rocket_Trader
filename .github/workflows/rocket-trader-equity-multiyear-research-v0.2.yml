@@ -14,6 +14,7 @@ on:
       - main
     paths:
       - "rocket_trader_equity_multiyear_research_v0_2.py"
+      - "rocket_trader_equity_multiyear_research_v0_2_test.py"
       - ".github/workflows/rocket-trader-equity-multiyear-research-v0.2.yml"
   workflow_dispatch:
     inputs:
