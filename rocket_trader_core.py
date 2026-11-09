@@ -244,6 +244,14 @@ class DistributionPlan:
     capital_policy: str
     threshold_reached: bool
 
+    target_reserve_pct: float
+    target_reinvestment_pct: float
+    target_personal_pct: float
+
+    payouts_suspended: bool
+    payout_suspension_reason: Optional[str]
+    operating_capital_after_distribution: float
+
 
 class ProfitAllocator:
     """
@@ -338,16 +346,40 @@ class ProfitAllocator:
                 "No se distribuyen pérdidas como utilidades"
             )
 
-        reserve_pct, reinvestment_pct, personal_pct, policy, threshold_reached = (
+        target_reserve_pct, target_reinvestment_pct, target_personal_pct, policy, threshold_reached = (
             self.percentages_for_capital(operating_capital)
         )
 
         amount = float(distributable_profit)
+        reserve_pct = target_reserve_pct
+        reinvestment_pct = target_reinvestment_pct
+        personal_pct = target_personal_pct
 
         reserve = amount * reserve_pct
         reinvestment = amount * reinvestment_pct
-
         personal = amount - reserve - reinvestment
+        payouts_suspended = False
+        suspension_reason: Optional[str] = None
+
+        # operating_capital is the MXN operating balance after realized profit
+        # is credited but before this period's reserve/personal transfers.
+        # Once the milestone is reached, never let a payout take the operating
+        # balance below the protected floor. The target 50/10/40 rule remains
+        # recorded, but actual transfers are withheld until there is headroom.
+        if threshold_reached:
+            post_distribution_capital = operating_capital - reserve - personal
+            if post_distribution_capital < self.config.threshold_mxn - 1e-8:
+                payouts_suspended = True
+                suspension_reason = "WITHHOLD_DISTRIBUTIONS_TO_PRESERVE_OPERATING_FLOOR"
+                reserve_pct = 0.0
+                reinvestment_pct = 1.0
+                personal_pct = 0.0
+                reserve = 0.0
+                reinvestment = amount
+                personal = 0.0
+                policy = "DISTRIBUTION_THRESHOLD_PERMANENTLY_REACHED_FLOOR_HOLD"
+
+        capital_after = operating_capital - reserve - personal
 
         return DistributionPlan(
             period=period or month_key(),
@@ -362,6 +394,12 @@ class ProfitAllocator:
             personal_amount=round(personal, 2),
             capital_policy=policy,
             threshold_reached=threshold_reached,
+            target_reserve_pct=target_reserve_pct,
+            target_reinvestment_pct=target_reinvestment_pct,
+            target_personal_pct=target_personal_pct,
+            payouts_suspended=payouts_suspended,
+            payout_suspension_reason=suspension_reason,
+            operating_capital_after_distribution=round(capital_after, 2),
         )
 
 
@@ -1956,7 +1994,7 @@ def self_test() -> Dict[str, Any]:
     plan_distribution = (
         core.monthly_distribution_plan(
             distributable_profit=1000.0,
-            operating_capital=100000.0,
+            operating_capital=101000.0,
             period="2026-09",
         )
     )
@@ -1981,6 +2019,26 @@ def self_test() -> Dict[str, Any]:
         == "DISTRIBUTION_THRESHOLD_PERMANENTLY_REACHED"
     )
     assert plan_distribution.threshold_reached is True
+    assert plan_distribution.payouts_suspended is False
+    assert plan_distribution.target_reinvestment_pct == 0.50
+    assert plan_distribution.target_reserve_pct == 0.10
+    assert plan_distribution.target_personal_pct == 0.40
+    assert plan_distribution.operating_capital_after_distribution == 100500.0
+
+    floor_hold = core.monthly_distribution_plan(
+        distributable_profit=1000.0,
+        operating_capital=100000.0,
+        period="2026-10",
+    )
+    assert floor_hold.threshold_reached is True
+    assert floor_hold.payouts_suspended is True
+    assert floor_hold.reinvestment_pct == 1.0
+    assert floor_hold.reserve_pct == 0.0
+    assert floor_hold.personal_pct == 0.0
+    assert floor_hold.target_reinvestment_pct == 0.50
+    assert floor_hold.target_reserve_pct == 0.10
+    assert floor_hold.target_personal_pct == 0.40
+    assert floor_hold.operating_capital_after_distribution == 100000.0
 
     with tempfile.TemporaryDirectory() as temp_dir:
         milestone_file = str(Path(temp_dir) / "capital_milestone.json")
@@ -1989,17 +2047,21 @@ def self_test() -> Dict[str, Any]:
         )
         first_hit = persistent_allocator.plan(1000.0, 100000.0, "2026-11")
         assert first_hit.threshold_reached is True
+        assert first_hit.payouts_suspended is True
         after_drawdown = persistent_allocator.plan(1000.0, 70000.0, "2026-12")
-        assert after_drawdown.reinvestment_pct == 0.50
-        assert after_drawdown.personal_pct == 0.40
-        assert after_drawdown.reserve_pct == 0.10
+        assert after_drawdown.payouts_suspended is True
+        assert after_drawdown.reinvestment_pct == 1.0
+        assert after_drawdown.target_reinvestment_pct == 0.50
+        assert after_drawdown.target_personal_pct == 0.40
+        assert after_drawdown.target_reserve_pct == 0.10
         restarted_allocator = ProfitAllocator(
             ProfitDistributionConfig(), milestone_path=milestone_file
         )
         after_restart = restarted_allocator.plan(1000.0, 70000.0, "2027-01")
         assert after_restart.threshold_reached is True
-        assert after_restart.reinvestment_pct == 0.50
-        assert after_restart.personal_pct == 0.40
+        assert after_restart.payouts_suspended is True
+        assert after_restart.target_reinvestment_pct == 0.50
+        assert after_restart.target_personal_pct == 0.40
 
     # ------------------------------------------------
     # KILL SWITCH FLOOR
