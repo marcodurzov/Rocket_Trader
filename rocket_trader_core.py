@@ -519,6 +519,9 @@ class AccountState:
         if self.fx_quote is not None and self.strategy_capital_mxn is None:
             raise ValueError("fx_quote requiere strategy_capital_mxn explícito")
 
+        if self.fx_quote is not None and not isinstance(self.fx_quote, FXQuote):
+            raise ValueError("fx_quote debe ser una instancia FXQuote validada")
+
         if self.equity < 0:
             raise ValueError("equity no puede ser negativa")
 
@@ -1545,6 +1548,13 @@ class AlpacaExecutionAdapter:
         if order.quantity <= 0:
             raise ValueError(
                 "quantity debe ser > 0"
+            )
+
+        if not float(order.quantity).is_integer():
+            raise RuntimeError(
+                "Fractional MARKET_BRACKET orders are blocked until Alpaca "
+                "fractional bracket compatibility and the full fractional "
+                "exit lifecycle are independently verified."
             )
 
         if (
