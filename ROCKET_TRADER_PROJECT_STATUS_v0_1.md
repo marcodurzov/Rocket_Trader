@@ -11,6 +11,9 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 
 ## Financial policy — confirmed
 
+- Initial strategy capital: **MXN 1,000**. All user-facing capital, profit, reserve, payout and MXN 100,000 milestone amounts are denominated in MXN. Alpaca's broker account and asset notionals are denominated in USD.
+- Before any strategy-driven Paper order is enabled, the MXN ledger must be converted into a USD risk budget using a timestamped, sourced FX quote. Alpaca's virtual Paper buying power must never be treated as the user's funded strategy capital.
+- PR #15 adds a standalone Decimal-based FX conversion and conservative USD position-budget module. It blocks missing/invalid/future/stale FX, applies per-position, total-exposure, stop-risk and available-cash caps, and blocks budgets below the configured broker minimum. It is not yet wired into the Core or execution adapter; therefore it does not yet authorize orders.
 - Before the first time operating capital reaches MXN 100,000: 70% reinvestment / 10% reserve / 20% personal distribution.
 - Once MXN 100,000 is reached for the first time: 50% reinvestment / 10% reserve / 40% personal distribution.
 - The transition is permanent even if capital later falls below MXN 100,000.
