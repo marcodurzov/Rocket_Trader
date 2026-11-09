@@ -101,6 +101,12 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - This avoids overstating crypto inventory and understating cost basis.
 - CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697135231
 
+### 15. Core milestone source aligned with the ledger
+- PR #25 closes a subtle policy mismatch: Core previously could activate the 100k payout milestone from operating capital, including external deposits.
+- Production `monthly_distribution_plan` now requires `earned_growth_capital_mxn` from the ledger. Earned trading growth controls milestone activation; actual operating capital still controls the protected withdrawal floor.
+- Regression CI: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42697870315
+- This ensures external deposits cannot turn on personal/reserve distributions before the original MXN 1,000 has grown to the MXN 100,000 milestone.
+
 ### 14. Paper position reconciliation gate
 - PR #24 adds a read-only reconciliation module comparing broker-reported quantities against the local FIFO ledger.
 - Normalizes crypto pair symbols and detects ledger-only, broker-only and quantity-drift positions.
