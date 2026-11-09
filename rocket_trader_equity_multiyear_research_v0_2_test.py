@@ -12,6 +12,7 @@ from rocket_trader_equity_multiyear_research_v0_2 import (
     bootstrap_q05_relative,
     data_quality_metrics,
     fetch_daily_bars,
+    fetch_yahoo_daily_bars,
     strategy_positions,
 )
 
@@ -44,6 +45,16 @@ class FakeStockClient:
     def get_stock_bars(self, request):
         self.calls += 1
         return FakeResponse(self.frame)
+
+
+class FakeYahooTicker:
+    def __init__(self, frame):
+        self.frame = frame
+        self.calls = []
+
+    def history(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.frame
 
 
 class EquityResearchV02Tests(unittest.TestCase):
@@ -79,6 +90,37 @@ class EquityResearchV02Tests(unittest.TestCase):
         self.assertIn("Returned range=", str(caught.exception))
         self.assertIn("approx_weekday_coverage=", str(caught.exception))
         self.assertIn("max_calendar_gap_days=", str(caught.exception))
+
+    def test_yahoo_fetch_uses_adjusted_ohlc_and_requires_full_history(self):
+        raw = synthetic_frame()
+        yahoo_frame = raw.set_index("timestamp").rename(columns={
+            "open": "Open", "high": "High", "low": "Low",
+            "close": "Close", "volume": "Volume",
+        })
+        end = raw["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
+        ticker = FakeYahooTicker(yahoo_frame)
+        result = fetch_yahoo_daily_bars(
+            "SPY", years=10, ticker=ticker, end=end
+        )
+        self.assertGreaterEqual(len(result), 1800)
+        self.assertEqual(result.iloc[0]["timestamp"], raw.iloc[0]["timestamp"])
+        self.assertEqual(ticker.calls[0]["interval"], "1d")
+        self.assertIs(ticker.calls[0]["auto_adjust"], True)
+        self.assertIs(ticker.calls[0]["actions"], True)
+        self.assertIs(ticker.calls[0]["repair"], True)
+        self.assertEqual(ticker.calls[0]["end"], end.date().isoformat())
+
+    def test_yahoo_short_history_fails_closed(self):
+        raw = synthetic_frame(start="2021-11-09", periods=1250)
+        yahoo_frame = raw.set_index("timestamp").rename(columns={
+            "open": "Open", "high": "High", "low": "Low",
+            "close": "Close", "volume": "Volume",
+        })
+        end = raw["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
+        with self.assertRaisesRegex(Exception, "Yahoo returned only"):
+            fetch_yahoo_daily_bars(
+                "SPY", years=10, ticker=FakeYahooTicker(yahoo_frame), end=end
+            )
 
     def test_252_day_momentum_uses_one_session_lag(self):
         frame = synthetic_frame(periods=2100)
