@@ -6,6 +6,8 @@ on:
       - "rocket_trader_official_news.py"
       - "rocket_trader_news.py"
       - "rocket_trader_alpaca_news_observer.py"
+      - "rocket_trader_gdelt_news_observer.py"
+      - "tests/test_rocket_trader_gdelt_news_observer.py"
       - "tests/test_rocket_trader_alpaca_news_observer.py"
       - "tests/test_rocket_trader_official_news.py"
       - ".github/workflows/rocket-trader-official-news-tests.yml"
