@@ -844,7 +844,7 @@ def self_test() -> Dict[str, Any]:
         quality = data_quality_metrics(frames[symbol])
         assert quality["eligible_for_strategy_evidence"]
         positions = strategy_positions(frames[symbol])
-        assert len(positions) == 7
+        assert len(positions) == 10
         assert all(((w >= 0) & (w <= 1)).all() for w in positions.values())
     incomplete = frames["SPY"].drop(index=range(0, n, 10)).reset_index(drop=True)
     assert not data_quality_metrics(incomplete)["eligible_for_strategy_evidence"]
