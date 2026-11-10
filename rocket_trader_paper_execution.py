@@ -132,16 +132,34 @@ class AlpacaPaperExecutionAdapter:
 
     @staticmethod
     def _broker_snapshot(order: Any) -> Dict[str, Any]:
+        legs = _value(order, "legs", None) or []
         return {
             "order_id": str(_value(order, "id", "")),
             "client_order_id": str(_value(order, "client_order_id", "")),
             "symbol": str(_value(order, "symbol", "")),
-            "status": str(_value(order, "status", "UNKNOWN")),
+            "status": str(_value(order, "status", "UNKNOWN")).lower(),
             "filled_qty": str(_value(order, "filled_qty", "0") or "0"),
             "filled_avg_price": (
                 None if _value(order, "filled_avg_price") is None
                 else str(_value(order, "filled_avg_price"))
             ),
+            "legs": [
+                {
+                    "order_id": str(_value(leg, "id", "")),
+                    "client_order_id": str(_value(leg, "client_order_id", "")),
+                    "status": str(_value(leg, "status", "UNKNOWN")).lower(),
+                    "side": str(_value(leg, "side", "")).lower(),
+                    "type": str(_value(leg, "type", "")).lower(),
+                    "filled_qty": str(_value(leg, "filled_qty", "0") or "0"),
+                }
+                for leg in legs
+            ],
+        }
+
+    @staticmethod
+    def _is_terminal(status: str) -> bool:
+        return str(status).lower() in {
+            "filled", "canceled", "cancelled", "expired", "rejected", "replaced",
         }
 
     def _persist(
@@ -306,13 +324,106 @@ class AlpacaPaperExecutionAdapter:
                 ) from exc
 
     def reconcile(self, client_order_id: str) -> Dict[str, Any]:
-        """Refresh one order from Alpaca without creating or modifying orders."""
+        """Refresh one journaled order and its attached bracket legs from Alpaca."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT client_order_id FROM paper_order_journal WHERE client_order_id=?",
+                (client_order_id,),
+            ).fetchone()
+        if row is None:
+            return {"found": False, "journaled": False, "client_order_id": client_order_id}
         broker_order = self._lookup(client_order_id)
         if broker_order is None:
-            return {"found": False, "client_order_id": client_order_id}
+            self._persist(
+                client_order_id, "BROKER_ORDER_MISSING",
+                last_error="Journaled order is absent at Alpaca; automatic resubmission is prohibited.",
+            )
+            return {
+                "found": False, "journaled": True, "client_order_id": client_order_id,
+                "state": "BROKER_ORDER_MISSING",
+            }
         broker = self._broker_snapshot(broker_order)
         self._persist(client_order_id, broker["status"], broker)
         return {"found": True, "mode": "PAPER", **broker}
+
+    def cancel(self, client_order_id: str) -> Dict[str, Any]:
+        """Cancel only an unfilled bracket parent; partial fills require manual review.
+
+        Cancelling a partially filled bracket parent can affect its attached
+        protective legs. This adapter therefore refuses that ambiguous action.
+        """
+        with self._lock:
+            reconciled = self.reconcile(client_order_id)
+            if not reconciled.get("found"):
+                raise PaperExecutionError("Cannot cancel an order not found at the Paper broker.")
+            status = str(reconciled["status"]).lower()
+            if self._is_terminal(status):
+                return {
+                    "mode": "PAPER", "cancel_requested": False,
+                    "cancel_confirmed": status in {"canceled", "cancelled"},
+                    **reconciled,
+                }
+            try:
+                filled_qty = float(reconciled.get("filled_qty") or 0)
+            except (TypeError, ValueError) as exc:
+                raise PaperExecutionError("Broker returned invalid filled_qty; cancellation blocked.") from exc
+            if filled_qty > 0:
+                self._persist(
+                    client_order_id, "PARTIAL_FILL_CANCEL_BLOCKED",
+                    last_error="Partial fill detected; preserve bracket protection and reconcile manually.",
+                )
+                raise PaperExecutionError(
+                    "Partial fill detected. Automatic bracket cancellation is blocked to preserve exit protection."
+                )
+            order_id = reconciled.get("order_id")
+            if not order_id:
+                raise PaperExecutionError("Broker order ID is missing; cancellation blocked.")
+            try:
+                self.client.cancel_order_by_id(order_id)
+            except Exception as exc:
+                refreshed = self._lookup(client_order_id)
+                if refreshed is None:
+                    self._persist(client_order_id, "CANCEL_UNKNOWN", last_error=str(exc))
+                    raise PaperExecutionError("Cancel outcome unknown; broker order lookup failed.") from exc
+                broker = self._broker_snapshot(refreshed)
+                self._persist(client_order_id, broker["status"], broker, last_error=str(exc))
+                if self._is_terminal(broker["status"]):
+                    return {
+                        "mode": "PAPER", "cancel_requested": True,
+                        "cancel_confirmed": broker["status"] in {"canceled", "cancelled"},
+                        **broker,
+                    }
+                raise PaperExecutionError("Cancel request failed and order remains nonterminal.") from exc
+
+            refreshed = self._lookup(client_order_id)
+            if refreshed is None:
+                self._persist(
+                    client_order_id, "CANCEL_UNKNOWN",
+                    last_error="Order disappeared after cancel request; reconciliation required.",
+                )
+                raise PaperExecutionError("Cancel requested but broker order could not be re-read.")
+            broker = self._broker_snapshot(refreshed)
+            self._persist(client_order_id, broker["status"], broker)
+            confirmed = broker["status"] in {"canceled", "cancelled"}
+            return {
+                "mode": "PAPER", "cancel_requested": True,
+                "cancel_confirmed": confirmed, **broker,
+            }
+
+    def reconcile_all(self) -> Dict[str, Any]:
+        """Reconcile every locally journaled order without mutating broker state."""
+        with self._connect() as conn:
+            ids = [
+                row["client_order_id"] for row in conn.execute(
+                    "SELECT client_order_id FROM paper_order_journal ORDER BY created_at"
+                ).fetchall()
+            ]
+        results = [self.reconcile(client_id) for client_id in ids]
+        missing = [row["client_order_id"] for row in results if not row.get("found")]
+        return {
+            "mode": "PAPER", "journaled_orders": len(ids),
+            "found": len(ids) - len(missing), "missing": missing, "orders": results,
+        }
 
     def verify_account(self) -> Dict[str, Any]:
         """Read-only account check; TradingClient is pinned to paper=True."""
