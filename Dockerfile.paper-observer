@@ -1,0 +1,6 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+RUN pip install --no-cache-dir "alpaca-py>=0.43,<1.0"
+COPY rocket_trader_stream_runtime.py /app/rocket_trader_stream_runtime.py
+CMD ["python", "/app/rocket_trader_stream_runtime.py"]

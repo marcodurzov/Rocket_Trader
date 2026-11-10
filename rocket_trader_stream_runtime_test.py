@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Offline tests for Paper observer runtime; no broker or network calls."""
+import os, tempfile, unittest
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from rocket_trader_stream_runtime import (
+    MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeConfig,
+)
+
+class StreamRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = os.path.join(self.tmp.name, "runtime.sqlite3")
+        self.recorder = MarketRuntimeRecorder(self.db)
+    def tearDown(self):
+        self.tmp.cleanup()
+    def test_bar_record_is_idempotent(self):
+        bar = SimpleNamespace(symbol="BTC/USD", timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                               open=100, high=105, low=99, close=104, volume=12,
+                               trade_count=3, vwap=102)
+        self.assertTrue(self.recorder.record_bar("CRYPTO", bar))
+        self.assertFalse(self.recorder.record_bar("CRYPTO", bar))
+    def test_invalid_bar_is_rejected(self):
+        bar = SimpleNamespace(symbol="SPY", timestamp="2026-01-01T00:00:00+00:00",
+                              open=100, high=98, low=99, close=101, volume=10)
+        with self.assertRaises(RuntimeError):
+            self.recorder.record_bar("EQUITY", bar)
+    def test_trade_update_is_deduplicated(self):
+        event = {"event":"fill","order":{"id":"abc","client_order_id":"client-1"}}
+        self.assertTrue(self.recorder.record_trade_update(event))
+        self.assertFalse(self.recorder.record_trade_update(event))
+    def test_health_requires_recent_healthy_heartbeats(self):
+        now = datetime.now(timezone.utc)
+        self.recorder.heartbeat("crypto", "HEALTHY", now.isoformat())
+        self.assertTrue(self.recorder.health(120)["healthy"])
+        self.recorder.heartbeat("crypto", "ERROR", last_error="disconnected")
+        self.assertFalse(self.recorder.health(120)["healthy"])
+    def test_health_fails_when_never_started(self):
+        with self.assertRaises(RuntimeError):
+            self.recorder.health()
+    def test_runtime_rejects_any_trading_mode(self):
+        env = {"ROCKET_TRADER_RUNTIME_MODE":"LIVE", "ALPACA_API_KEY":"x",
+               "ALPACA_SECRET_KEY":"y", "ROCKET_TRADER_RUNTIME_DB":self.db}
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaises(RuntimeConfigurationError):
+                RuntimeConfig.from_env()
+    def test_runtime_requires_credentials_and_durable_path(self):
+        with patch.dict(os.environ, {"ROCKET_TRADER_RUNTIME_MODE":"OBSERVE_ONLY",
+             "ALPACA_API_KEY":"", "ALPACA_SECRET_KEY":"", "ROCKET_TRADER_RUNTIME_DB":""}, clear=False):
+            with self.assertRaises(RuntimeConfigurationError):
+                RuntimeConfig.from_env()
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
