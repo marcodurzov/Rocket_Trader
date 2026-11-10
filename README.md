@@ -1,8 +1,12 @@
 # Rocket Trader
 
+> **Starting point for any new ChatGPT conversation:** read [ROCKET_TRADER_HANDOFF.md](ROCKET_TRADER_HANDOFF.md) first. It contains the current continuation state, working rules, safety boundaries and exact next actions. Then consult the authoritative baseline and detailed status documents linked below.
+
+
 Autonomous trading research and execution project. Current stage: **research + safety infrastructure + observe-only Paper runtime; no autonomous order execution**.
 
 ## Governing decisions
+- Conversation handoff and operating rules: `ROCKET_TRADER_HANDOFF.md` (read this first when resuming work).
 - Authoritative user decisions: `ROCKET_TRADER_BASELINE_DECISIONS_v0_2.md`.
 - Current implementation and blockers: `ROCKET_TRADER_PROJECT_STATUS_v0_1.md`.
 - Investment research standards: `ROCKET_TRADER_INVESTMENT_RESEARCH_FRAMEWORK_v0_1.md`.
