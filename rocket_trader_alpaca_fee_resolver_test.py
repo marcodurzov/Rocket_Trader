@@ -40,7 +40,7 @@ class AlpacaActivityFeeResolverTests(unittest.TestCase):
 
     def test_crypto_sell_usd_fee_uses_negative_net_amount(self):
         activities = [{
-            "id": "fee-sell-1",
+            "id": "20261109::exec-sell",
             "activity_type": "CFEE",
             "net_amount": "-0.025",
             "qty": "0",
