@@ -301,9 +301,10 @@ class RegimeAwarePortfolioSelector:
             + defensive * regime.risk_off))
 
     def select(self, state: MarketState, candidates: Iterable[StrategyCandidate],
-               news: Sequence[NewsAssessment] = ()) -> PortfolioDecision:
+               news: Sequence[NewsAssessment] = (),
+               now: Optional[datetime] = None) -> PortfolioDecision:
         regime = self.classifier.assess(state)
-        news_risk = self.news_overlay.evaluate(news)
+        news_risk = self.news_overlay.evaluate(news, now=now)
         rationale: List[str] = list(regime.rationale) + list(news_risk.rationale)
         if regime.label == RegimeLabel.UNKNOWN or news_risk.block_new_entries:
             why = "Data quality gate" if regime.label == RegimeLabel.UNKNOWN else "Critical eligible news"
