@@ -420,3 +420,14 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - Added a regression test that mocks Yahoo and asserts `repair=False`, `auto_adjust=True` and `actions=True`.
 - PR workflow run 42922818287: compile and all 6 offline tests passed. Live comparison was skipped on pull_request by design.
 - Post-merge push run 42922974687 was queued after merge. The real market-data result is pending and must be reviewed before claiming the provider correction solved the issue.
+
+
+### Post-merge live ETF history audit — 2026-11-10 (run 42922974687)
+- Run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42922974687
+- Artifact: `13812508089` (`rocket-trader-alpaca-yahoo-etf-crosscheck`).
+- Yahoo retrieval succeeded after `repair=False`; all eight symbols returned data, with zero provider errors. Workflow job completed successfully.
+- This is **not** a full 10-year source parity pass: Yahoo returned 2,512 daily sessions; Alpaca IEX returned 1,582; common sessions were 1,581 from 2020-07-27 to 2026-11-09. Yahoo common-session coverage relative to its full series was 62.94%; IEX was 99.94%. Thus the full-period coverage gate correctly failed for all eight ETFs (0/8 diagnostic passes).
+- On the overlap, daily return correlations were 0.99835–0.99975; p95 absolute daily-return differences were 4.69–9.97 bps. However cumulative-return differences ranged from 1.3 bps (DIA) to 220.5 bps (SPY); SPY/QQQ/TLT differences need source-adjustment investigation before providers can be treated as interchangeable.
+- The job's green conclusion means data retrieval and report generation completed, **not** that the diagnostic gates passed. The report keeps candidate promotion, Paper approval and orders disabled; zero orders were submitted.
+- Interpretation: Alpaca IEX's available history is the binding 10-year limitation for this account. SIP entitlement was previously NOT_ENTITLED. Do not reduce the requested coverage threshold or splice Yahoo and IEX as if they were one homogeneous series.
+- Next: evaluate full-history source alternatives/entitlement economics and separately formalize (a) overlap parity and (b) full-period coverage. Investigate cumulative adjusted-return divergence, especially SPY, before strategy research uses any cross-source history.
