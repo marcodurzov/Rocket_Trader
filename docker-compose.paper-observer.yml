@@ -28,5 +28,24 @@ services:
       retries: 3
       start_period: 45s
 
+  rocket-trader-official-news:
+    build:
+      context: .
+      dockerfile: Dockerfile.paper-observer
+    container_name: rocket-trader-official-news
+    restart: unless-stopped
+    environment:
+      ROCKET_TRADER_OFFICIAL_NEWS_DB: /app/data/rocket_trader_official_news.sqlite3
+      SEC_CONTACT_EMAIL: ${SEC_CONTACT_EMAIL:-}
+    command: ["python", "/app/rocket_trader_official_news.py", "--poll-forever"]
+    volumes:
+      - rocket_trader_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "/app/rocket_trader_official_news.py", "--healthcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 volumes:
   rocket_trader_data:
