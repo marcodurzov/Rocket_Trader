@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 from rocket_trader_stream_runtime import (
     AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeStorageError, RuntimeConfig,
-    build_fill_ledger_bridge, build_activity_stager, sync_cash_activity_review,\n    account_activity_reconciliation_clear,
+    build_fill_ledger_bridge, build_activity_stager, sync_cash_activity_review,
+    account_activity_reconciliation_clear,
 )
 
 class StreamRuntimeTests(unittest.TestCase):
