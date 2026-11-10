@@ -209,7 +209,7 @@ class AlpacaCashActivityBridge:
         with self._lock:
             with self._connect() as conn:
                 row = conn.execute(
-                    "SELECT payload_json,status FROM alpaca_cash_activity_review WHERE activity_id=?",
+                    "SELECT payload_json,status,resolution_reference FROM alpaca_cash_activity_review WHERE activity_id=?",
                     (activity_id,),
                 ).fetchone()
             if row is None:
