@@ -204,8 +204,8 @@ class EquityResearchV04Tests(unittest.TestCase):
             "low": np.array(close) * 0.99, "close": close, "volume": 100000.0,
         })
         weights = strategy_positions(frame)["rsi2_10_sma200_exit_sma5"]
-        self.assertEqual(float(weights.iloc[201]), 0.0)
-        self.assertEqual(float(weights.iloc[202]), 1.0)
+        self.assertEqual(float(weights.iloc[200]), 0.0)
+        self.assertEqual(float(weights.iloc[201]), 1.0)
 
     def test_next_open_execution_excludes_unavailable_overnight_gap(self):
         open_prices = pd.Series([100.0, 200.0, 220.0, 242.0])
