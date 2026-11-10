@@ -1,0 +1,37 @@
+name: Rocket Trader - Recover Prior Capped Paper Crypto Smoke Order
+
+on:
+  push:
+    branches:
+      - paper-crypto-execution-recovery
+    paths:
+      - "alpaca_paper_crypto_execution_recovery.py"
+      - "rocket_trader_crypto_paper_execution.py"
+      - "rocket_trader_core.py"
+      - ".github/workflows/paper-crypto-execution-recovery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recover-prior-smoke-order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+      ALPACA_LIVE_ENABLED: "false"
+      ROCKET_TRADER_EXECUTION_MODE: "PAPER"
+      ROCKET_TRADER_PAPER_SMOKE_RECOVERY: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Alpaca SDK
+        run: pip install "alpaca-py>=0.43,<1.0"
+      - name: Compile recovery and adapters
+        run: python -m py_compile alpaca_paper_crypto_execution_recovery.py rocket_trader_crypto_paper_execution.py rocket_trader_core.py
+      - name: Reconcile prior smoke order and close only verified filled quantity
+        run: python alpaca_paper_crypto_execution_recovery.py

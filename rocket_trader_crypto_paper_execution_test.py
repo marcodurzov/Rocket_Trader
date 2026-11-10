@@ -255,6 +255,25 @@ class CryptoPaperExecutionTests(unittest.TestCase):
             )
         self.assertEqual(self.client.submit_count, 0)
 
+    def test_sell_recognizes_compact_broker_crypto_symbol(self):
+        self.client.positions = [SimpleNamespace(symbol="ETHUSD", qty="0.5")]
+        result = self.adapter.submit(CryptoOrderIntent(
+            client_order_id="crypto-sell-compact-001", symbol="ETH/USD",
+            side=Side.SELL, quantity="0.5",
+        ))
+        self.assertTrue(result["accepted"])
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_reconcile_positions_normalizes_compact_broker_symbol(self):
+        self.client.positions = [
+            SimpleNamespace(
+                symbol="ETHUSD", qty="0.5", avg_entry_price="2000",
+                market_value="1100", unrealized_pl="100",
+            )
+        ]
+        result = self.adapter.reconcile_positions()
+        self.assertEqual(result["positions"][0]["symbol"], "ETH/USD")
+
     def test_reconcile_positions_is_read_only(self):
         self.client.positions = [
             SimpleNamespace(
