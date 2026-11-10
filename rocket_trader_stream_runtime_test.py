@@ -230,6 +230,31 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertFalse(health["healthy"])
         self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
 
+    def test_pending_capital_movements_keep_runtime_unhealthy(self):
+        class PendingCapitalStager:
+            def sync(self):
+                return {
+                    "total_staged": 1,
+                    "blocked_activity_types": [],
+                    "counts": {"JNLC:STAGED_PENDING_CAPITAL_RECONCILIATION": 1},
+                    "ledger_posting_enabled": False,
+                }
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder, activity_stager=PendingCapitalStager()
+        )
+        runtime._sync_account_activities()
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(health["healthy"])
+        self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
+        self.assertIn(
+            "unresolved cash/journal movements",
+            health["components"]["account_activity"]["last_error"],
+        )
+
     def test_account_activity_sync_failure_is_visible(self):
         class FailingStager:
             def sync(self):
