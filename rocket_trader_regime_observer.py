@@ -23,6 +23,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from rocket_trader_regime_selector import (
     MarketState, RegimeAwarePortfolioSelector, StrategyCandidate,
 )
+from rocket_trader_news_event_assessment import NewsEventAssessmentStore
 
 DEFAULT_UNIVERSES = {
     "EQUITY": ("SPY", "QQQ", "IWM"),
@@ -227,10 +228,13 @@ class MarketFeatureBuilder:
 
 class PaperRegimeObserver:
     def __init__(self, market_db: str, decision_db: str,
-                 universes: Optional[Dict[str, Sequence[str]]] = None) -> None:
+                 universes: Optional[Dict[str, Sequence[str]]] = None,
+                 event_db: Optional[str] = None) -> None:
         self.builder = MarketFeatureBuilder(market_db)
         self.store = RegimeDecisionStore(decision_db)
         self.universes = universes or DEFAULT_UNIVERSES
+        event_path = event_db or str(Path(decision_db).resolve().parent / "rocket_trader_news_events.sqlite3")
+        self.event_store = NewsEventAssessmentStore(event_path)
         self.selector = RegimeAwarePortfolioSelector()
 
     def evaluate_once(self, now: Optional[datetime] = None) -> Dict[str, object]:
@@ -250,10 +254,18 @@ class PaperRegimeObserver:
             else:
                 # No candidate can be allocated until a strategy has independently
                 # passed OOS, empirical-cost, data-quality and conservative-edge gates.
-                selected = self.selector.select(state, candidates=(), now=current)
+                assessments = self.event_store.load_approved(now=current, symbols=symbols)
+                selected = self.selector.select(
+                    state, candidates=(), news=assessments, now=current, symbols=symbols
+                )
+                reason = (
+                    "Critical reviewed point-in-time news blocks new entries."
+                    if selected.news_risk.block_new_entries
+                    else "No independently approved strategy candidates are registered."
+                )
                 decision = {
                     "status": "CASH_ABSTAIN" if selected.abstain else "CASH_NO_EDGE",
-                    "reason": "No independently approved strategy candidates are registered.",
+                    "reason": reason,
                     "regime": selected.regime.label.value,
                     "regime_rationale": list(selected.regime.rationale),
                     "features": diagnostics,
@@ -261,7 +273,13 @@ class PaperRegimeObserver:
                     "cash_weight": selected.cash_weight,
                     "total_exposure": selected.total_exposure,
                     "abstain": selected.abstain,
-                    "news_overlay": "OBSERVE_ONLY_NOT_CONNECTED",
+                    "news_assessments_loaded": len(assessments),
+                    "news_overlay": {
+                        "exposure_multiplier": selected.news_risk.exposure_multiplier,
+                        "block_new_entries": selected.news_risk.block_new_entries,
+                        "confidence": selected.news_risk.confidence,
+                        "rationale": list(selected.news_risk.rationale),
+                    },
                 }
                 market_timestamp = diagnostics.get("latest_bar_at")
             report["universes"][asset_class] = decision
@@ -277,11 +295,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Rocket Trader Paper regime observer (read-only).")
     parser.add_argument("--market-db", default=os.getenv("ROCKET_TRADER_RUNTIME_DB", "/app/data/runtime.sqlite3"))
     parser.add_argument("--decision-db", default=os.getenv("ROCKET_TRADER_REGIME_DB", "/app/data/regime_decisions.sqlite3"))
+    parser.add_argument("--event-db", default=os.getenv("ROCKET_TRADER_EVENT_DB"))
     parser.add_argument("--poll-forever", action="store_true")
     parser.add_argument("--healthcheck", action="store_true")
     parser.add_argument("--interval-seconds", type=int, default=60)
     args = parser.parse_args()
-    observer = PaperRegimeObserver(args.market_db, args.decision_db)
+    observer = PaperRegimeObserver(args.market_db, args.decision_db, event_db=args.event_db)
     if args.healthcheck:
         result = observer.health()
         print(json.dumps(result, sort_keys=True), flush=True)
