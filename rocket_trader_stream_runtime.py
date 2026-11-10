@@ -318,11 +318,23 @@ class AlpacaPaperObserverRuntime:
             return None
         try:
             report = self.activity_stager.sync()
-            pending = int(report.get("total_staged", 0))
+            if report.get("ledger_posting_enabled") is not False:
+                raise RuntimeStorageError(
+                    "Activity stager must remain read-only with ledger posting disabled."
+                )
+            blocked = report.get("blocked_activity_types", [])
+            if blocked:
+                self.recorder.heartbeat(
+                    "account_activity", "ERROR",
+                    last_event_at=_utc_now(),
+                    last_error=(
+                        "Unsupported or invalid account activity types require review: "
+                        + ", ".join(sorted({str(x) for x in blocked}))
+                    ),
+                )
+                return report
             self.recorder.heartbeat(
-                "account_activity", "HEALTHY",
-                last_event_at=_utc_now(),
-                last_error=None if pending >= 0 else "Invalid activity count.",
+                "account_activity", "HEALTHY", last_event_at=_utc_now()
             )
             return report
         except Exception as exc:
