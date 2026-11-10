@@ -1,0 +1,28 @@
+name: Rocket Trader - Paper Observer Runtime Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_stream_runtime_test.py"
+      - ".github/workflows/rocket-trader-stream-runtime-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_stream_runtime_test.py"
+      - ".github/workflows/rocket-trader-stream-runtime-tests.yml"
+
+jobs:
+  observer-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile runtime
+        run: python -m py_compile rocket_trader_stream_runtime.py
+      - name: Run offline runtime safety tests
+        run: python -m unittest -v rocket_trader_stream_runtime_test.py
