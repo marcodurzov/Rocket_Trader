@@ -40,7 +40,7 @@ PR #56 successfully validated Docker Compose and built the Paper observer image.
 
 The GHCR publication workflow subsequently succeeded:
 - Image: ghcr.io/marcodurzov/rocket_trader:latest
-- Immutable tag: ghcr.io/marcodurzov/rocket_trader:ba123ae28fa90f5e5184f387f2a02cab0fe19d87
+- Immutable tag: ghcr.io/marcodurzov/rocket_trader:ba123ae28fa90f5e5184f387d8ad78a554c448f1
 - Digest: sha256:df63fc721f570589b9f5328372325c752ea77bef26c70e90a6dbaefe2e3b5290
 - Workflow: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42756711127
 
