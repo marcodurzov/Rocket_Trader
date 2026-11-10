@@ -272,6 +272,39 @@ class MarketRuntimeRecorder:
         }
 
 
+def account_activity_reconciliation_clear(
+    activity_report: Dict[str, Any],
+    cash_status: Optional[Dict[str, Any]],
+) -> bool:
+    """Fail closed on blocked activity and unresolved cash movements."""
+    if activity_report.get("blocked_activity_types"):
+        return False
+    pending_capital = any(
+        key.endswith(":STAGED_PENDING_CAPITAL_RECONCILIATION") and int(count) > 0
+        for key, count in activity_report.get("counts", {}).items()
+    )
+    if cash_status is None:
+        return not pending_capital
+    return int(cash_status.get("pending_or_failed", 0)) == 0
+
+
+def sync_cash_activity_review(activity_stager: Any, cash_activity_bridge: Any):
+    """Mirror already-staged cash movements before reporting reconciliation health.
+
+    This is local SQLite work only: it performs no broker/network request and
+    makes no accounting classification without an explicit operator action.
+    """
+    if cash_activity_bridge is None:
+        return None
+    if activity_stager is None or not hasattr(activity_stager, "cash_movements"):
+        raise RuntimeStorageError(
+            "Cash activity review requires a stager exposing durable cash movements."
+        )
+    for activity in activity_stager.cash_movements():
+        cash_activity_bridge.process_activity(activity)
+    return cash_activity_bridge.status()
+
+
 class AlpacaPaperObserverRuntime:
     """Starts stock, crypto and Paper trade-update streams; never submits orders."""
 
@@ -320,15 +353,10 @@ class AlpacaPaperObserverRuntime:
             return None
         try:
             report = self.activity_stager.sync()
-            cash_status = None
-            if self.cash_activity_bridge is not None:
-                if not hasattr(self.activity_stager, "cash_movements"):
-                    raise RuntimeStorageError(
-                        "Activity stager does not expose durable cash movements for reconciliation."
-                    )
-                for activity in self.activity_stager.cash_movements():
-                    self.cash_activity_bridge.process_activity(activity)
-                cash_status = self.cash_activity_bridge.status()
+            cash_status = sync_cash_activity_review(
+                self.activity_stager, self.cash_activity_bridge
+            )
+            if cash_status is not None:
                 report["cash_activity_reconciliation"] = cash_status
             if report.get("ledger_posting_enabled") is not False:
                 raise RuntimeStorageError(
@@ -608,12 +636,14 @@ def main() -> int:
         if activity_stager is not None:
             activity_status = activity_stager.report()
             result["account_activity"] = activity_status
-            cash_status = cash_activity_bridge.status() if cash_activity_bridge is not None else None
+            cash_status = sync_cash_activity_review(
+                activity_stager, cash_activity_bridge
+            )
             if cash_status is not None:
                 result["cash_activity_reconciliation"] = cash_status
             result["account_activity_healthy"] = (
                 result.get("components", {}).get("account_activity", {}).get("healthy", False)
-                and (cash_status is None or int(cash_status.get("pending_or_failed", 0)) == 0)
+                and account_activity_reconciliation_clear(activity_status, cash_status)
             )
             result["healthy"] = result["healthy"] and result["account_activity_healthy"]
         if fill_ledger_bridge is not None:
