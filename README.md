@@ -1,6 +1,6 @@
 # Rocket Trader
 
-Autonomous trading research and execution project. Current stage: **research + safety infrastructure; not yet an autonomous Paper Trading service**.
+Autonomous trading research and execution project. Current stage: **research + safety infrastructure + observe-only Paper runtime; no autonomous order execution**.
 
 ## Governing decisions
 - Authoritative user decisions: `ROCKET_TRADER_BASELINE_DECISIONS_v0_2.md`.
@@ -20,6 +20,13 @@ Initial capital is MXN 1,000. Retain 100% of realized net trading profits until 
 
 ## Research
 All strategies must be evaluated out of sample, net of realistic costs, against same-period benchmarks and under data-quality, uncertainty and multiple-testing controls. Famous traders/investors provide hypotheses, not automatic trade signals. No strategy is currently approved.
+
+## Paper Observer operations
+- Deployment and operations: `PAPER_OBSERVER_DEPLOYMENT.md`.
+- Regime observer methodology: `PAPER_REGIME_OBSERVER.md`.
+- Human-reviewed news assessment: `NEWS_EVENT_ASSESSMENT.md`.
+- Execution cost telemetry limits: `PAPER_EXECUTION_COST_TELEMETRY.md`.
+- Same-date reference benchmark harness: `REFERENCE_BENCHMARK_HARNESS.md`.
 
 ## Current status
 See `ROCKET_TRADER_PROJECT_STATUS_v0_1.md` for merged work, research results, latest CI evidence and remaining blockers.
