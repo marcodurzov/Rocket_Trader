@@ -293,3 +293,14 @@ The existing five-year crypto run reports SOL/USD at 77.10% calendar coverage, 4
 
 ### Adjusted OHLC precision diagnosis — 2026-11-09
 The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed normalization on one row each. Diagnostics show only floating-point differences of approximately 1e-14 between adjusted close and high/low, not material candle corruption. A tiny relative tolerance (1e-10 of price scale) is applied; material candle inconsistencies still fail closed. No invalid rows are silently discarded.
+
+
+### Operational readiness update — 2026-11-10
+
+- PR #42 merged: introduced `PersistentDrawdownGuard`, with atomic durable JSON state, a persisted high-water mark, sticky max-drawdown lock, configuration-integrity checks, and offline regression tests.
+- PR #43 merged: wired the guard into `RocketTraderCore`. Production Core now requires `ROCKET_TRADER_DRAWDOWN_GUARD_PATH`; a breached lock returns `KILL_SWITCH` with zero quantity, and invalid/unreadable state returns `SAFE_MODE`. The guard blocks new entries; it does not liquidate positions or block exit/reconciliation paths.
+- All six PR #43 CI checks passed: Core risk, Paper execution safety, crypto Paper execution, capital policy, earned-growth milestone, and engine/capital regression.
+- The max-drawdown default is currently a provisional 15% parameter, not empirically calibrated or approved for LIVE. Production deployment must configure a durable path and review this limit against strategy-level adverse scenarios.
+- Ten-year adjusted ETF research completed successfully after PR #41. All eight research ETF histories passed the current approximate weekday-coverage gate (about 96.3%); the strategy evaluation covers SPY, QQQ, and IWM with eight hypotheses. The report explicitly keeps `candidate_promotion_allowed=false`, `paper_approval=false`, `orders_enabled=false`, and `orders_submitted=0`. Family-wise multiple-testing correction, SIP parity, independent replication, and sustained Paper validation remain open gates.
+- The historical report is research-only and uses Yahoo Finance adjusted daily bars. It is not an execution feed and does not establish that a strategy has a tradable edge after live-market costs.
+- No continuous trading runtime has been deployed. GitHub Actions remain CI/research only. Crypto is 24/7; US equities are restricted to exchange sessions. A persistent Paper runtime, strategy approval, order/fill lifecycle integration, and broker/ledger reconciliation are still required before unattended Paper operation.
