@@ -534,15 +534,9 @@ class AlpacaPaperObserverRuntime:
         async def handler(quote: Any) -> None:
             try:
                 self.cost_telemetry.record_quote(asset_class, quote, feed)
-                component = "equity" if asset_class == "EQUITY" else "crypto"
-                self.last_events[component] = _utc_now()
-                self.recorder.heartbeat(component, "HEALTHY", self.last_events[component])
             except Exception as exc:
-                component = "equity" if asset_class == "EQUITY" else "crypto"
-                self.recorder.heartbeat(
-                    component, "ERROR", self.last_events.get(component),
-                    f"Quote telemetry error: {exc}",
-                )
+                # Quote callbacks must not mask the independent bar-stream heartbeat.
+                self.cost_telemetry.record_quote_error(asset_class, str(exc))
         return handler
 
     async def _trade_update_handler(self, update: Any) -> None:

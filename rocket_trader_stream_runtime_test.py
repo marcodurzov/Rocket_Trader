@@ -129,6 +129,27 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertTrue(health["healthy"])
         self.assertEqual(health["components"]["execution_cost_telemetry"]["status"], "HEALTHY")
 
+    def test_quote_callback_does_not_refresh_bar_stream_heartbeat(self):
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder)
+        old_bar_event = datetime.now(timezone.utc) - timedelta(minutes=10)
+        runtime.last_events["equity"] = old_bar_event
+        good_quote = {
+            "symbol": "SPY", "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bid_price": 100.0, "ask_price": 100.2,
+            "bid_size": 10, "ask_size": 10,
+        }
+        asyncio.run(runtime._quote_handler("EQUITY", "IEX")(good_quote))
+        self.assertEqual(runtime.last_events["equity"], old_bar_event)
+        bad_quote = {**good_quote, "bid_price": 100.3, "ask_price": 100.2}
+        asyncio.run(runtime._quote_handler("EQUITY", "IEX")(bad_quote))
+        summary = runtime.cost_telemetry.summary()
+        self.assertEqual(summary["quote_ingestion_errors"], 1)
+        self.assertEqual(runtime.last_events["equity"], old_bar_event)
+
     def test_trade_update_is_forwarded_to_fill_ledger_bridge(self):
         class FakeBridge:
             def __init__(self):
