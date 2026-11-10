@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "rocket_trader_official_news.py"
+      - "rocket_trader_news.py"
+      - "rocket_trader_alpaca_news_observer.py"
+      - "tests/test_rocket_trader_alpaca_news_observer.py"
       - "tests/test_rocket_trader_official_news.py"
       - ".github/workflows/rocket-trader-official-news-tests.yml"
   push:
@@ -27,4 +30,4 @@ jobs:
       - name: Install Alpaca SDK required by shared news store
         run: pip install "alpaca-py>=0.43,<1.0"
       - name: Run offline regression tests
-        run: python -m unittest discover -s tests -p "test_rocket_trader_official_news.py" -v
+        run: python -m unittest discover -s tests -p "test_rocket_trader_*news*.py" -v
