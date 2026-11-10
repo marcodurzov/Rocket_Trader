@@ -8,6 +8,8 @@ on:
       - "rocket_trader_paper_fill_ledger_bridge_test.py"
       - "rocket_trader_realized_pnl_ledger.py"
       - "rocket_trader_realized_pnl_ledger_test.py"
+      - "rocket_trader_alpaca_fee_resolver.py"
+      - "rocket_trader_alpaca_fee_resolver_test.py"
       - ".github/workflows/rocket-trader-paper-fill-ledger-bridge.yml"
   push:
     branches: [main]
@@ -15,6 +17,9 @@ on:
       - "rocket_trader_paper_fill_ledger_bridge.py"
       - "rocket_trader_paper_fill_ledger_bridge_test.py"
       - "rocket_trader_realized_pnl_ledger.py"
+      - "rocket_trader_realized_pnl_ledger_test.py"
+      - "rocket_trader_alpaca_fee_resolver.py"
+      - "rocket_trader_alpaca_fee_resolver_test.py"
       - ".github/workflows/rocket-trader-paper-fill-ledger-bridge.yml"
 
 permissions:
@@ -29,9 +34,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile bridge, ledger, and tests
-        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_realized_pnl_ledger_test.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_paper_fill_ledger_bridge_test.py
-      - name: Run offline ledger and fill bridge tests
+      - name: Compile bridge, ledger, fee resolver, and tests
+        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_realized_pnl_ledger_test.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_paper_fill_ledger_bridge_test.py rocket_trader_alpaca_fee_resolver.py rocket_trader_alpaca_fee_resolver_test.py
+      - name: Run offline accounting and fee tests
         run: |
           python -m unittest -v rocket_trader_realized_pnl_ledger_test.py
           python -m unittest -v rocket_trader_paper_fill_ledger_bridge_test.py
+          python -m unittest -v rocket_trader_alpaca_fee_resolver_test.py
