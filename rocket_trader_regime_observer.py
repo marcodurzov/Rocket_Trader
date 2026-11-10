@@ -112,14 +112,31 @@ class RegimeDecisionStore:
             diagnostics = decision.get("diagnostics", {})
             if not diagnostics:
                 diagnostics = decision.get("features", {})
+            market_status = diagnostics.get("status", "UNKNOWN")
+            market_data_ready = market_status == "FEATURES_READY"
+            exposure = float(decision.get("total_exposure", 0.0) or 0.0)
+            safe_cash = (
+                not market_data_ready
+                or bool(decision.get("abstain", False))
+                or exposure <= 0.0
+            )
             components[row["asset_class"]] = {
                 "status": row["status"], "age_seconds": age,
                 "decision_status": decision.get("status", "UNKNOWN"),
-                "market_data_status": diagnostics.get("status", "UNKNOWN"),
+                "market_data_status": market_status,
+                "market_data_ready": market_data_ready,
+                "safe_cash": safe_cash,
+                "total_exposure": exposure,
                 "healthy": row["status"] == "EVALUATED" and 0 <= age <= max_age_seconds,
             }
-        return {"healthy": bool(components) and all(x["healthy"] for x in components.values()),
-                "components": components, "orders_enabled": False}
+        return {
+            "healthy": bool(components) and all(x["healthy"] for x in components.values()),
+            "market_data_ready": bool(components) and all(
+                x["market_data_ready"] for x in components.values()
+            ),
+            "safe_cash": bool(components) and all(x["safe_cash"] for x in components.values()),
+            "components": components, "orders_enabled": False,
+        }
 
 
 class MarketFeatureBuilder:

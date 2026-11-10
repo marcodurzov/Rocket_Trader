@@ -148,6 +148,24 @@ class RegimeObserverTests(unittest.TestCase):
         )
         self.assertEqual(report["universes"]["CRYPTO"]["cash_weight"], 1.0)
 
+    def test_health_distinguishes_fresh_market_data_from_cash_only_decision(self):
+        store = RegimeDecisionStore(self.decision_db)
+        evaluated = datetime.now(timezone.utc).isoformat()
+        store.save("EQUITY", evaluated, evaluated, {
+            "status": "EVALUATED",
+            "decision": {
+                "status": "CASH_ABSTAIN", "abstain": True,
+                "total_exposure": 0.0,
+                "features": {"status": "FEATURES_READY"},
+            },
+        })
+        health = store.health()
+        self.assertTrue(health["healthy"])
+        self.assertTrue(health["market_data_ready"])
+        self.assertTrue(health["safe_cash"])
+        self.assertTrue(health["components"]["EQUITY"]["market_data_ready"])
+        self.assertEqual(health["components"]["EQUITY"]["total_exposure"], 0.0)
+
     def test_health_measures_observer_liveness_not_market_freshness(self):
         store = RegimeDecisionStore(self.decision_db)
         evaluated = datetime.now(timezone.utc).isoformat()
@@ -157,6 +175,10 @@ class RegimeObserverTests(unittest.TestCase):
         })
         health = store.health()
         self.assertTrue(health["healthy"])
+        self.assertFalse(health["market_data_ready"])
+        self.assertTrue(health["safe_cash"])
+        self.assertFalse(health["components"]["EQUITY"]["market_data_ready"])
+        self.assertTrue(health["components"]["EQUITY"]["safe_cash"])
         latest = store.latest()
         self.assertEqual(latest[0]["status"], "EVALUATED")
         self.assertIn("decision", latest[0]["decision"])
