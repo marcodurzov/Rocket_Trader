@@ -233,7 +233,11 @@ class AlpacaCryptoPaperExecutionAdapter:
             ) from exc
         margin_cap = str(_value(config, "max_margin_multiplier", "UNKNOWN"))
         no_shorting = bool(_value(config, "no_shorting", False))
-        options_level = int(_value(config, "max_options_trading_level", -1))
+        raw_options_level = _value(config, "max_options_trading_level", None)
+        try:
+            options_level = int(raw_options_level) if raw_options_level is not None else -1
+        except (TypeError, ValueError) as exc:
+            raise CryptoPaperExecutionError("Options trading level is invalid; orders are blocked.") from exc
         if margin_cap != "1" or not no_shorting or options_level != 0:
             raise CryptoPaperExecutionError(
                 "Account configuration must enforce max_margin_multiplier=1, "
