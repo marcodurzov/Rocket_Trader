@@ -65,7 +65,7 @@ class RegimeSelectorTests(unittest.TestCase):
         self.assertFalse(equity.block_new_entries)
         self.assertEqual(equity.exposure_multiplier, 1)
         self.assertTrue(crypto.block_new_entries)
-        self.assertAlmostEqual(crypto.exposure_multiplier, 0.271)
+        self.assertEqual(crypto.exposure_multiplier, 0.0)
 
     def test_stale_critical_news_expires(self):
         from datetime import datetime
