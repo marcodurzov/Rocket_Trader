@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-10  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Current reviewed main SHA:** `d001fc3f3661b1cae39de535c52b235975f164ae`  
+**Latest audited code baseline SHA:** `d001fc3f3661b1cae39de535c52b235975f164ae`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -128,7 +128,7 @@ The system must:
 
 ## 7. Next actions — ordered
 
-1. Complete and validate the Yahoo `repair=False` correction; merge only after CI; rerun the actual provider audit and inspect results/artifact. If provider instability persists, diagnose and choose a defensible alternative—never weaken coverage or quality gates.
+1. Resolve the ETF historical data-source limitation: IEX does not provide the requested full 10-year history for this account. SIP previously returned NOT_ENTITLED. Evaluate a properly licensed full-history source or entitlement upgrade only if economically justified; retain separate overlap-parity and full-period coverage gates. Investigate SPY/QQQ cumulative-return differences before treating providers as interchangeable. Never splice provider series or weaken coverage gates.
 2. Fix authoritative broker activity reconciliation so missed fills can be recovered idempotently from broker activities, with explicit handling for delayed fees, partial fills, corrections/busts and corporate actions.
 3. Collect enough Paper quote/fill observations to estimate spread/slippage/fees by asset, liquidity, session and order conditions, with minimum sample and confidence gates. Keep approval false until evidence supports it.
 4. Validate regime features, freshness, hysteresis, transitions and regime-conditioned performance using point-in-time history.
