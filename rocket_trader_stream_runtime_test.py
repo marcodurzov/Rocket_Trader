@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from rocket_trader_stream_runtime import (
-    MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeConfig,
+    AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeConfig,
 )
 
 class StreamRuntimeTests(unittest.TestCase):
@@ -72,6 +72,31 @@ class StreamRuntimeTests(unittest.TestCase):
             result["components"]["crypto"]["data_freshness"],
             "INVALID_FUTURE_TIMESTAMP",
         )
+    def test_unexpected_stream_exit_remains_visible_after_shutdown(self):
+        class ExitingStream:
+            def run(self):
+                return
+            def stop(self):
+                return
+
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+            heartbeat_seconds=0.01,
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder)
+        with patch.object(runtime, "build_streams", return_value={"equity": ExitingStream()}):
+            with self.assertRaisesRegex(RuntimeError, "equity stream exited"):
+                runtime.run()
+
+        result = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(result["healthy"])
+        self.assertEqual(result["components"]["equity"]["status"], "ERROR")
+        self.assertEqual(
+            result["components"]["equity"]["last_error"],
+            "Stream thread exited unexpectedly.",
+        )
+
     def test_runtime_rejects_any_trading_mode(self):
         env = {"ROCKET_TRADER_RUNTIME_MODE":"LIVE", "ALPACA_API_KEY":"x",
                "ALPACA_SECRET_KEY":"y", "ROCKET_TRADER_RUNTIME_DB":self.db}
