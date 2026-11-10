@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Offline tests for Paper observer runtime; no broker or network calls."""
 import os, tempfile, unittest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -41,6 +41,37 @@ class StreamRuntimeTests(unittest.TestCase):
     def test_health_fails_when_never_started(self):
         with self.assertRaises(RuntimeError):
             self.recorder.health()
+    def test_health_separates_heartbeat_from_data_freshness(self):
+        event_at = datetime.now(timezone.utc) - timedelta(minutes=20)
+        self.recorder.heartbeat("crypto", "HEALTHY", event_at.isoformat())
+        now = datetime.now(timezone.utc)
+        result = self.recorder.health(
+            max_age_seconds=120, now=now,
+            data_freshness_thresholds={"crypto": 600},
+        )
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["components"]["crypto"]["data_freshness"], "STALE")
+        self.assertGreaterEqual(result["components"]["crypto"]["event_age_seconds"], 1200)
+        self.assertTrue(result["data_freshness_is_diagnostic_only"])
+    def test_market_closed_equity_can_be_unmonitored(self):
+        self.recorder.heartbeat("equity", "HEALTHY", None)
+        now = datetime.now(timezone.utc)
+        result = self.recorder.health(max_age_seconds=120, now=now)
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["components"]["equity"]["data_freshness"], "NOT_MONITORED")
+    def test_future_market_event_is_flagged_without_masking_heartbeat(self):
+        event_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        self.recorder.heartbeat("crypto", "HEALTHY", event_at.isoformat())
+        now = datetime.now(timezone.utc)
+        result = self.recorder.health(
+            max_age_seconds=120, now=now,
+            data_freshness_thresholds={"crypto": 600},
+        )
+        self.assertTrue(result["healthy"])
+        self.assertEqual(
+            result["components"]["crypto"]["data_freshness"],
+            "INVALID_FUTURE_TIMESTAMP",
+        )
     def test_runtime_rejects_any_trading_mode(self):
         env = {"ROCKET_TRADER_RUNTIME_MODE":"LIVE", "ALPACA_API_KEY":"x",
                "ALPACA_SECRET_KEY":"y", "ROCKET_TRADER_RUNTIME_DB":self.db}
