@@ -19,8 +19,8 @@ Create an event JSON document:
   "affected_symbols": ["SPY", "QQQ", "IWM"],
   "sources": [
     {
-      "source": "alpaca_benzinga",
-      "article_id": "provider-article-id-1",
+      "source": "benzinga",
+      "article_id": "12345",
       "url": "https://publisher.example/story-1",
       "published_at": "2026-11-10T10:00:00Z",
       "first_seen_at": "2026-11-10T10:01:00Z",
@@ -56,7 +56,7 @@ python rocket_trader_news_event_assessment.py --db /app/data/rocket_trader_news_
 }
 ```
 
-Importing an assessment always creates `PENDING` status. It does not affect the selector.
+Importing an assessment always creates `PENDING` status. It does not affect the selector. On approval, the workflow verifies each source ID, URL, provider timestamp, live first-seen timestamp and point-in-time flag against the persisted official/Alpaca/GDELT news databases. Manually invented or mismatched source records cannot be approved.
 
 ```bash
 python rocket_trader_news_event_assessment.py --db /app/data/rocket_trader_news_events.sqlite3 --import-assessment assessment.json
