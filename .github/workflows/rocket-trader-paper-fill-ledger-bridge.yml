@@ -7,6 +7,7 @@ on:
       - "rocket_trader_paper_fill_ledger_bridge.py"
       - "rocket_trader_paper_fill_ledger_bridge_test.py"
       - "rocket_trader_realized_pnl_ledger.py"
+      - "rocket_trader_realized_pnl_ledger_test.py"
       - ".github/workflows/rocket-trader-paper-fill-ledger-bridge.yml"
   push:
     branches: [main]
@@ -29,6 +30,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile bridge, ledger, and tests
-        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_paper_fill_ledger_bridge_test.py
-      - name: Run offline fill bridge tests
-        run: python -m unittest -v rocket_trader_paper_fill_ledger_bridge_test.py
+        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_realized_pnl_ledger_test.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_paper_fill_ledger_bridge_test.py
+      - name: Run offline ledger and fill bridge tests
+        run: |
+          python -m unittest -v rocket_trader_realized_pnl_ledger_test.py
+          python -m unittest -v rocket_trader_paper_fill_ledger_bridge_test.py
