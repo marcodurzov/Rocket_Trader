@@ -141,6 +141,23 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.snapshot().operating_capital_mxn, Decimal("1400.00"))
         self.assertEqual(self.ledger.snapshot().earned_growth_capital_mxn, Decimal("1000.00"))
 
+    def test_post_milestone_withdrawal_cannot_breach_operating_floor(self):
+        self.fill("floor-buy", "BUY", "1", "10000")
+        self.fill("floor-sell", "SELL", "1", "15550")
+        snapshot = self.ledger.snapshot()
+        self.assertTrue(snapshot.milestone_reached)
+        self.assertEqual(snapshot.operating_capital_mxn, Decimal("100900.00"))
+        with self.assertRaisesRegex(LedgerError, "protected MXN 100,000"):
+            self.ledger.record_withdrawal(
+                event_id="floor-breach", amount_mxn="900.01", occurred_at=NOW
+            )
+        self.ledger.record_withdrawal(
+            event_id="floor-safe", amount_mxn="900.00", occurred_at=NOW
+        )
+        self.assertEqual(
+            self.ledger.snapshot().operating_capital_mxn, Decimal("100000.00")
+        )
+
     def test_withdrawal_cannot_exceed_operating_capital(self):
         with self.assertRaisesRegex(LedgerError, "exceeds operating capital"):
             self.ledger.record_withdrawal(
