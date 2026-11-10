@@ -571,14 +571,14 @@ class AlpacaPaperObserverRuntime:
         if self.fill_ledger_bridge is not None:
             self.recorder.heartbeat("ledger", "STARTING")
             self._update_ledger_health()
-        if self.position_reconciliation_gate is not None:
-            self.recorder.heartbeat("position_reconciliation", "STARTING")
-            self._reconcile_paper_positions()
-            self.last_position_reconciliation_monotonic = time.monotonic()
         if self.activity_stager is not None:
             self.recorder.heartbeat("account_activity", "STARTING")
             self._sync_account_activities()
             self.last_activity_retry_monotonic = time.monotonic()
+        if self.position_reconciliation_gate is not None:
+            self.recorder.heartbeat("position_reconciliation", "STARTING")
+            self._reconcile_paper_positions()
+            self.last_position_reconciliation_monotonic = time.monotonic()
         for component, stream in self.streams.items():
             self.recorder.heartbeat(component, "STARTING")
             thread = threading.Thread(target=stream.run, name=f"rocket-{component}-stream", daemon=True)
