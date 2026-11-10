@@ -54,6 +54,19 @@ class RegimeSelectorTests(unittest.TestCase):
         self.assertTrue(result.abstain)
         self.assertEqual(result.cash_weight, 1)
 
+    def test_news_assessment_is_filtered_by_active_universe_symbols(self):
+        from datetime import datetime
+        news = NewsAssessment("btc-event", "2026-11-10T11:59:00+00:00",
+                              NewsSeverity.CRITICAL, 1, 1, 1, ("BTCUSD",),
+                              True, "human-reviewed-v1", "crypto-specific event")
+        now = datetime.fromisoformat("2026-11-10T12:00:00+00:00")
+        equity = NewsRiskOverlay().evaluate([news], symbols=("SPY", "QQQ"), now=now)
+        crypto = NewsRiskOverlay().evaluate([news], symbols=("BTCUSD",), now=now)
+        self.assertFalse(equity.block_new_entries)
+        self.assertEqual(equity.exposure_multiplier, 1)
+        self.assertTrue(crypto.block_new_entries)
+        self.assertEqual(crypto.exposure_multiplier, 0.0)
+
     def test_stale_critical_news_expires(self):
         from datetime import datetime
         news = NewsAssessment("old-critical", "2026-11-10T00:00:00+00:00",

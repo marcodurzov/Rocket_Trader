@@ -6,6 +6,9 @@ on:
     paths:
       - "rocket_trader_regime_selector.py"
       - "rocket_trader_regime_observer.py"
+      - "rocket_trader_news_event_assessment.py"
+      - "tests/test_rocket_trader_news_event_assessment.py"
+      - "tests/test_rocket_trader_regime_selector.py"
       - "tests/test_rocket_trader_regime_observer.py"
       - ".github/workflows/rocket-trader-regime-observer-tests.yml"
   push:
@@ -13,7 +16,10 @@ on:
     paths:
       - "rocket_trader_regime_selector.py"
       - "rocket_trader_regime_observer.py"
+      - "rocket_trader_news_event_assessment.py"
       - "tests/test_rocket_trader_regime_observer.py"
+      - "tests/test_rocket_trader_regime_selector.py"
+      - "tests/test_rocket_trader_news_event_assessment.py"
       - ".github/workflows/rocket-trader-regime-observer-tests.yml"
 
 permissions:
@@ -28,4 +34,4 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run offline tests
-        run: python -m unittest discover -s tests -p "test_rocket_trader_regime_observer.py" -v
+        run: python -m unittest discover -s tests -p "test_rocket_trader_*regime*.py" -v && python -m unittest discover -s tests -p "test_rocket_trader_news_event_assessment.py" -v

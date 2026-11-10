@@ -179,6 +179,7 @@ class NewsRiskOverlay:
 
     def evaluate(self, assessments: Sequence[NewsAssessment],
                  symbol: Optional[str] = None,
+                 symbols: Optional[Sequence[str]] = None,
                  now: Optional[datetime] = None,
                  max_age_seconds: int = 21600) -> NewsRisk:
         if max_age_seconds <= 0:
@@ -194,9 +195,11 @@ class NewsRiskOverlay:
             age = (current - observed).total_seconds()
             if age < 0 or age > max_age_seconds:
                 continue
-            if symbol and item.affected_symbols and symbol.upper() not in {
-                s.upper() for s in item.affected_symbols
-            }:
+            target_symbols = ({s.upper() for s in symbols} if symbols
+                              else ({symbol.upper()} if symbol else set()))
+            if target_symbols and item.affected_symbols and not (
+                target_symbols & {s.upper() for s in item.affected_symbols}
+            ):
                 continue
             weight = item.relevance * item.credibility * item.novelty
             if weight > 0:
@@ -302,9 +305,10 @@ class RegimeAwarePortfolioSelector:
 
     def select(self, state: MarketState, candidates: Iterable[StrategyCandidate],
                news: Sequence[NewsAssessment] = (),
-               now: Optional[datetime] = None) -> PortfolioDecision:
+               now: Optional[datetime] = None,
+               symbols: Optional[Sequence[str]] = None) -> PortfolioDecision:
         regime = self.classifier.assess(state)
-        news_risk = self.news_overlay.evaluate(news, now=now)
+        news_risk = self.news_overlay.evaluate(news, symbols=symbols, now=now)
         rationale: List[str] = list(regime.rationale) + list(news_risk.rationale)
         if regime.label == RegimeLabel.UNKNOWN or news_risk.block_new_entries:
             why = "Data quality gate" if regime.label == RegimeLabel.UNKNOWN else "Critical eligible news"

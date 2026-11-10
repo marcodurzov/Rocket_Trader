@@ -24,7 +24,7 @@ These are initial descriptive features. They are not claimed to predict returns,
 
 The candidate list is deliberately empty. Every evaluation therefore remains 100% cash / abstain. No strategy can enter this service merely because its family appears in the reference registry. A candidate must first pass chronological out-of-sample validation, empirically measured costs, data-quality gates and a positive conservative lower confidence bound.
 
-News remains disconnected from the selector. The official RSS collector currently stores source material only; there is no trusted, versioned event assessment pipeline. Raw headlines must never be translated directly into position changes.
+Raw news remains disconnected from allocation. A separate human-reviewed event store now supplies only approved, point-in-time-eligible and unexpired assessments to the selector, filtered by the active symbol universe. Source article IDs, URLs, provider publication timestamps and first-live-seen timestamps are verified against the durable official/Alpaca/GDELT ingestion databases before an assessment can be approved. Critical events require two independent source groups plus minimum credibility, relevance and novelty thresholds. The overlay can only reduce risk or block new entries; it cannot increase exposure. No model or keyword classifier is allowed to score raw headlines automatically.
 
 ## Persistence and operations
 
