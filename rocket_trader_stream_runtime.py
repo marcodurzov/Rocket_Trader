@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Tuple
 
+from rocket_trader_execution_cost_telemetry import ExecutionCostTelemetry
+
 
 class RuntimeConfigurationError(RuntimeError):
     pass
@@ -401,6 +403,7 @@ class AlpacaPaperObserverRuntime:
             raise RuntimeConfigurationError("Only OBSERVE_ONLY is supported.")
         self.config = config
         self.recorder = recorder
+        self.cost_telemetry = ExecutionCostTelemetry(config.db_path)
         self.streams: Dict[str, Any] = {}
         self.threads: Dict[str, threading.Thread] = {}
         self.stop_event = threading.Event()
@@ -527,10 +530,33 @@ class AlpacaPaperObserverRuntime:
                 raise
         return handler
 
+    def _quote_handler(self, asset_class: str, feed: str):
+        async def handler(quote: Any) -> None:
+            try:
+                self.cost_telemetry.record_quote(asset_class, quote, feed)
+                component = "equity" if asset_class == "EQUITY" else "crypto"
+                self.last_events[component] = _utc_now()
+                self.recorder.heartbeat(component, "HEALTHY", self.last_events[component])
+            except Exception as exc:
+                component = "equity" if asset_class == "EQUITY" else "crypto"
+                self.recorder.heartbeat(
+                    component, "ERROR", self.last_events.get(component),
+                    f"Quote telemetry error: {exc}",
+                )
+        return handler
+
     async def _trade_update_handler(self, update: Any) -> None:
         self.recorder.record_trade_update(update)
         self.last_events["trading"] = _utc_now()
         self.recorder.heartbeat("trading", "HEALTHY", self.last_events["trading"])
+        try:
+            cost_observation = self.cost_telemetry.record_fill_update(update)
+            if cost_observation is not None:
+                self.recorder.heartbeat("execution_cost_telemetry", "HEALTHY", _utc_now())
+        except Exception as exc:
+            self.recorder.heartbeat(
+                "execution_cost_telemetry", "ERROR", _utc_now(), str(exc)
+            )
         if self.fill_ledger_bridge is not None:
             try:
                 self.fill_ledger_bridge.process_trade_update(update)
@@ -553,6 +579,7 @@ class AlpacaPaperObserverRuntime:
                 self.config.api_key, self.config.secret_key, feed=DataFeed.IEX
             )
             stock.subscribe_bars(self._bar_handler("EQUITY"), *self.config.equity_symbols)
+            stock.subscribe_quotes(self._quote_handler("EQUITY", "IEX"), *self.config.equity_symbols)
             streams["equity"] = stock
         if self.config.crypto_symbols:
             crypto = CryptoDataStream(
@@ -560,6 +587,7 @@ class AlpacaPaperObserverRuntime:
                 data_timeout=180,
             )
             crypto.subscribe_bars(self._bar_handler("CRYPTO"), *self.config.crypto_symbols)
+            crypto.subscribe_quotes(self._quote_handler("CRYPTO", "CRYPTO_US"), *self.config.crypto_symbols)
             streams["crypto"] = crypto
         trading = TradingStream(self.config.api_key, self.config.secret_key, paper=True)
         trading.subscribe_trade_updates(self._trade_update_handler)
