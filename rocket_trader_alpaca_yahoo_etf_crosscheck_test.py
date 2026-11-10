@@ -51,7 +51,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             min_source_coverage=0.95,
         )
         self.assertFalse(result["diagnostic_pass"])
-        self.assertLess(result["alpaca_coverage_on_common"], 0.95)
+        self.assertLess(result["yahoo_coverage_on_common"], 0.95)
 
     def test_close_series_rejects_nonpositive_or_invalid_data(self):
         bad = self.yahoo.copy()
