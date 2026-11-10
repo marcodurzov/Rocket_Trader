@@ -1,0 +1,34 @@
+name: Rocket Trader - Paper Fill Ledger Bridge
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_paper_fill_ledger_bridge.py"
+      - "rocket_trader_paper_fill_ledger_bridge_test.py"
+      - "rocket_trader_realized_pnl_ledger.py"
+      - ".github/workflows/rocket-trader-paper-fill-ledger-bridge.yml"
+  push:
+    branches: [main]
+    paths:
+      - "rocket_trader_paper_fill_ledger_bridge.py"
+      - "rocket_trader_paper_fill_ledger_bridge_test.py"
+      - "rocket_trader_realized_pnl_ledger.py"
+      - ".github/workflows/rocket-trader-paper-fill-ledger-bridge.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fill-ledger-bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile bridge, ledger, and tests
+        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_paper_fill_ledger_bridge_test.py
+      - name: Run offline fill bridge tests
+        run: python -m unittest -v rocket_trader_paper_fill_ledger_bridge_test.py
