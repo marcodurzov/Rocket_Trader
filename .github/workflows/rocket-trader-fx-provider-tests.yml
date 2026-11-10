@@ -1,0 +1,38 @@
+name: Rocket Trader - FX Provider and Fill Accounting
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_fx_provider.py"
+      - "rocket_trader_fx_provider_test.py"
+      - "rocket_trader_paper_fill_ledger_bridge.py"
+      - "rocket_trader_paper_fill_ledger_bridge_test.py"
+      - ".github/workflows/rocket-trader-fx-provider-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "rocket_trader_fx_provider.py"
+      - "rocket_trader_fx_provider_test.py"
+      - "rocket_trader_paper_fill_ledger_bridge.py"
+      - "rocket_trader_paper_fill_ledger_bridge_test.py"
+      - ".github/workflows/rocket-trader-fx-provider-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fx-provider:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile FX provider and accounting bridge
+        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_fx_provider.py rocket_trader_fx_provider_test.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_paper_fill_ledger_bridge_test.py
+      - name: Run offline FX and bridge tests
+        run: |
+          python -m unittest -v rocket_trader_fx_provider_test.py
+          python -m unittest -v rocket_trader_paper_fill_ledger_bridge_test.py
