@@ -98,6 +98,40 @@ Reddit practitioner discussions are useful for identifying failure modes and can
 
 Respect copyright and repository licenses. Use lawful open-access versions, institutional access, or public-domain texts; do not scrape pirated books or redistribute copyrighted material.
 
+## Execution-timing correction and current evidence (2026-11-10)
+
+**Use only the next-open research versions for decisions.** The earlier v0.2 equity and v0.1 crypto backtests applied close-derived signals to close-to-close returns, which could include the close-to-next-open gap before an order could actually execute. Those results are superseded and must not be used for strategy promotion.
+
+The corrected model:
+- Computes signals only from completed bar closes.
+- Applies the position at the next bar's open.
+- Measures open-to-next-open returns.
+- Charges turnover at the actual entry/exit boundary.
+- Excludes the final bar without a forward open and liquidates at the last available open.
+- Preserves the previous-close position when slicing train/validation/holdout windows, so window boundaries do not create artificial entries.
+
+Regression tests include a deliberate 100% overnight gap and verify that a signal entered at the next open earns only the subsequent 10% open-to-open move, not the unavailable gap.
+
+### Corrected equity research v0.3
+
+- 10-year adjusted daily history; Yahoo Finance research-only source.
+- 8 ETFs passed data-quality checks: DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT.
+- 49 eligible hypotheses in the final-holdout multiple-testing family.
+- Holm-Bonferroni significant hypotheses: 0.
+- Pre-screen passes: 0.
+- Cross-sectional top-1 momentum final holdout: +41.0% total return versus +31.2% equal-weight benchmark, but the 5th-percentile excess was -30.1%, raw p-value 0.392, Holm-adjusted p-value 1.0. This is not robust evidence of alpha.
+
+### Corrected crypto research v0.2
+
+- 5-year daily history from Alpaca CryptoFeed.US.
+- BTC/USD and ETH/USD passed; SOL/USD remains excluded for data-quality gaps.
+- 13 eligible hypotheses in the final-holdout multiple-testing family.
+- Holm-Bonferroni significant hypotheses: 0.
+- Pre-screen passes: 0.
+- Cross-sectional top-1 momentum final holdout: -29.5% total return; raw p-value 0.427, Holm-adjusted p-value 1.0. No strategy is promoted.
+
+These corrected results remain research-only. Neither asset class has a validated positive net edge. Prior close-to-close results are archived for auditability but superseded for all decisions.
+
 ## Determinism, uncertainty, and reproducibility
 
 Rocket Trader's decision logic must be deterministic and auditable given the same immutable inputs, configuration, code version and execution state:
