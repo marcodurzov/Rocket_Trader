@@ -119,6 +119,16 @@ class NewsEventAssessmentTests(unittest.TestCase):
         self.store.review(assessment_id, "reviewer", "approve", self.now)
         self.assertEqual(len(self.store.load_approved(now=self.now)), 1)
 
+    def test_assessment_cannot_predate_first_live_observation(self):
+        self.store.import_event(self.event_payload())
+        assessment_id = self.store.import_assessment(self.assessment_payload(
+            severity="HIGH",
+            assessed_at=(self.now - timedelta(minutes=10)).isoformat(),
+            expires_at=(self.now + timedelta(hours=1)).isoformat(),
+        ))
+        with self.assertRaisesRegex(ValueError, "predate the event"):
+            self.store.review(assessment_id, "reviewer", "approve", self.now)
+
     def test_symbol_filter_does_not_apply_btc_news_to_equity_universe(self):
         assessment_id = self.create_pending_critical()
         self.store.review(assessment_id, "reviewer", "approve", self.now)
