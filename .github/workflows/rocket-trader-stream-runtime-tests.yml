@@ -6,6 +6,7 @@ on:
     paths:
       - "rocket_trader_stream_runtime.py"
       - "rocket_trader_stream_runtime_test.py"
+      - "PAPER_OBSERVER_RUNTIME.md"
       - "rocket_trader_realized_pnl_ledger.py"
       - "rocket_trader_paper_fill_ledger_bridge.py"
       - "rocket_trader_alpaca_fee_resolver.py"
@@ -27,6 +28,7 @@ on:
     paths:
       - "rocket_trader_stream_runtime.py"
       - "rocket_trader_stream_runtime_test.py"
+      - "PAPER_OBSERVER_RUNTIME.md"
       - "rocket_trader_realized_pnl_ledger.py"
       - "rocket_trader_paper_fill_ledger_bridge.py"
       - "rocket_trader_alpaca_fee_resolver.py"
