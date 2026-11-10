@@ -21,6 +21,7 @@ jobs:
       ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
       ALPACA_PAPER: "true"
       ALPACA_LIVE_ENABLED: "false"
+      ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
