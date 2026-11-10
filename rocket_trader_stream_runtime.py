@@ -367,7 +367,10 @@ def main() -> int:
     config = RuntimeConfig.from_env()
     recorder = MarketRuntimeRecorder(config.db_path)
     if args.healthcheck:
-        result = recorder.health(\n            config.health_max_age_seconds,\n            data_freshness_thresholds={"crypto": 600},\n        )
+        result = recorder.health(
+            config.health_max_age_seconds,
+            data_freshness_thresholds={"crypto": 600},
+        )
         print(json.dumps(result, indent=2))
         return 0 if result["healthy"] else 1
     runtime = AlpacaPaperObserverRuntime(config, recorder)
