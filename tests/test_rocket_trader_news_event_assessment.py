@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,12 @@ class NewsEventAssessmentTests(unittest.TestCase):
         self.db = os.path.join(self.tmp.name, "events.sqlite3")
         self.now = datetime.now(timezone.utc)
         self.store = NewsEventAssessmentStore(self.db)
+        self.source_db = os.path.join(self.tmp.name, "rocket_trader_alpaca_news.sqlite3")
+        with sqlite3.connect(self.source_db) as db:
+            db.execute("""CREATE TABLE news_articles (
+                source TEXT, article_id INTEGER, provider_created_at TEXT,
+                live_first_seen_at TEXT, url TEXT, point_in_time_eligible INTEGER
+            )""")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -23,15 +30,22 @@ class NewsEventAssessmentTests(unittest.TestCase):
         domains = ("reuters.com", "apnews.com")
         sources = []
         for index, group in enumerate(independent_groups):
+            article_id = str(1000 + index)
+            url = f"https://{domains[index % 2]}/story-{index}"
             sources.append({
                 "source": "fixture-news",
-                "article_id": f"article-{index}",
-                "url": f"https://{domains[index % 2]}/story-{index}",
+                "article_id": article_id,
+                "url": url,
                 "published_at": published,
                 "first_seen_at": seen,
                 "source_domain": domains[index % 2],
                 "independent_source_group": group,
             })
+            with sqlite3.connect(self.source_db) as db:
+                db.execute("""INSERT OR REPLACE INTO news_articles
+                    (source,article_id,provider_created_at,live_first_seen_at,url,point_in_time_eligible)
+                    VALUES(?,?,?,?,?,1)""",
+                    ("fixture-news", int(article_id), published, seen, url))
         return {
             "event_id": "event-geopolitical-1",
             "title": "Verified geopolitical event",
