@@ -223,6 +223,8 @@ class EquityResearchV05Tests(unittest.TestCase):
         }
         self.assertTrue(expected.issubset(positions))
         for name in expected:
+            self.assertTrue(positions[name].index.equals(frame.index))
+        for name in expected:
             self.assertTrue(((positions[name] >= 0.0) & (positions[name] <= 1.0)).all())
 
     def test_rsi2_signal_is_lagged_to_next_open(self):
