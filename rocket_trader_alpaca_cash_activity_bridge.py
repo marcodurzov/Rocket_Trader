@@ -153,17 +153,6 @@ class AlpacaCashActivityBridge:
             raise AlpacaCashActivityError("CSD deposit net_amount must be positive")
         currency = str(payload.get("currency") or "").upper()
         occurred_at = _timestamp(payload.get("transaction_time") or payload.get("date"))
-        if currency == "USD":
-            fx = self.fx_resolver(occurred_at)
-            if not isinstance(fx, LedgerFX):
-                raise AlpacaCashActivityError("USD deposit requires a validated timestamped LedgerFX")
-            amount_mxn = amount * fx.mxn_per_usd
-            fx_data = fx.as_dict()
-        elif currency == "MXN":
-            amount_mxn = amount
-            fx_data = {"source": "native_MXN_activity", "mxn_per_usd": None, "observed_at": None}
-        else:
-            raise AlpacaCashActivityError(f"Unsupported cash deposit currency: {currency or 'missing'}")
 
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -186,6 +175,18 @@ class AlpacaCashActivityBridge:
                         VALUES (?,?,?,'PENDING',NULL,?,?)
                     """, (activity_id, digest, raw, now, now))
             try:
+                if currency == "USD":
+                    fx = self.fx_resolver(occurred_at)
+                    if not isinstance(fx, LedgerFX):
+                        raise AlpacaCashActivityError("USD deposit requires a validated timestamped LedgerFX")
+                    amount_mxn = amount * fx.mxn_per_usd
+                    fx_data = fx.as_dict()
+                elif currency == "MXN":
+                    amount_mxn = amount
+                    fx_data = {"source": "native_MXN_activity", "mxn_per_usd": None, "observed_at": None}
+                else:
+                    raise AlpacaCashActivityError(f"Unsupported cash deposit currency: {currency or 'missing'}")
+
                 event_id = f"ALPACA-CASH-DEPOSIT-{activity_id}"
                 inserted = self.ledger.record_deposit(
                     event_id=event_id, amount_mxn=amount_mxn, occurred_at=occurred_at,
