@@ -8,6 +8,7 @@ on:
       - "fix/crypto-research-data-coverage-gate"
     paths:
       - "rocket_trader_crypto_multiyear_research_v0_1.py"
+      - "rocket_trader_crypto_multiyear_research_v0_1_test.py"
       - ".github/workflows/rocket-trader-crypto-multiyear-research-v0.1.yml"
   pull_request:
     branches:
@@ -54,6 +55,8 @@ jobs:
           pip install -r requirements-alpaca.txt
       - name: Offline self-test
         run: python rocket_trader_crypto_multiyear_research_v0_1.py --self-test
+      - name: Offline regression tests
+        run: python -m unittest -v rocket_trader_crypto_multiyear_research_v0_1_test.py
       - name: Run multi-year crypto research
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
@@ -79,7 +82,14 @@ jobs:
           assert data.get('candidate_promotion_allowed') is False
           assert data.get('paper_approval') is False
           assert data.get('ok') is True
+          mt=data['multiple_testing']
+          assert mt['method'] == 'HOLM_BONFERRONI'
+          assert mt['promotion_allowed'] is False
+          assert mt['family_size'] == len(mt['raw_pvalues']) == len(mt['holm_adjusted_pvalues'])
+          assert all(0 <= p <= 1 for p in mt['holm_adjusted_pvalues'].values())
           print('Research-only report verified:', data['symbols_processed'])
+          print('Multiple-testing family size:', mt['family_size'])
+          print('Family-wise significant hypotheses:', mt['familywise_significant_count'])
           print('Data quality pass:', data.get('data_quality_pass'))
           print('Symbols with data-quality issues:', data.get('symbols_with_data_quality_issues'))
           PY
