@@ -1,5 +1,5 @@
 # Rocket Trader — Project Status v0.1
-**Last reviewed:** 2026-11-09  
+**Last reviewed:** 2026-11-10  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Primary reference system:** https://github.com/marcodurzov/mdv-ps-jefe-maestro
 
@@ -372,3 +372,41 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 9. **Separate LIVE review:** LIVE remains disabled. Any future live phase requires a separate explicit authorization after independent review of all prior gates, with capital, max loss, drawdown, kill switch and emergency-stop limits fixed in advance.
 
 **Conclusion:** Rocket Trader now has a materially stronger observe-only research and safety stack. It is not yet a profitable or autonomous trading system, and it is not ready to receive real money. The next highest-value action is to deploy the Paper stack and gather real, auditable operating evidence—not to loosen strategy gates or force trades.
+
+
+---
+
+## Continuity update — 2026-11-10 (PRs #94–#95 and live audit diagnosis)
+
+**Main baseline reviewed:** `a6f1b92136c041af0084bf28d7e686df0d444725`.
+
+### PR #94 — regime observer readiness semantics
+- Health output now distinguishes process/decision liveness from actual market-data readiness.
+- Reports `market_data_ready`, `safe_cash` and exposure separately.
+- A live process with stale/missing market data is not treated as ready; safe cash remains explicit.
+- Regression tests cover stale/missing and fresh-but-cash-only conditions.
+
+### PR #95 — trigger the actual historical audit on main pushes
+- The ETF history crosscheck now runs on relevant pushes to `main`, as well as weekly schedule and manual dispatch.
+- Offline tests passing is not equivalent to the real provider comparison passing.
+
+### Live audit result — workflow run 42920786498
+- Run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42920786498
+- Job `130194785274` completed with **failure** at the live 10-year comparison step; dependency installation, compilation, offline tests and artifact upload succeeded.
+- All eight symbols (DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT) failed in Yahoo retrieval with `ValueError: output array is read-only`.
+- Crucial discrepancy: the executed code still used `yfinance.Ticker(...).history(..., repair=True)`, despite the earlier diagnosis/documentation saying repair had been disabled. The report itself records `repair=True`. This is a source-of-truth mismatch and must be fixed in code, not merely described in docs.
+- Artifact ID: `13812205814`. It contains a failure report with zero symbols compared; it is not usable historical evidence.
+- No candidate promotion, Paper approval or orders were enabled; `orders_submitted=0`.
+- Current corrective branch `docs/continuity-handoff-and-yahoo-audit-fix` changes the provider call to `repair=False` and updates this handoff/status documentation. It is not merged until CI is green and the next real data run is reviewed.
+
+### Current continuation point
+1. Merge the repair correction only after PR checks pass.
+2. Trigger/observe a fresh live crosscheck and inspect the artifact; record actual coverage, overlap and discrepancies. If Yahoo remains unstable, isolate provider/version behavior and choose a defensible alternative source rather than weakening data gates.
+3. Close broker activity-to-ledger fill recovery with idempotent reconciliation, including delayed fees, corrections and partial fills.
+4. Continue empirical Paper execution-cost collection and confidence/coverage thresholds.
+5. Validate regime features and connect the selector in observe-only mode.
+6. Complete OOS research, multiple-testing controls and same-period trader/strategy benchmarks.
+7. Deploy the Paper stack on the user's persistent host only with the user operating their own secrets; deployment evidence is still absent.
+
+**Progress estimate at this checkpoint: 46%.** This is a conservative engineering/evidence maturity estimate, not a probability of profit. It must increase only when a meaningful end-to-end milestone is implemented and evidenced.
+
