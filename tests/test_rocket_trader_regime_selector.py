@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from rocket_trader_regime_selector import (
     MarketState, RegimeClassifier, RegimeLabel, NewsAssessment, NewsSeverity,
     NewsRiskOverlay, StrategyCandidate, RegimeAwarePortfolioSelector,
@@ -48,7 +49,8 @@ class RegimeSelectorTests(unittest.TestCase):
         news = NewsAssessment("event-1", "2026-11-10T11:59:00Z",
                               NewsSeverity.CRITICAL, 1, 1, 1, ("SPY",),
                               True, "human-reviewed-v1", "systemic event")
-        result = RegimeAwarePortfolioSelector().select(self.state(), [self.candidate()], [news])
+        result = RegimeAwarePortfolioSelector().select(self.state(), [self.candidate()], [news],
+            now=datetime.fromisoformat("2026-11-10T12:00:00+00:00"))
         self.assertTrue(result.abstain)
         self.assertEqual(result.cash_weight, 1)
 
