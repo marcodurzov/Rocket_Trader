@@ -137,6 +137,60 @@ class AlpacaCashActivityBridgeTests(unittest.TestCase):
         self.assertEqual(result["deposit_mxn"], "185.00")
         self.assertEqual(self.ledger.snapshot().deposits_mxn, Decimal("185.00"))
 
+    def test_confirmed_csw_is_recorded_as_withdrawal_not_profit(self):
+        self.bridge.process_activity({
+            "id": "cash-withdrawal-confirmed", "activity_type": "CSW",
+            "net_amount": "-100", "currency": "MXN",
+            "date": NOW.date().isoformat(), "status": "executed",
+        })
+        result = self.bridge.confirm_external_withdrawal(
+            "cash-withdrawal-confirmed", confirmation_reference="BANK-WITHDRAWAL-001"
+        )
+        snapshot = self.ledger.snapshot()
+        self.assertEqual(snapshot.withdrawals_mxn, Decimal("100.00"))
+        self.assertEqual(snapshot.realized_net_pnl_mxn, Decimal("0.00"))
+        self.assertFalse(result["counts_as_trading_profit"])
+        duplicate = self.bridge.confirm_external_withdrawal(
+            "cash-withdrawal-confirmed", confirmation_reference="BANK-WITHDRAWAL-001"
+        )
+        self.assertTrue(duplicate["duplicate"])
+        self.assertEqual(self.bridge.status()["pending_or_failed"], 0)
+
+    def test_jnlc_can_only_be_resolved_with_evidence_and_has_no_ledger_effect(self):
+        self.bridge.process_activity({
+            "id": "paper-seed-resolved", "activity_type": "JNLC",
+            "net_amount": "100000", "currency": "USD",
+            "date": "2026-09-28", "status": "executed",
+        })
+        with self.assertRaisesRegex(AlpacaCashActivityError, "rationale"):
+            self.bridge.resolve_journal_as_non_user_capital(
+                "paper-seed-resolved", resolution_reference="PAPER-ACCOUNT-STATEMENT",
+                rationale=" ",
+            )
+        result = self.bridge.resolve_journal_as_non_user_capital(
+            "paper-seed-resolved",
+            resolution_reference="ALPACA-PAPER-SEED-2026-09-28",
+            rationale="Broker statement identifies this JNLC as the simulator's initial Paper balance.",
+        )
+        self.assertEqual(result["ledger_effect"], "NONE")
+        self.assertEqual(self.ledger.snapshot().deposits_mxn, Decimal("0.00"))
+        self.assertEqual(self.ledger.snapshot().earned_growth_capital_mxn, Decimal("1000.00"))
+        self.assertEqual(self.bridge.status()["pending_or_failed"], 0)
+
+    def test_deposit_fx_must_not_be_future_or_stale(self):
+        old_fx = LedgerFX(Decimal("18.50"), NOW.replace(day=8), "OLD_FIXTURE")
+        bridge = AlpacaCashActivityBridge(
+            db_path=os.path.join(self.tmp.name, "old-fx.sqlite3"),
+            ledger=self.ledger,
+            fx_resolver=lambda _when: old_fx,
+        )
+        bridge.process_activity(self.usd_csd("old-fx-deposit"))
+        with self.assertRaisesRegex(AlpacaCashActivityError, "no more than 24 hours old"):
+            bridge.confirm_external_deposit(
+                "old-fx-deposit", confirmation_reference="BANK-REF-OLD-FX"
+            )
+        self.assertEqual(self.ledger.snapshot().deposits_mxn, Decimal("0.00"))
+
     def test_non_cash_activity_is_ignored(self):
         result = self.bridge.process_activity({"activity_type": "CFEE", "id": "fee-1"})
         self.assertTrue(result["ignored"])
