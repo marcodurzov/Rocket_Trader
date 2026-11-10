@@ -62,10 +62,10 @@ jobs:
             --symbols DIA EEM EFA GLD IWM QQQ SPY TLT \
             --output artifacts/alpaca_yahoo_etf_crosscheck.json
       - name: Upload immutable comparison report
-        if: github.event_name == 'workflow_dispatch'
+        if: always() && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: rocket-trader-alpaca-yahoo-etf-crosscheck
           path: artifacts/alpaca_yahoo_etf_crosscheck.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
