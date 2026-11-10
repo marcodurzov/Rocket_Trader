@@ -21,6 +21,33 @@ def main() -> int:
     client = TradingClient(key, secret, paper=True)
     account = client.get_account()
     config = client.get_account_configurations()
+    apply_config = os.getenv("ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG", "false").strip().lower()
+    if apply_config not in {"true", "false"}:
+        raise RuntimeError("ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG must be true or false.")
+    if apply_config == "true":
+        if str(value(account, "status", "")).upper() != "ACTIVE":
+            raise RuntimeError("Refusing configuration change: Paper account is not ACTIVE.")
+        if str(value(account, "currency", "")).upper() != "USD":
+            raise RuntimeError("Refusing configuration change: Paper account currency is not USD.")
+        import requests
+        response = requests.patch(
+            "https://paper-api.alpaca.markets/v2/account/configurations",
+            headers={
+                "APCA-API-KEY-ID": key,
+                "APCA-API-SECRET-KEY": secret,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            json={
+                "max_margin_multiplier": "1",
+                "no_shorting": True,
+                "max_options_trading_level": 0,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        config = client.get_account_configurations()
+        account = client.get_account()
     report = {
         "environment": "PAPER",
         "status": str(value(account, "status", "UNKNOWN")),
@@ -34,7 +61,7 @@ def main() -> int:
         "max_options_trading_level": value(config, "max_options_trading_level", None),
         "trading_blocked": bool(value(account, "trading_blocked", True)),
         "orders_submitted": 0,
-        "account_configuration_modified": 0,
+        "account_configuration_modified": 1 if apply_config == "true" else 0,
     }
     for key_name, item in report.items():
         print(f"{key_name}={item}")
