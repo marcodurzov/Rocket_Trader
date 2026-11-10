@@ -25,6 +25,7 @@ class FakeCryptoClient:
         self.positions = []
         self.submit_count = 0
         self.fail_after_accept = False
+        self.cancel_count = 0
 
     def get_account(self):
         return SimpleNamespace(
@@ -38,6 +39,14 @@ class FakeCryptoClient:
             max_margin_multiplier="1", no_shorting=True,
             max_options_trading_level=0,
         )
+
+    def cancel_order_by_id(self, order_id):
+        self.cancel_count += 1
+        for order in self.orders.values():
+            if order.id == order_id:
+                order.status = "canceled"
+                return order
+        raise NotFound()
 
     def get_asset(self, symbol):
         return SimpleNamespace(symbol=symbol, asset_class="crypto", tradable=True)
@@ -238,6 +247,22 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(CryptoPaperExecutionError, "exceeds available cash"):
             self.adapter.submit(self.buy(notional="10"))
         self.assertEqual(self.client.submit_count, 0)
+
+    def test_cancel_is_idempotent_and_persists_terminal_state(self):
+        self.adapter.submit(self.buy())
+        first = self.adapter.cancel("crypto-buy-001")
+        second = self.adapter.cancel("crypto-buy-001")
+        self.assertEqual(first["status"], "canceled")
+        self.assertTrue(first["cancel_requested"])
+        self.assertFalse(second["cancel_requested"])
+        self.assertEqual(self.client.cancel_count, 1)
+        reconciled = self.adapter.reconcile("crypto-buy-001")
+        self.assertEqual(reconciled["status"], "canceled")
+
+    def test_cancel_unknown_client_order_id_does_not_call_broker(self):
+        result = self.adapter.cancel("not-found")
+        self.assertFalse(result["found"])
+        self.assertEqual(self.client.cancel_count, 0)
 
     def test_rejects_non_paper_and_non_usd_pairs(self):
         live = CryptoOrderIntent(

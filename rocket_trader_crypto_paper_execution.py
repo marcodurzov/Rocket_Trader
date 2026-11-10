@@ -416,6 +416,49 @@ class AlpacaCryptoPaperExecutionAdapter:
                     "Crypto submission outcome unknown; automatic retry is blocked."
                 ) from exc
 
+    def cancel(self, client_order_id: str) -> Dict[str, Any]:
+        """Request cancellation of one known Paper order and reconcile the broker result."""
+        if not isinstance(client_order_id, str) or not client_order_id.strip():
+            raise CryptoPaperExecutionError("client_order_id is required for cancellation.")
+        broker_order = self._lookup(client_order_id)
+        if broker_order is None:
+            return {"found": False, "client_order_id": client_order_id, "cancel_requested": False}
+        broker = self._snapshot(broker_order)
+        terminal = {"filled", "canceled", "cancelled", "expired", "rejected", "done_for_day", "replaced"}
+        if str(broker.get("status", "")).lower() in terminal:
+            self._persist(client_order_id, broker["status"], broker)
+            return {"found": True, "mode": "PAPER", "cancel_requested": False, **broker}
+        order_id = broker.get("order_id")
+        if not order_id:
+            self._persist(client_order_id, "CANCEL_OUTCOME_UNKNOWN", broker, "Missing broker order ID.")
+            raise CryptoPaperExecutionError("Cannot cancel without a broker order ID; reconcile before retrying.")
+        try:
+            self.client.cancel_order_by_id(order_id)
+        except Exception as exc:
+            try:
+                latest = self._lookup(client_order_id)
+            except Exception as lookup_exc:
+                self._persist(client_order_id, "CANCEL_OUTCOME_UNKNOWN", broker, str(lookup_exc))
+                raise CryptoPaperExecutionError(
+                    "Cancellation outcome unknown; reconcile this client_order_id before any retry."
+                ) from exc
+            if latest is not None:
+                refreshed = self._snapshot(latest)
+                if str(refreshed.get("status", "")).lower() in terminal:
+                    self._persist(client_order_id, refreshed["status"], refreshed, str(exc))
+                    return {"found": True, "mode": "PAPER", "cancel_requested": True, **refreshed}
+                self._persist(client_order_id, "CANCEL_OUTCOME_UNKNOWN", refreshed, str(exc))
+            raise CryptoPaperExecutionError(
+                "Cancellation outcome unknown; reconcile this client_order_id before any retry."
+            ) from exc
+        latest = self._lookup(client_order_id)
+        if latest is None:
+            self._persist(client_order_id, "CANCEL_REQUESTED", broker)
+            return {"found": False, "client_order_id": client_order_id, "cancel_requested": True}
+        refreshed = self._snapshot(latest)
+        self._persist(client_order_id, refreshed["status"], refreshed)
+        return {"found": True, "mode": "PAPER", "cancel_requested": True, **refreshed}
+
     def reconcile(self, client_order_id: str) -> Dict[str, Any]:
         broker_order = self._lookup(client_order_id)
         if broker_order is None:

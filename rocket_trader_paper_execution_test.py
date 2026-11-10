@@ -20,6 +20,7 @@ class FakeClient:
         self.orders = {}
         self.submit_count = 0
         self.fail_after_accept = False
+        self.cancel_count = 0
 
     def get_order_by_client_id(self, client_id):
         if client_id not in self.orders:
@@ -40,6 +41,14 @@ class FakeClient:
         if self.fail_after_accept:
             raise TimeoutError("simulated timeout after broker accepted")
         return order
+
+    def cancel_order_by_id(self, order_id):
+        self.cancel_count += 1
+        for order in self.orders.values():
+            if order.id == order_id:
+                order.status = "canceled"
+                return order
+        raise NotFound()
 
     def get_account(self):
         return SimpleNamespace(
@@ -138,6 +147,22 @@ class PaperExecutionTests(unittest.TestCase):
         with self.assertRaises(PaperExecutionError):
             self.adapter.submit(changed)
         self.assertEqual(self.client.submit_count, 1)
+
+    def test_cancel_is_idempotent_and_persists_terminal_state(self):
+        self.adapter.submit(self.order())
+        first = self.adapter.cancel("rt-test-order-001")
+        second = self.adapter.cancel("rt-test-order-001")
+        self.assertEqual(first["status"], "canceled")
+        self.assertTrue(first["cancel_requested"])
+        self.assertFalse(second["cancel_requested"])
+        self.assertEqual(self.client.cancel_count, 1)
+        reconciled = self.adapter.reconcile("rt-test-order-001")
+        self.assertEqual(reconciled["status"], "canceled")
+
+    def test_cancel_unknown_client_order_id_does_not_call_broker(self):
+        result = self.adapter.cancel("not-found")
+        self.assertFalse(result["found"])
+        self.assertEqual(self.client.cancel_count, 0)
 
     def test_read_only_account_verification(self):
         result = self.adapter.verify_account()
