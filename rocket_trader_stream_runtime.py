@@ -280,8 +280,10 @@ class AlpacaPaperObserverRuntime:
         config: RuntimeConfig,
         recorder: MarketRuntimeRecorder,
         fill_ledger_bridge: Any = None,
+        activity_stager: Any = None,
         *,
         ledger_retry_interval_seconds: int = 900,
+        activity_retry_interval_seconds: int = 900,
     ) -> None:
         if config.mode != "OBSERVE_ONLY":
             raise RuntimeConfigurationError("Only OBSERVE_ONLY is supported.")
@@ -293,8 +295,11 @@ class AlpacaPaperObserverRuntime:
         self.last_events: Dict[str, Optional[str]] = {"equity": None, "crypto": None, "trading": None}
         self.failed_components: set[str] = set()
         self.fill_ledger_bridge = fill_ledger_bridge
+        self.activity_stager = activity_stager
         self.ledger_retry_interval_seconds = max(1, int(ledger_retry_interval_seconds))
         self.last_ledger_retry_monotonic = 0.0
+        self.activity_retry_interval_seconds = max(1, int(activity_retry_interval_seconds))
+        self.last_activity_retry_monotonic = 0.0
 
     def _update_ledger_health(self) -> None:
         if self.fill_ledger_bridge is None:
@@ -307,6 +312,25 @@ class AlpacaPaperObserverRuntime:
             )
         else:
             self.recorder.heartbeat("ledger", "HEALTHY")
+
+    def _sync_account_activities(self) -> Optional[Dict[str, Any]]:
+        if self.activity_stager is None:
+            return None
+        try:
+            report = self.activity_stager.sync()
+            pending = int(report.get("total_staged", 0))
+            self.recorder.heartbeat(
+                "account_activity", "HEALTHY",
+                last_event_at=_utc_now(),
+                last_error=None if pending >= 0 else "Invalid activity count.",
+            )
+            return report
+        except Exception as exc:
+            self.recorder.heartbeat(
+                "account_activity", "ERROR",
+                last_error=f"Read-only account activity sync failed: {exc}",
+            )
+            return None
 
     def _bar_handler(self, asset_class: str):
         async def handler(bar: Any) -> None:
@@ -364,6 +388,10 @@ class AlpacaPaperObserverRuntime:
         if self.fill_ledger_bridge is not None:
             self.recorder.heartbeat("ledger", "STARTING")
             self._update_ledger_health()
+        if self.activity_stager is not None:
+            self.recorder.heartbeat("account_activity", "STARTING")
+            self._sync_account_activities()
+            self.last_activity_retry_monotonic = time.monotonic()
         for component, stream in self.streams.items():
             self.recorder.heartbeat(component, "STARTING")
             thread = threading.Thread(target=stream.run, name=f"rocket-{component}-stream", daemon=True)
@@ -382,6 +410,14 @@ class AlpacaPaperObserverRuntime:
                             f"{component} stream exited; refusing to continue with partial market connectivity."
                         )
                     self.recorder.heartbeat(component, "HEALTHY", self.last_events.get(component))
+                if self.activity_stager is not None:
+                    now_monotonic = time.monotonic()
+                    if (
+                        now_monotonic - self.last_activity_retry_monotonic
+                        >= self.activity_retry_interval_seconds
+                    ):
+                        self._sync_account_activities()
+                        self.last_activity_retry_monotonic = now_monotonic
                 if self.fill_ledger_bridge is not None:
                     status = self.fill_ledger_bridge.status()
                     counts = status.get("counts", {})
@@ -457,6 +493,30 @@ def build_fill_ledger_bridge(config: RuntimeConfig):
         ) from exc
 
 
+def build_activity_stager(config: RuntimeConfig):
+    enabled = os.getenv("ROCKET_TRADER_ACTIVITY_STAGER_ENABLED", "false").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        if enabled not in {"0", "false", "no", "off", ""}:
+            raise RuntimeConfigurationError("ROCKET_TRADER_ACTIVITY_STAGER_ENABLED must be boolean.")
+        return None
+    try:
+        from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
+        parent = Path(config.db_path).resolve().parent
+        path = os.getenv(
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB",
+            str(parent / "rocket_trader_activity_stager.sqlite3"),
+        )
+        return AlpacaPaperActivityStager(
+            db_path=path,
+            api_key=config.api_key,
+            api_secret=config.secret_key,
+        )
+    except Exception as exc:
+        raise RuntimeConfigurationError(
+            f"Could not initialize read-only Paper account activity stager: {exc}"
+        ) from exc
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Rocket Trader Paper observer runtime")
     parser.add_argument("--healthcheck", action="store_true")
@@ -464,11 +524,19 @@ def main() -> int:
     config = RuntimeConfig.from_env()
     recorder = MarketRuntimeRecorder(config.db_path)
     fill_ledger_bridge = build_fill_ledger_bridge(config)
+    activity_stager = build_activity_stager(config)
     if args.healthcheck:
         result = recorder.health(
             config.health_max_age_seconds,
             data_freshness_thresholds={"crypto": 600},
         )
+        if activity_stager is not None:
+            activity_status = activity_stager.report()
+            result["account_activity"] = activity_status
+            result["account_activity_healthy"] = (
+                result.get("components", {}).get("account_activity", {}).get("healthy", False)
+            )
+            result["healthy"] = result["healthy"] and result["account_activity_healthy"]
         if fill_ledger_bridge is not None:
             ledger_status = fill_ledger_bridge.status()
             result["ledger_accounting"] = ledger_status
@@ -476,7 +544,9 @@ def main() -> int:
             result["healthy"] = result["healthy"] and result["ledger_accounting_healthy"]
         print(json.dumps(result, indent=2))
         return 0 if result["healthy"] else 1
-    runtime = AlpacaPaperObserverRuntime(config, recorder, fill_ledger_bridge)
+    runtime = AlpacaPaperObserverRuntime(
+        config, recorder, fill_ledger_bridge, activity_stager
+    )
     def request_stop(_signum, _frame):
         runtime.stop_event.set()
     signal.signal(signal.SIGTERM, request_stop)
