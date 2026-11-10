@@ -13,6 +13,7 @@ import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -93,10 +94,18 @@ class PaperFillLedgerBridge:
                     payload_json TEXT NOT NULL,
                     status TEXT NOT NULL,
                     last_error TEXT,
+                    fx_json TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
             """)
+            columns = {
+                row["name"] for row in conn.execute(
+                    "PRAGMA table_info(paper_fill_ledger_inbox)"
+                ).fetchall()
+            }
+            if "fx_json" not in columns:
+                conn.execute("ALTER TABLE paper_fill_ledger_inbox ADD COLUMN fx_json TEXT")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS paper_fill_manual_review (
                     review_id TEXT PRIMARY KEY,
@@ -161,6 +170,32 @@ class PaperFillLedgerBridge:
             conn.execute("COMMIT")
 
         try:
+            with self._connect() as conn:
+                stored = conn.execute(
+                    "SELECT fx_json FROM paper_fill_ledger_inbox WHERE execution_id=?",
+                    (execution_id,),
+                ).fetchone()
+            if stored and stored["fx_json"]:
+                fx_data = json.loads(stored["fx_json"])
+                fx = LedgerFX(
+                    Decimal(fx_data["mxn_per_usd"]),
+                    datetime.fromisoformat(fx_data["observed_at"]),
+                    fx_data["source"],
+                )
+            else:
+                fx = self.fx_resolver(occurred_at)
+                if not isinstance(fx, LedgerFX):
+                    raise PaperFillLedgerBridgeError("FX resolver must return a validated LedgerFX.")
+                with self._connect() as conn:
+                    conn.execute(
+                        "UPDATE paper_fill_ledger_inbox SET fx_json=?,updated_at=? WHERE execution_id=?",
+                        (
+                            json.dumps(fx.as_dict(), sort_keys=True, separators=(",", ":")),
+                            datetime.now(timezone.utc).isoformat(),
+                            execution_id,
+                        ),
+                    )
+
             fee = self.fee_resolver(payload)
             if (
                 not isinstance(fee, dict)
@@ -171,9 +206,6 @@ class PaperFillLedgerBridge:
                 raise PaperFillLedgerBridgeError(
                     "Fee resolver must explicitly provide fee_usd, fee_asset_qty, and fee_source."
                 )
-            fx = self.fx_resolver(occurred_at)
-            if not isinstance(fx, LedgerFX):
-                raise PaperFillLedgerBridgeError("FX resolver must return a validated LedgerFX.")
             inserted = self.ledger.record_fill(
                 fill_id=f"ALPACA-FILL-{execution_id}",
                 symbol=symbol,
