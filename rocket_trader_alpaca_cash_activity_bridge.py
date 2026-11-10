@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Idempotent Alpaca cash-deposit ingestion into Rocket Trader's MXN capital ledger.
+"""Conservative Alpaca cash-activity staging and explicitly confirmed deposits.
 
-Only broker-recorded CSD cash deposits are treated as external contributions.
-They increase operating capital but are excluded from trading-earned growth.
-Cash withdrawals are quarantined for explicit review; they are never silently
-misclassified as strategy payouts or allowed to bypass the ledger's floor rules.
+CSD/CSW can include returned transfers, and JNLC is a cash journal. Activity
+type alone is not sufficient evidence of a new external contribution. All cash
+movements are quarantined until an operator explicitly confirms a CSD as a new
+external deposit with a traceable confirmation reference.
 """
 from __future__ import annotations
 
@@ -104,9 +104,30 @@ class AlpacaCashActivityBridge:
                     payload_hash TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     reason TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    resolution_reference TEXT,
+                    resolved_at TEXT
                 )
             """)
+            review_columns = {
+                row["name"] for row in conn.execute(
+                    "PRAGMA table_info(alpaca_cash_activity_review)"
+                ).fetchall()
+            }
+            if "status" not in review_columns:
+                conn.execute(
+                    "ALTER TABLE alpaca_cash_activity_review "
+                    "ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING'"
+                )
+            if "resolution_reference" not in review_columns:
+                conn.execute(
+                    "ALTER TABLE alpaca_cash_activity_review ADD COLUMN resolution_reference TEXT"
+                )
+            if "resolved_at" not in review_columns:
+                conn.execute(
+                    "ALTER TABLE alpaca_cash_activity_review ADD COLUMN resolved_at TEXT"
+                )
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30)
@@ -120,111 +141,152 @@ class AlpacaCashActivityBridge:
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
         with self._connect() as conn:
             existing = conn.execute(
-                "SELECT payload_hash FROM alpaca_cash_activity_review WHERE activity_id=?",
+                "SELECT payload_hash,status FROM alpaca_cash_activity_review WHERE activity_id=?",
                 (activity_id,),
             ).fetchone()
             if existing and existing["payload_hash"] != digest:
                 raise AlpacaCashActivityError("Cash activity ID collision with different payload")
+            if existing and existing["status"] == "RESOLVED_EXTERNAL_DEPOSIT":
+                return {
+                    "processed": True, "duplicate": True, "activity_id": activity_id,
+                    "reason": "already_confirmed_external_deposit",
+                }
             conn.execute("""
                 INSERT OR IGNORE INTO alpaca_cash_activity_review
-                (activity_id,payload_hash,payload_json,reason,created_at)
-                VALUES (?,?,?,?,?)
+                (activity_id,payload_hash,payload_json,reason,created_at,status)
+                VALUES (?,?,?,?,?,'PENDING')
             """, (activity_id, digest, raw, reason, datetime.now(timezone.utc).isoformat()))
         return {"processed": False, "manual_review": True, "activity_id": activity_id, "reason": reason}
 
     def process_activity(self, activity: Any) -> Dict[str, Any]:
         payload = activity if isinstance(activity, dict) else {
             key: _value(activity, key) for key in (
-                "id", "ref_id", "activity_type", "net_amount", "currency",
-                "date", "transaction_time", "status", "description",
+                "id", "ref_id", "activity_type", "activity_sub_type",
+                "net_amount", "currency", "date", "transaction_time",
+                "created_at", "status", "description",
             ) if _value(activity, key) is not None
         }
         if not isinstance(payload, dict):
             raise AlpacaCashActivityError("Activity must be an object")
         activity_type = str(payload.get("activity_type") or "").upper()
-        if activity_type not in {"CSD", "CSW"}:
-            return {"processed": False, "ignored": True, "reason": "not_a_cash_deposit_or_withdrawal"}
+        if activity_type not in {"CSD", "CSW", "JNLC"}:
+            return {"processed": False, "ignored": True, "reason": "not_a_supported_cash_movement"}
 
         activity_id = str(payload.get("id") or payload.get("ref_id") or "").strip()
         if not activity_id:
             raise AlpacaCashActivityError("Cash activity requires broker activity id")
-        if activity_type == "CSW":
-            return self._review(
-                activity_id, payload,
-                "External cash withdrawal requires explicit accounting and floor review; no automatic ledger mutation.",
+        reasons = {
+            "CSD": (
+                "CSD may be a new cash deposit or a returned withdrawal. "
+                "Activity type alone cannot prove an external contribution."
+            ),
+            "CSW": (
+                "CSW may be a withdrawal or a returned deposit. "
+                "Explicit accounting review is required."
+            ),
+            "JNLC": (
+                "JNLC is a cash journal and may represent an internal journal "
+                "or the Paper simulator seed; it is not automatically user funding."
+            ),
+        }
+        return self._review(activity_id, payload, reasons[activity_type])
+
+    def confirm_external_deposit(
+        self,
+        activity_id: str,
+        *,
+        confirmation_reference: str,
+    ) -> Dict[str, Any]:
+        """Post a CSD only after explicit external-deposit confirmation."""
+        activity_id = str(activity_id or "").strip()
+        reference = str(confirmation_reference or "").strip()
+        if not activity_id:
+            raise AlpacaCashActivityError("broker activity id is required")
+        if not reference:
+            raise AlpacaCashActivityError(
+                "A traceable confirmation_reference is required to classify CSD as a new deposit"
             )
-
-        status = str(payload.get("status") or "executed").lower()
-        if status not in {"executed", "complete", "completed"}:
-            return {"processed": False, "ignored": True, "reason": f"deposit_status_{status}"}
-        amount = _decimal(payload.get("net_amount"), "net_amount")
-        if amount <= 0:
-            raise AlpacaCashActivityError("CSD deposit net_amount must be positive")
-        currency = str(payload.get("currency") or "").upper()
-        occurred_at = _timestamp(payload.get("transaction_time") or payload.get("date"))
-
-        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-        now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             with self._connect() as conn:
                 row = conn.execute(
-                    "SELECT payload_hash,status FROM alpaca_cash_activity_inbox WHERE activity_id=?",
+                    "SELECT payload_json,status FROM alpaca_cash_activity_review WHERE activity_id=?",
                     (activity_id,),
                 ).fetchone()
-                if row:
-                    if row["payload_hash"] != digest:
-                        raise AlpacaCashActivityError("Cash activity ID already exists with a different payload")
-                    if row["status"] == "PROCESSED":
-                        return {"processed": True, "duplicate": True, "activity_id": activity_id}
-                else:
-                    conn.execute("""
-                        INSERT INTO alpaca_cash_activity_inbox
-                        (activity_id,payload_hash,payload_json,status,last_error,created_at,updated_at)
-                        VALUES (?,?,?,'PENDING',NULL,?,?)
-                    """, (activity_id, digest, raw, now, now))
-            try:
-                if currency == "USD":
-                    fx = self.fx_resolver(occurred_at)
-                    if not isinstance(fx, LedgerFX):
-                        raise AlpacaCashActivityError("USD deposit requires a validated timestamped LedgerFX")
-                    amount_mxn = amount * fx.mxn_per_usd
-                    fx_data = fx.as_dict()
-                elif currency == "MXN":
-                    amount_mxn = amount
-                    fx_data = {"source": "native_MXN_activity", "mxn_per_usd": None, "observed_at": None}
-                else:
-                    raise AlpacaCashActivityError(f"Unsupported cash deposit currency: {currency or 'missing'}")
-
-                event_id = f"ALPACA-CASH-DEPOSIT-{activity_id}"
-                inserted = self.ledger.record_deposit(
-                    event_id=event_id, amount_mxn=amount_mxn, occurred_at=occurred_at,
-                )
-                with self._connect() as conn:
-                    conn.execute("""
-                        UPDATE alpaca_cash_activity_inbox
-                        SET status='PROCESSED',last_error=NULL,updated_at=?
-                        WHERE activity_id=?
-                    """, (datetime.now(timezone.utc).isoformat(), activity_id))
+            if row is None:
+                raise AlpacaCashActivityError("Cash activity must be staged for review before confirmation")
+            if row["status"] == "RESOLVED_EXTERNAL_DEPOSIT":
                 return {
-                    "processed": True, "duplicate": not inserted,
-                    "activity_id": activity_id, "ledger_event_id": event_id,
-                    "deposit_mxn": str(amount_mxn),
-                    "fx": fx_data,
+                    "processed": True, "duplicate": True, "activity_id": activity_id,
+                    "confirmation_reference": row["resolution_reference"],
                     "counts_as_trading_profit": False,
                 }
-            except Exception as exc:
-                with self._connect() as conn:
-                    conn.execute("""
-                        UPDATE alpaca_cash_activity_inbox
-                        SET status='FAILED',last_error=?,updated_at=?
-                        WHERE activity_id=?
-                    """, (str(exc), datetime.now(timezone.utc).isoformat(), activity_id))
-                if isinstance(exc, AlpacaCashActivityError):
-                    raise
+            if row["status"] != "PENDING":
+                raise AlpacaCashActivityError("Cash activity is not in a confirmable review state")
+            payload = json.loads(row["payload_json"])
+            if str(payload.get("activity_type") or "").upper() != "CSD":
+                raise AlpacaCashActivityError("Only CSD cash credits can be confirmed as external deposits")
+            description = str(payload.get("description") or "").lower()
+            return_markers = (
+                "return", "returned", "reversal", "reversed", "rejected",
+                "failed", "chargeback",
+            )
+            if any(marker in description for marker in return_markers):
                 raise AlpacaCashActivityError(
-                    f"Deposit {activity_id} retained for retry: {exc}"
-                ) from exc
+                    "Activity description indicates a return/reversal; it cannot be confirmed as a new deposit"
+                )
+            status = str(payload.get("status") or "executed").lower()
+            if status not in {"executed", "complete", "completed"}:
+                raise AlpacaCashActivityError(f"CSD activity is not final: {status}")
+            amount = _decimal(payload.get("net_amount"), "net_amount")
+            if amount <= 0:
+                raise AlpacaCashActivityError("CSD net_amount must be positive")
+            currency = str(payload.get("currency") or "").upper()
+            occurred_at = _timestamp(
+                payload.get("transaction_time") or payload.get("created_at") or payload.get("date")
+            )
+            if currency == "USD":
+                fx = self.fx_resolver(occurred_at)
+                if not isinstance(fx, LedgerFX):
+                    raise AlpacaCashActivityError(
+                        "USD deposit requires a validated timestamped LedgerFX"
+                    )
+                amount_mxn = amount * fx.mxn_per_usd
+                fx_data = fx.as_dict()
+            elif currency == "MXN":
+                amount_mxn = amount
+                fx_data = {
+                    "source": "native_MXN_activity",
+                    "mxn_per_usd": None,
+                    "observed_at": None,
+                }
+            else:
+                raise AlpacaCashActivityError(
+                    f"Unsupported cash deposit currency: {currency or 'missing'}"
+                )
+
+            event_id = f"ALPACA-CASH-DEPOSIT-{activity_id}"
+            inserted = self.ledger.record_deposit(
+                event_id=event_id, amount_mxn=amount_mxn, occurred_at=occurred_at,
+            )
+            resolved_at = datetime.now(timezone.utc).isoformat()
+            with self._connect() as conn:
+                conn.execute("""
+                    UPDATE alpaca_cash_activity_review
+                    SET status='RESOLVED_EXTERNAL_DEPOSIT',
+                        resolution_reference=?,resolved_at=?,reason=?
+                    WHERE activity_id=?
+                """, (
+                    reference, resolved_at,
+                    "Explicitly confirmed as a new external deposit; excluded from trading profit.",
+                    activity_id,
+                ))
+            return {
+                "processed": True, "duplicate": not inserted,
+                "activity_id": activity_id, "ledger_event_id": event_id,
+                "deposit_mxn": str(amount_mxn), "fx": fx_data,
+                "confirmation_reference": reference,
+                "counts_as_trading_profit": False,
+            }
 
     def retry_pending(self) -> Dict[str, Any]:
         with self._connect() as conn:
@@ -250,10 +312,14 @@ class AlpacaCashActivityBridge:
                 ).fetchall()
             }
             review = conn.execute(
-                "SELECT activity_id,reason FROM alpaca_cash_activity_review ORDER BY created_at"
+                "SELECT activity_id,reason,status FROM alpaca_cash_activity_review "
+                "WHERE status='PENDING' ORDER BY created_at"
             ).fetchall()
         return {
             "counts": counts,
             "pending_or_failed": counts.get("PENDING", 0) + counts.get("FAILED", 0) + len(review),
-            "manual_review": [{"activity_id": row["activity_id"], "reason": row["reason"]} for row in review],
+            "manual_review": [
+                {"activity_id": row["activity_id"], "reason": row["reason"], "status": row["status"]}
+                for row in review
+            ],
         }
