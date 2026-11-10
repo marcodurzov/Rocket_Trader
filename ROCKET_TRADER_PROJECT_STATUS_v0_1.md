@@ -315,3 +315,60 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - Deployment assets: `Dockerfile.paper-observer`, `docker-compose.paper-observer.yml`, and `PAPER_OBSERVER_RUNTIME.md`.
 - This is an always-on data observer, not yet an autonomous trading bot. It does not train/approve strategies, generate trading decisions, place Paper orders, or reconcile fills into the realized-P&L ledger. Deployment to a persistent host still needs to be completed and monitored.
 - GitHub Actions remain CI/research only; they are not used as a 24/7 trading host.
+
+
+---
+
+## Audit update — 2026-11-10 (PRs #82–#92)
+
+**Main commit after this update:** `492138ddfc91b1aaa8820e9d257b9352393b7162`.
+
+### Integrated and verified
+
+- **PR #82 — official macro/regulatory news observer:** Federal Reserve, BLS, BEA and optional SEC RSS ingestion. Article publication time and first live observation are stored separately. Observe-only.
+- **PR #83 — news risk expiry and relevance:** stale critical events expire after six hours; low-confidence critical headlines cannot create a permanent hard block.
+- **PR #84 — regime observer:** reads persisted minute bars and derives trend, breadth, volatility percentile, cross-asset correlation, stress and data-quality features separately for equity ETFs and crypto. It persists auditable regime decisions. The candidate set is intentionally empty, so it remains 100% cash.
+- **PR #85 — reference benchmark harness:** same-symbol, exact-date and same-cost daily comparison against cash, buy-and-hold, 252-day time-series momentum, 63-day momentum skipping 21 days, and 50/200-day trend. Output is comparison-only; it does not calculate statistical significance or promote strategies.
+- **PR #86 — Alpaca/Benzinga news observer:** per-symbol read-only news ingestion with overlap, deduplication, revisions and per-symbol health.
+- **PR #87 — GDELT global/geopolitical news observer:** discovery coverage for conflict/sanctions, energy security, shipping, macro policy and natural disasters. Stores metadata, language, country, topic association and first observation. No social-platform scraping.
+- **PR #88 — human-reviewed news event assessment:** source IDs, URLs, publication timestamps and first-live-seen timestamps must match the durable official/Alpaca/GDELT article ledgers before approval. Assessments remain PENDING until a named reviewer approves/rejects them. CRITICAL requires two independent source groups, credibility/relevance >=0.75, novelty >=0.50 and point-in-time evidence. Assessments are filtered by active universe; news can only reduce risk or block new entries.
+- **PR #89 — Paper quote-to-fill cost telemetry:** subscribes to IEX equity and Alpaca US crypto quotes; records fill-associated quote snapshots; calculates spread and signed midpoint slippage; excludes future/stale quotes and avoids double-counting cumulative partial-fill averages. The empirical-cost approval flag remains false.
+- **PR #90 — scheduled ETF history crosscheck:** weekly 10-year Alpaca IEX vs Yahoo adjusted daily history audit, with manual IEX/SIP dispatch and immutable JSON artifact. PR CI passed, but the live comparison step was skipped in the PR/push run; the first scheduled Sunday run is still pending.
+- **PR #91 — quote/bar heartbeat isolation:** quote events cannot refresh the independent bar-stream heartbeat. Quote ingestion errors are recorded separately. Regression tests pass.
+- **PR #92 — deployment runbook:** documents Paper-only credentials, Compose deployment, persistent volume handling, service health, cost report and human-reviewed news workflow.
+
+### CI and deployment evidence
+
+- PR #84 passed regime observer tests, runtime regression and container validation; the Paper Observer image was published.
+- PR #86 passed news regression and container validation; image build/publish completed.
+- PR #87 passed GDELT/news tests and container validation.
+- PR #88 passed regime, news-assessment, runtime and container regression.
+- PR #89 passed cost telemetry/runtime tests and container validation; image was published.
+- PR #91 passed runtime freshness, runtime regression and container validation; the updated Paper Observer image was published.
+- PR #90 offline crosscheck tests passed. No ten-year market-data artifact has yet been reviewed.
+- PR #92 is documentation-only.
+- These CI results validate code/build behavior, not live data quality, profitability or deployment on the user's host.
+
+### Current operating state
+
+- The runtime remains `OBSERVE_ONLY`; no order-submission code is enabled.
+- The regime observer has no approved strategy candidates and stays at 0% exposure / 100% cash.
+- Official, Alpaca/Benzinga and GDELT news collectors are implemented as separate services, but have not yet been deployed and observed on the user's persistent host.
+- News-to-risk integration requires human-reviewed, source-verified event assessments. There is no automatic LLM sentiment or event classifier, and no social-media source.
+- Execution cost telemetry is implemented, but no representative Paper fill sample has yet been collected; empirical cost validation remains false.
+- The daily reference benchmark harness is separate from the existing intraday signal-research workflow. It does not yet provide a complete same-frequency benchmark suite for every intraday candidate.
+- The successful-investor registry remains a source-backed hypothesis/process reference, not a database of verified personal trading histories. Do not fabricate trader performance or treat qualitative anecdotes as quantitative benchmarks.
+
+### Remaining blockers — ordered by importance
+
+1. **Deploy and observe the Paper stack:** run `PAPER_OBSERVER_DEPLOYMENT.md` on a persistent host with dedicated Alpaca Paper credentials. Verify all five services, persistent volume, reconnect/restart behavior, data freshness and source health. The repository cannot deploy to the user's host by itself.
+2. **Collect real Paper evidence:** accumulate representative quote/fill observations, reconcile all fills and delayed fees, test partial fills, restart recovery, cash movements and broker-vs-ledger positions. Paper fills do not prove live execution quality.
+3. **Run and review the 10-year ETF crosscheck:** wait for the scheduled artifact; manually dispatch SIP only if entitlement is available. IEX is not SIP/NBBO.
+4. **Complete strategy research and benchmarking:** no strategy is approved. The previous ETF/crypto family research produced zero Holm-significant candidates. Expand the intraday reference comparisons, chronological holdouts, block bootstrap, multiple-testing correction and empirical-cost stress before any Paper strategy approval.
+5. **Calibrate market regimes:** the initial regime features are descriptive heuristics, not validated predictors. Test stability, hysteresis, regime-conditioned performance and false transitions on archived point-in-time data.
+6. **Validate news intelligence:** build event studies for relevance/credibility/novelty and impact horizons; verify independent source ownership/syndication; add social sources only with compliant licensed access. Do not let raw headline volume or tone drive exposure.
+7. **Complete portfolio/risk integration:** durable cross-asset position state, authoritative fill/fee/cash reconciliation, shared exposure manager, per-trade and aggregate risk limits, daily-loss lock, drawdown guard, restart-safe kill switch and exit lifecycle.
+8. **Paper acceptance:** require sustained multi-week operation and predeclared acceptance thresholds for net performance, drawdown, turnover, data completeness and reconciliation. No single CI pass or small sample can satisfy this gate.
+9. **Separate LIVE review:** LIVE remains disabled. Any future live phase requires a separate explicit authorization after independent review of all prior gates, with capital, max loss, drawdown, kill switch and emergency-stop limits fixed in advance.
+
+**Conclusion:** Rocket Trader now has a materially stronger observe-only research and safety stack. It is not yet a profitable or autonomous trading system, and it is not ready to receive real money. The next highest-value action is to deploy the Paper stack and gather real, auditable operating evidence—not to loosen strategy gates or force trades.
