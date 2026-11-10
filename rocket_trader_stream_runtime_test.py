@@ -41,6 +41,24 @@ class StreamRuntimeTests(unittest.TestCase):
     def test_health_fails_when_never_started(self):
         with self.assertRaises(RuntimeError):
             self.recorder.health()
+    def test_health_separates_heartbeat_from_data_freshness(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        self.recorder.heartbeat("crypto", "HEALTHY",
+                                datetime(2026, 1, 1, 11, 40, tzinfo=timezone.utc).isoformat())
+        result = self.recorder.health(
+            max_age_seconds=120, now=now,
+            data_freshness_thresholds={"crypto": 600},
+        )
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["components"]["crypto"]["data_freshness"], "STALE")
+        self.assertEqual(result["components"]["crypto"]["event_age_seconds"], 1200)
+        self.assertTrue(result["data_freshness_is_diagnostic_only"])
+    def test_market_closed_equity_can_be_unmonitored(self):
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        self.recorder.heartbeat("equity", "HEALTHY", None)
+        result = self.recorder.health(max_age_seconds=120, now=now)
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["components"]["equity"]["data_freshness"], "NOT_MONITORED")
     def test_runtime_rejects_any_trading_mode(self):
         env = {"ROCKET_TRADER_RUNTIME_MODE":"LIVE", "ALPACA_API_KEY":"x",
                "ALPACA_SECRET_KEY":"y", "ROCKET_TRADER_RUNTIME_DB":self.db}
