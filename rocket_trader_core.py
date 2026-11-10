@@ -50,6 +50,11 @@ from rocket_trader_currency import (
     calculate_position_budget,
 )
 
+from rocket_trader_drawdown_guard import (
+    DrawdownGuardError,
+    PersistentDrawdownGuard,
+)
+
 
 # ============================================================================
 # UTILIDADES
@@ -1769,6 +1774,9 @@ class RocketTraderCore:
         ),
         capital_milestone_path: Optional[str] = None,
         require_persistent_milestone: bool = True,
+        drawdown_guard_path: Optional[str] = None,
+        require_persistent_drawdown_guard: bool = True,
+        max_drawdown_pct: float = 0.15,
     ) -> None:
 
         self.require_persistent_milestone = bool(require_persistent_milestone)
@@ -1818,6 +1826,23 @@ class RocketTraderCore:
             audit_path
         )
 
+        self.drawdown_guard = None
+        configured_drawdown_path = (
+            drawdown_guard_path
+            or os.getenv("ROCKET_TRADER_DRAWDOWN_GUARD_PATH")
+        )
+        if require_persistent_drawdown_guard and not configured_drawdown_path:
+            raise RuntimeError(
+                "SAFETY STOP: RocketTraderCore requiere "
+                "ROCKET_TRADER_DRAWDOWN_GUARD_PATH apuntando a almacenamiento "
+                "durable para persistir el high-water mark y el bloqueo por drawdown."
+            )
+        if configured_drawdown_path:
+            self.drawdown_guard = PersistentDrawdownGuard(
+                state_path=configured_drawdown_path,
+                max_drawdown_pct=max_drawdown_pct,
+            )
+
     def evaluate_and_maybe_execute(
         self,
         account: AccountState,
@@ -1828,13 +1853,79 @@ class RocketTraderCore:
         news_impact: str = "NONE",
     ) -> Decision:
 
-        decision = self.decision_engine.evaluate(
-            account=account,
-            snapshot=snapshot,
-            signal=signal,
-            market_regime=market_regime,
-            news_impact=news_impact,
-        )
+        if self.drawdown_guard is not None:
+            try:
+                drawdown = self.drawdown_guard.evaluate(account.equity)
+                if not drawdown.allowed:
+                    decision = Decision(
+                        decision_id=stable_id(
+                            "drawdown_lock",
+                            {
+                                "symbol": snapshot.symbol,
+                                "timestamp": snapshot.timestamp,
+                                "equity": account.equity,
+                            },
+                        ),
+                        timestamp=utc_now(),
+                        status=DecisionStatus.KILL_SWITCH,
+                        evidence_class=EvidenceClass.INSUFFICIENT,
+                        symbol=snapshot.symbol,
+                        side=Side.HOLD,
+                        quantity=0.0,
+                        entry_price=snapshot.price,
+                        stop_price=None,
+                        take_profit_price=None,
+                        combined_score=0.0,
+                        signal_score=signal.score,
+                        benchmark_score=0.0,
+                        benchmark_confidence=0.0,
+                        adaptive_multiplier=0.0,
+                        adaptive_reason="Persistent max-drawdown lock.",
+                        reason=(
+                            f"persistent_drawdown_lock:{drawdown.reason}; "
+                            f"drawdown_pct={drawdown.drawdown_pct:.6f}; "
+                            f"limit_pct={drawdown.max_drawdown_pct:.6f}"
+                        ),
+                    )
+                else:
+                    decision = self.decision_engine.evaluate(
+                        account=account,
+                        snapshot=snapshot,
+                        signal=signal,
+                        market_regime=market_regime,
+                        news_impact=news_impact,
+                    )
+            except DrawdownGuardError as exc:
+                decision = Decision(
+                    decision_id=stable_id(
+                        "drawdown_state_error",
+                        {"symbol": snapshot.symbol, "timestamp": snapshot.timestamp},
+                    ),
+                    timestamp=utc_now(),
+                    status=DecisionStatus.SAFE_MODE,
+                    evidence_class=EvidenceClass.INSUFFICIENT,
+                    symbol=snapshot.symbol,
+                    side=Side.HOLD,
+                    quantity=0.0,
+                    entry_price=snapshot.price,
+                    stop_price=None,
+                    take_profit_price=None,
+                    combined_score=0.0,
+                    signal_score=signal.score,
+                    benchmark_score=0.0,
+                    benchmark_confidence=0.0,
+                    adaptive_multiplier=0.0,
+                    adaptive_reason="Persistent drawdown state unavailable or invalid.",
+                    reason=f"persistent_drawdown_state_error:{exc}",
+                )
+        else:
+            decision = self.decision_engine.evaluate(
+                account=account,
+                snapshot=snapshot,
+                signal=signal,
+                market_regime=market_regime,
+                news_impact=news_impact,
+            )
 
         self.audit.write(
             "decision",
@@ -1986,6 +2077,7 @@ def build_demo_core() -> RocketTraderCore:
             "data/rocket_trader_audit.jsonl"
         ),
         require_persistent_milestone=False,
+        require_persistent_drawdown_guard=False,
     )
 
 
@@ -2010,6 +2102,20 @@ def self_test() -> Dict[str, Any]:
             "ROCKET_TRADER_CAPITAL_MILESTONE_PATH" in str(exc)
         )
     assert production_milestone_guarded is True
+
+    production_drawdown_guarded = False
+    try:
+        RocketTraderCore(
+            risk_config=core.risk_engine.config,
+            benchmark_config=core.benchmark_engine.config,
+            require_persistent_milestone=False,
+            require_persistent_drawdown_guard=True,
+        )
+    except RuntimeError as exc:
+        production_drawdown_guarded = (
+            "ROCKET_TRADER_DRAWDOWN_GUARD_PATH" in str(exc)
+        )
+    assert production_drawdown_guarded is True
 
     account = AccountState(
         equity=1000.0,
@@ -2282,6 +2388,35 @@ def self_test() -> Dict[str, Any]:
         floor_decision.status
         == DecisionStatus.KILL_SWITCH
     )
+
+    # ------------------------------------------------
+    # PERSISTENT MAX DRAWDOWN GUARD
+    # ------------------------------------------------
+    with tempfile.TemporaryDirectory() as drawdown_temp:
+        core.drawdown_guard = PersistentDrawdownGuard(
+            str(Path(drawdown_temp) / "drawdown.json"),
+            max_drawdown_pct=0.10,
+        )
+        core.drawdown_guard.evaluate(account.equity)
+        drawdown_account = dataclasses.replace(
+            account,
+            equity=account.equity * 0.89,
+            cash=account.cash * 0.89,
+            day_start_equity=account.equity * 0.89,
+        )
+        drawdown_decision = core.evaluate_and_maybe_execute(
+            account=drawdown_account,
+            snapshot=snapshot,
+            signal=signal,
+            execute=True,
+        )
+        assert drawdown_decision.status == DecisionStatus.KILL_SWITCH
+        assert drawdown_decision.quantity == 0.0
+        restarted_guard = PersistentDrawdownGuard(
+            str(Path(drawdown_temp) / "drawdown.json"),
+            max_drawdown_pct=0.10,
+        )
+        assert restarted_guard.evaluate(account.equity * 1.20).locked is True
 
     # ------------------------------------------------
     # ADAPTIVE BLOCK
