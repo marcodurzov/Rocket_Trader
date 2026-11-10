@@ -47,7 +47,7 @@ class NewsEventAssessmentTests(unittest.TestCase):
             "severity": "CRITICAL",
             "relevance": 0.9,
             "credibility": 0.9,
-            "novelty": 0.8,
+            "novelty": 0.9,
             "point_in_time_eligible": True,
             "evaluator_version": "human-reviewed-v1",
             "rationale": "Two independent sources confirm the event.",
@@ -90,6 +90,7 @@ class NewsEventAssessmentTests(unittest.TestCase):
         self.store.import_event(self.event_payload())
         assessment_id = self.store.import_assessment(self.assessment_payload(
             severity="HIGH",
+            assessed_at=(self.now - timedelta(minutes=4)).isoformat(),
             expires_at=(self.now - timedelta(minutes=1)).isoformat(),
         ))
         self.store.review(assessment_id, "reviewer", "approve", self.now)
