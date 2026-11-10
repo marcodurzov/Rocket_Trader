@@ -258,6 +258,21 @@ class RealizedPnLLedger:
         amount = _money(_d(amount_mxn, "amount_mxn"))
         if amount <= 0:
             raise LedgerError("Withdrawal must be positive")
+        payload = {"amount_mxn": str(amount), "currency": "MXN"}
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        # Check the immutable event identity before capital guards. A retry
+        # after a crash between ledger append and upstream acknowledgement must
+        # be idempotent even if the original withdrawal reduced available cash.
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT event_type,payload_hash FROM ledger_events WHERE event_id=?",
+                (event_id,),
+            ).fetchone()
+        if existing:
+            if existing["event_type"] != "WITHDRAWAL_MXN" or existing["payload_hash"] != digest:
+                raise LedgerError("event_id already exists with a different event payload")
+            return False
         with self._lock:
             snap = self.snapshot()
             if amount > snap.operating_capital_mxn:
@@ -270,9 +285,7 @@ class RealizedPnLLedger:
                     raise LedgerError(
                         "Withdrawal would breach the protected MXN 100,000 operating-capital floor"
                     )
-            return self._append(event_id, "WITHDRAWAL_MXN", occurred_at, {
-                "amount_mxn": str(amount), "currency": "MXN"
-            })
+            return self._append(event_id, "WITHDRAWAL_MXN", occurred_at, payload)
 
     def record_fill(
         self,
