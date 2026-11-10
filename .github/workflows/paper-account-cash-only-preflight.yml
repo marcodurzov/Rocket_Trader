@@ -21,12 +21,12 @@ jobs:
       ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
       ALPACA_PAPER: "true"
       ALPACA_LIVE_ENABLED: "false"
-      ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG: "true"
+      ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install "alpaca-py>=0.43,<1.0"
-      - name: Read-only cash-only account preflight (no orders, no config changes)
+      - name: Verify Paper cash-only configuration (read-only; no orders)
         run: python alpaca_paper_cash_only_preflight.py
