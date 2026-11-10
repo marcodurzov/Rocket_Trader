@@ -31,7 +31,7 @@ def main() -> int:
         "shorting_enabled": bool(value(account, "shorting_enabled", True)),
         "max_margin_multiplier": str(value(config, "max_margin_multiplier", "UNKNOWN")),
         "no_shorting": bool(value(config, "no_shorting", False)),
-        "max_options_trading_level": int(value(config, "max_options_trading_level", -1)),
+        "max_options_trading_level": value(config, "max_options_trading_level", None),
         "trading_blocked": bool(value(account, "trading_blocked", True)),
         "orders_submitted": 0,
         "account_configuration_modified": 0,
@@ -45,7 +45,7 @@ def main() -> int:
         and report["shorting_enabled"] is False
         and report["max_margin_multiplier"] == "1"
         and report["no_shorting"] is True
-        and report["max_options_trading_level"] == 0
+        and str(report["max_options_trading_level"]) == "0"
         and report["trading_blocked"] is False
     )
     print(f"cash_only_configuration_safe={str(safe).lower()}")
