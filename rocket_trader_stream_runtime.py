@@ -323,14 +323,29 @@ class AlpacaPaperObserverRuntime:
                     "Activity stager must remain read-only with ledger posting disabled."
                 )
             blocked = report.get("blocked_activity_types", [])
-            if blocked:
+            pending_capital = {
+                key: count for key, count in report.get("counts", {}).items()
+                if key.endswith(":STAGED_PENDING_CAPITAL_RECONCILIATION")
+                and int(count) > 0
+            }
+            if blocked or pending_capital:
+                reasons = []
+                if blocked:
+                    reasons.append(
+                        "unsupported/invalid activity types: "
+                        + ", ".join(sorted({str(x) for x in blocked}))
+                    )
+                if pending_capital:
+                    reasons.append(
+                        "unresolved cash/journal movements: "
+                        + ", ".join(
+                            f"{key}={count}" for key, count in sorted(pending_capital.items())
+                        )
+                    )
                 self.recorder.heartbeat(
                     "account_activity", "ERROR",
                     last_event_at=_utc_now(),
-                    last_error=(
-                        "Unsupported or invalid account activity types require review: "
-                        + ", ".join(sorted({str(x) for x in blocked}))
-                    ),
+                    last_error="Capital activity requires reconciliation; " + "; ".join(reasons),
                 )
                 return report
             self.recorder.heartbeat(

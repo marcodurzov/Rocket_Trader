@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 
 
 PAPER_BASE_URL = "https://paper-api.alpaca.markets"
-SUPPORTED_STAGED_TYPES = {"FILL", "CFEE", "FEE", "CSD", "CSW"}
+SUPPORTED_STAGED_TYPES = {"FILL", "CFEE", "FEE", "CSD", "CSW", "JNLC"}
 
 
 class ActivityIngestionError(RuntimeError):
@@ -164,11 +164,11 @@ class AlpacaPaperActivityStager:
         if activity_type == "FEE":
             if activity.get("net_amount") is None:
                 return "BLOCKED_INCOMPLETE_FEE"
-        if activity_type in {"CSD", "CSW"}:
-            # Cash credits/debits are staged for capital reconciliation only.
-            # Alpaca documents CSD as including returned withdrawals and CSW
-            # as including returned deposits, so neither event is safe to
-            # book as a new external contribution/withdrawal from type alone.
+        if activity_type in {"CSD", "CSW", "JNLC"}:
+            # Cash credits/debits and cash journals are staged for capital
+            # reconciliation only. CSD/CSW can be returned transfers; JNLC is
+            # an inter-account cash journal and may also be the Paper seed.
+            # None is safe to book as user contribution/profit from type alone.
             if activity.get("net_amount") is None:
                 return "BLOCKED_INCOMPLETE_CASH_ACTIVITY"
             if not activity.get("currency"):
@@ -318,7 +318,7 @@ class AlpacaPaperActivityStager:
             "reason": (
                 "Awaiting verified fee matching, corporate-action handling, "
                 "correction/bust handling and broker reconciliation. CSD/CSW "
-                "cash movements are staged separately and must be reconciled "
-                "before any external deposit or withdrawal is posted to capital."
+                "cash movements and JNLC cash journals remain pending capital "
+                "reconciliation; none is posted as user funding or trading profit."
             ),
         }

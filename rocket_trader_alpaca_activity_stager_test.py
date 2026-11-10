@@ -100,6 +100,18 @@ class ActivityStagerTests(unittest.TestCase):
         report = self.make([[row]]).sync()
         self.assertEqual(report["blocked_activity_types"], ["FILL"])
 
+    def test_jnlc_cash_journal_is_staged_pending_capital_reconciliation(self):
+        activity = {
+            "id": "paper-seed-journal-1", "activity_type": "JNLC",
+            "status": "executed", "date": "2026-09-28",
+            "net_amount": "100000.00", "currency": "USD",
+        }
+        report = self.make([[activity]]).sync()
+        self.assertIn(
+            "JNLC:STAGED_PENDING_CAPITAL_RECONCILIATION", report["counts"]
+        )
+        self.assertFalse(report["ledger_posting_enabled"])
+
     def test_cash_deposit_credit_is_staged_for_capital_reconciliation_only(self):
         activity = {
             "id": "cash-deposit-1", "activity_type": "CSD",
