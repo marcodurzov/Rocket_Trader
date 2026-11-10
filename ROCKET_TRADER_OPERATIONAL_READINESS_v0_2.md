@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-11-10  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
-**Current main commit:** 724b832a4fba61e76a188e5136f408cf1a9c7b7a
+**Code baseline reviewed:** c47010e595f9f2ec8c1aaf1a3eee11f60068a79d
 
 ## Executive verdict
 
@@ -25,6 +25,8 @@ A successful unit test, image build, or image publication is not evidence of tra
 | #56 | Merged | Validate Compose configuration and build/inspect Docker image in CI |
 | #57 | Merged | Add GHCR image publication workflow |
 | #58 | Merged | Fix GHCR image path and GitHub Actions expression handling |
+| #59 | Merged | Add centered moving-block p-values and Holm-Bonferroni correction to ETF research |
+| #60 | Merged | Add the same family-wise correction to crypto research |
 
 ## Verified test and build evidence
 
@@ -63,6 +65,38 @@ For each fill, the runtime persists the event, resolves a timestamped USD/MXN qu
 3. Unlinked daily regulatory fees (including some equity sell fees) are not yet allocated to individual fills. Those sells remain pending/manual review rather than being assigned guessed costs.
 4. Activity corrections and busts are quarantined for manual review; an automatic immutable-ledger correction workflow is not yet implemented.
 5. The Paper account's actual fee tier and all fee subtypes still require end-to-end verification against real Paper activity records.
+
+## Statistical research results after multiple-testing correction
+
+### US ETFs — ten-year history
+
+Workflow: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42757291059
+
+- Universe: DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT.
+- All 8 symbols passed the configured data-quality gate.
+- Family size: 49 strategy-vs-benchmark hypotheses.
+- Bootstrap: 5,000 centered moving-block resamples per hypothesis.
+- Holm-Bonferroni significant hypotheses: 0.
+- Pre-screen passes: 0.
+- Candidate promotion and Paper approval: false; orders submitted: 0.
+
+The cross-sectional top-1 momentum holdout had positive raw excess versus equal-weight buy-and-hold, but its 5th-percentile excess was negative and its raw p-value was 0.4213; Holm-adjusted p-value was 1.00. It is not a candidate.
+
+### Crypto — five-year history
+
+Workflow: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42757623220
+
+- BTC/USD: 1,825 daily bars, 100% calendar coverage, maximum gap 1 day.
+- ETH/USD: 1,825 daily bars, 100% calendar coverage, maximum gap 1 day.
+- SOL/USD: 1,407 bars, 77.10% calendar coverage, 418 missing days, maximum gap 417 days; excluded from the eligible research universe.
+- Family size: 13 hypotheses across BTC, ETH and cross-sectional top-1 vs equal-weight.
+- Holm-Bonferroni significant hypotheses: 0.
+- Pre-screen passes: 0.
+- Overall data-quality pass: false because SOL failed; candidate promotion and Paper approval remain false; orders submitted: 0.
+
+BTC 180-day momentum had raw excess over buy-and-hold in the holdout, but only 4 entries, negative 5th-percentile total return, raw p-value 0.1464 and adjusted p-value 1.00. It is not a candidate. Cross-sectional crypto momentum lost 30.1% in the holdout despite positive relative excess versus equal-weight; its adjusted p-value was 1.00.
+
+**Interpretation:** no strategy has demonstrated statistically reliable positive net excess under the current tests. Do not enable orders or lower acceptance thresholds to force a candidate.
 
 ## Deployment status
 
