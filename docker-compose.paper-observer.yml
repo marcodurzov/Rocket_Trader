@@ -47,6 +47,27 @@ services:
       retries: 3
       start_period: 90s
 
+  rocket-trader-alpaca-news:
+    build:
+      context: .
+      dockerfile: Dockerfile.paper-observer
+    container_name: rocket-trader-alpaca-news
+    restart: unless-stopped
+    environment:
+      ALPACA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
+      ROCKET_TRADER_ALPACA_NEWS_DB: /app/data/rocket_trader_alpaca_news.sqlite3
+      ROCKET_TRADER_ALPACA_NEWS_SYMBOLS: ${ROCKET_TRADER_ALPACA_NEWS_SYMBOLS:-SPY,QQQ,IWM,BTCUSD,ETHUSD,SOLUSD}
+    command: ["python", "/app/rocket_trader_alpaca_news_observer.py", "--poll-forever"]
+    volumes:
+      - rocket_trader_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "/app/rocket_trader_alpaca_news_observer.py", "--healthcheck"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
   rocket-trader-official-news:
     build:
       context: .
