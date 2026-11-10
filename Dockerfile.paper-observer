@@ -6,6 +6,7 @@ COPY rocket_trader_stream_runtime.py /app/rocket_trader_stream_runtime.py
 COPY rocket_trader_news.py /app/rocket_trader_news.py
 COPY rocket_trader_official_news.py /app/rocket_trader_official_news.py
 COPY rocket_trader_alpaca_news_observer.py /app/rocket_trader_alpaca_news_observer.py
+COPY rocket_trader_gdelt_news_observer.py /app/rocket_trader_gdelt_news_observer.py
 COPY rocket_trader_regime_selector.py /app/rocket_trader_regime_selector.py
 COPY rocket_trader_regime_observer.py /app/rocket_trader_regime_observer.py
 COPY rocket_trader_realized_pnl_ledger.py /app/rocket_trader_realized_pnl_ledger.py
