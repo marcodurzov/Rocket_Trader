@@ -13,6 +13,8 @@ on:
       - "rocket_trader_alpaca_yahoo_etf_crosscheck.py"
       - "rocket_trader_alpaca_yahoo_etf_crosscheck_test.py"
       - ".github/workflows/rocket-trader-alpaca-yahoo-etf-crosscheck.yml"
+  schedule:
+    - cron: "0 7 * * 0"
   workflow_dispatch:
     inputs:
       years:
@@ -50,19 +52,19 @@ jobs:
           python -m py_compile rocket_trader_alpaca_yahoo_etf_crosscheck.py rocket_trader_alpaca_yahoo_etf_crosscheck_test.py
           python -m unittest -v rocket_trader_alpaca_yahoo_etf_crosscheck_test.py
       - name: Compare 10-year adjusted daily ETF history
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_PAPER: "true"
         run: |
           python rocket_trader_alpaca_yahoo_etf_crosscheck.py \
-            --years "${{ inputs.years }}" \
-            --feed "${{ inputs.feed }}" \
+            --years "${{ inputs.years || '10' }}" \
+            --feed "${{ inputs.feed || 'IEX' }}" \
             --symbols DIA EEM EFA GLD IWM QQQ SPY TLT \
             --output artifacts/alpaca_yahoo_etf_crosscheck.json
       - name: Upload immutable comparison report
-        if: always() && github.event_name == 'workflow_dispatch'
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         uses: actions/upload-artifact@v4
         with:
           name: rocket-trader-alpaca-yahoo-etf-crosscheck
