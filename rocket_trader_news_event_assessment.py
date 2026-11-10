@@ -38,10 +38,17 @@ def unit(value: object, field: str) -> float:
 
 
 class NewsEventAssessmentStore:
-    def __init__(self, database_path: str) -> None:
+    def __init__(self, database_path: str,
+                 source_databases: Optional[Sequence[str]] = None) -> None:
         if not database_path:
             raise ValueError("A durable event assessment database path is required.")
         self.database_path = str(database_path)
+        data_dir = Path(self.database_path).resolve().parent
+        self.source_databases = tuple(source_databases or (
+            str(data_dir / "rocket_trader_official_news.sqlite3"),
+            str(data_dir / "rocket_trader_alpaca_news.sqlite3"),
+            str(data_dir / "rocket_trader_gdelt_news.sqlite3"),
+        ))
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.database_path) as db:
             db.execute("""CREATE TABLE IF NOT EXISTS news_events (
@@ -157,6 +164,50 @@ class NewsEventAssessmentStore:
                  evaluator, rationale))
         return assessment_id
 
+    def _verify_source_records(self, event_id: str) -> None:
+        with sqlite3.connect(self.database_path) as db:
+            db.row_factory = sqlite3.Row
+            sources = db.execute(
+                "SELECT * FROM news_event_sources WHERE event_id=?", (event_id,)
+            ).fetchall()
+        if not sources:
+            raise ValueError("Cannot approve an event without source evidence.")
+        for source in sources:
+            try:
+                article_id = int(source["article_id"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Source article_id must match a numeric provider ID.") from exc
+            expected_published = parse_aware(source["published_at"], "source.published_at")
+            expected_seen = parse_aware(source["first_seen_at"], "source.first_seen_at")
+            found = False
+            for path in self.source_databases:
+                if not Path(path).is_file():
+                    continue
+                try:
+                    with sqlite3.connect(f"file:{Path(path).resolve()}?mode=ro", uri=True) as db:
+                        db.row_factory = sqlite3.Row
+                        rows = db.execute("""SELECT source,article_id,provider_created_at,
+                            live_first_seen_at,url,point_in_time_eligible
+                            FROM news_articles WHERE source=? AND article_id=? AND url=?""",
+                            (source["source_name"].lower(), article_id, source["url"])).fetchall()
+                except sqlite3.OperationalError:
+                    continue
+                for row in rows:
+                    if not row["point_in_time_eligible"] or not row["live_first_seen_at"]:
+                        continue
+                    published = parse_aware(row["provider_created_at"], "stored.provider_created_at")
+                    seen = parse_aware(row["live_first_seen_at"], "stored.live_first_seen_at")
+                    if published == expected_published and seen == expected_seen:
+                        found = True
+                        break
+                if found:
+                    break
+            if not found:
+                raise ValueError(
+                    f"Source evidence not found or does not match the live ingestion ledger: "
+                    f"{source['source_name']}:{article_id}"
+                )
+
     def review(self, assessment_id: str, reviewer: str, decision: str,
                reviewed_at: Optional[datetime] = None) -> None:
         reviewer = str(reviewer or "").strip()
@@ -181,6 +232,7 @@ class NewsEventAssessmentStore:
                 if not sources:
                     raise ValueError("Cannot approve an event without source evidence.")
                 if row["point_in_time_eligible"]:
+                    self._verify_source_records(row["event_id"])
                     assessed_at = parse_aware(row["assessed_at"], "assessed_at")
                     first_observed = parse_aware(row["first_observed_at"], "first_observed_at")
                     if first_observed > assessed_at:
