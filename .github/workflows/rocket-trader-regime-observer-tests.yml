@@ -17,7 +17,10 @@ on:
     paths:
       - "rocket_trader_regime_selector.py"
       - "rocket_trader_regime_observer.py"
+      - "rocket_trader_news_event_assessment.py"
       - "tests/test_rocket_trader_regime_observer.py"
+      - "tests/test_rocket_trader_regime_selector.py"
+      - "tests/test_rocket_trader_news_event_assessment.py"
       - ".github/workflows/rocket-trader-regime-observer-tests.yml"
 
 permissions:
