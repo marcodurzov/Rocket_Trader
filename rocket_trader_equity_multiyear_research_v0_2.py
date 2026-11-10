@@ -36,6 +36,8 @@ HALF_SPREAD_BPS_SIDE = 2.5
 SLIPPAGE_BPS_SIDE = 2.5
 BASE_COST_SIDE = (FEE_BPS_SIDE + HALF_SPREAD_BPS_SIDE + SLIPPAGE_BPS_SIDE) / 10000.0
 BOOTSTRAP_REPS = 500
+BOOTSTRAP_PVALUE_REPS = 5000
+FAMILYWISE_ALPHA = 0.05
 BOOTSTRAP_BLOCK = 5
 
 
@@ -350,6 +352,62 @@ def bootstrap_q05_relative(
     return float(np.quantile(samples, 0.05))
 
 
+def bootstrap_relative_pvalue(
+    strategy_returns: np.ndarray,
+    benchmark_returns: np.ndarray,
+    *,
+    seed: int = 20261110,
+    reps: int = BOOTSTRAP_PVALUE_REPS,
+    block_size: int = BOOTSTRAP_BLOCK,
+) -> float:
+    """One-sided moving-block bootstrap p-value for positive log excess return.
+
+    The observed log-relative series is centered to construct the null of zero
+    mean excess. Blocks preserve short-range serial dependence. This is a
+    screening p-value, not a substitute for independent replication.
+    """
+    strategy = np.asarray(strategy_returns, dtype=float)
+    benchmark = np.asarray(benchmark_returns, dtype=float)
+    if (
+        strategy.ndim != 1 or benchmark.ndim != 1
+        or len(strategy) != len(benchmark) or len(strategy) < 100
+        or reps < 1000 or block_size < 1 or block_size > len(strategy)
+        or not np.isfinite(strategy).all() or not np.isfinite(benchmark).all()
+        or (strategy <= -1).any() or (benchmark <= -1).any()
+    ):
+        return float("nan")
+    log_relative = np.log1p(strategy) - np.log1p(benchmark)
+    observed = float(log_relative.mean())
+    centered = log_relative - observed
+    rng = np.random.default_rng(seed)
+    n = len(centered)
+    blocks = int(math.ceil(n / block_size))
+    starts = rng.integers(0, n - block_size + 1, size=(reps, blocks))
+    offsets = np.arange(block_size, dtype=int)
+    indices = (starts[:, :, None] + offsets[None, None, :]).reshape(reps, -1)[:, :n]
+    null_means = centered[indices].mean(axis=1)
+    return float((1 + np.count_nonzero(null_means >= observed)) / (reps + 1))
+
+
+def holm_adjust(pvalues: Dict[str, float]) -> Dict[str, float]:
+    """Holm-Bonferroni family-wise adjusted p-values, preserving input keys."""
+    valid = []
+    for key, value in pvalues.items():
+        p = float(value)
+        if math.isfinite(p):
+            if not 0.0 <= p <= 1.0:
+                raise EquityResearchError(f"Invalid p-value for {key}: {p}")
+            valid.append((p, str(key)))
+    ordered = sorted(valid)
+    total = len(ordered)
+    adjusted: Dict[str, float] = {}
+    running = 0.0
+    for rank, (p, key) in enumerate(ordered):
+        running = max(running, min(1.0, (total - rank) * p))
+        adjusted[key] = running
+    return adjusted
+
+
 def evaluate_weights(
     close: pd.Series,
     weights: pd.Series,
@@ -389,7 +447,14 @@ def evaluate_weights(
     return metrics, net
 
 
-def evaluate_single_asset(symbol: str, frame: pd.DataFrame, cost_multiplier: float = 1.0, quality: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def evaluate_single_asset(
+    symbol: str,
+    frame: pd.DataFrame,
+    cost_multiplier: float = 1.0,
+    quality: Optional[Dict[str, Any]] = None,
+    *,
+    compute_pvalues: bool = True,
+) -> Dict[str, Any]:
     frame = frame.reset_index(drop=True)
     quality = quality or data_quality_metrics(frame)
     n = len(frame)
@@ -427,6 +492,15 @@ def evaluate_single_asset(symbol: str, frame: pd.DataFrame, cost_multiplier: flo
                 benchmark_returns.to_numpy(dtype=float),
             )
         )
+        if compute_pvalues and name != "buy_and_hold":
+            seed = 20261110 + sum(ord(ch) for ch in f"{symbol}:{name}")
+            results[name]["final_holdout_20pct"]["bootstrap_p_value_excess_vs_buy_hold"] = (
+                bootstrap_relative_pvalue(
+                    strategy_holdout_returns.to_numpy(dtype=float),
+                    benchmark_returns.to_numpy(dtype=float),
+                    seed=seed,
+                )
+            )
     return {
         "symbol": symbol,
         "bars": n,
@@ -453,7 +527,12 @@ def cross_sectional_top1(frames: Dict[str, pd.DataFrame]) -> tuple[pd.DataFrame,
     return close, weights
 
 
-def evaluate_cross_sectional(frames: Dict[str, pd.DataFrame], cost_multiplier: float = 1.0) -> Dict[str, Any]:
+def evaluate_cross_sectional(
+    frames: Dict[str, pd.DataFrame],
+    cost_multiplier: float = 1.0,
+    *,
+    compute_pvalue: bool = True,
+) -> Dict[str, Any]:
     close, weights = cross_sectional_top1(frames)
     returns = close.pct_change().fillna(0.0)
     turnover = (weights - weights.shift(1).fillna(0.0)).abs().sum(axis=1)
@@ -501,6 +580,17 @@ def evaluate_cross_sectional(frames: Dict[str, pd.DataFrame], cost_multiplier: f
             equal_returns.iloc[holdout_lo:].to_numpy(dtype=float),
         )
     )
+    top["final_holdout_20pct"]["entries"] = int(
+        ((weights > 0) & (weights.shift(1).fillna(0.0) <= 0)).iloc[holdout_lo:].sum().sum()
+    )
+    if compute_pvalue:
+        top["final_holdout_20pct"]["bootstrap_p_value_excess_vs_equal_weight"] = (
+            bootstrap_relative_pvalue(
+                top_returns.iloc[holdout_lo:].to_numpy(dtype=float),
+                equal_returns.iloc[holdout_lo:].to_numpy(dtype=float),
+                seed=20261110,
+            )
+        )
     return {
         "strategy": "cross_sectional_momentum_top1_126d",
         "symbols": list(close.columns),
@@ -542,11 +632,72 @@ def research(
         }
     quality = {s: data_quality_metrics(f) for s, f in frames.items()}
     eligible = {s: f for s, f in frames.items() if quality[s]["eligible_for_strategy_evidence"]}
-    base = {s: evaluate_single_asset(s, f, quality=quality[s]) for s, f in frames.items()}
-    stress = {s: evaluate_single_asset(s, f, 2.0, quality[s]) for s, f in frames.items()}
+    base = {
+        s: evaluate_single_asset(s, f, quality=quality[s], compute_pvalues=(s in eligible))
+        for s, f in frames.items()
+    }
+    stress = {
+        s: evaluate_single_asset(s, f, 2.0, quality[s], compute_pvalues=False)
+        for s, f in frames.items()
+    }
     cross = evaluate_cross_sectional(eligible) if len(eligible) >= 2 else None
-    cross_stress = evaluate_cross_sectional(eligible, 2.0) if len(eligible) >= 2 else None
+    cross_stress = evaluate_cross_sectional(eligible, 2.0, compute_pvalue=False) if len(eligible) >= 2 else None
     issues = sorted(set(frames) - set(eligible))
+    family_pvalues: Dict[str, float] = {}
+    for symbol in sorted(eligible):
+        for strategy_name, strategy_result in base[symbol]["strategies"].items():
+            if strategy_name == "buy_and_hold":
+                continue
+            metrics = strategy_result["final_holdout_20pct"]
+            pvalue = metrics.get("bootstrap_p_value_excess_vs_buy_hold")
+            if pvalue is not None and math.isfinite(float(pvalue)):
+                family_pvalues[f"{symbol}:{strategy_name}"] = float(pvalue)
+    if cross is not None:
+        cross_metrics = cross["top1_momentum"]["final_holdout_20pct"]
+        cross_p = cross_metrics.get("bootstrap_p_value_excess_vs_equal_weight")
+        if cross_p is not None and math.isfinite(float(cross_p)):
+            family_pvalues["CROSS_SECTIONAL:top1_126d"] = float(cross_p)
+    adjusted = holm_adjust(family_pvalues)
+    for hypothesis, adjusted_p in adjusted.items():
+        if hypothesis.startswith("CROSS_SECTIONAL:") and cross is not None:
+            metrics = cross["top1_momentum"]["final_holdout_20pct"]
+            metrics["holm_adjusted_p_value"] = adjusted_p
+            metrics["familywise_significant"] = adjusted_p <= FAMILYWISE_ALPHA
+            metrics["pre_screen_pass"] = bool(
+                metrics.get("entries", 0) >= 30
+                and metrics.get("bootstrap_q05_excess_vs_equal_weight", float("-inf")) > 0
+                and adjusted_p <= FAMILYWISE_ALPHA
+            )
+        else:
+            symbol, strategy_name = hypothesis.split(":", 1)
+            metrics = base[symbol]["strategies"][strategy_name]["final_holdout_20pct"]
+            metrics["holm_adjusted_p_value"] = adjusted_p
+            metrics["familywise_significant"] = adjusted_p <= FAMILYWISE_ALPHA
+            metrics["pre_screen_pass"] = bool(
+                metrics.get("entries", 0) >= 30
+                and metrics.get("bootstrap_q05_excess_vs_buy_hold", float("-inf")) > 0
+                and adjusted_p <= FAMILYWISE_ALPHA
+            )
+    multiple_testing = {
+        "method": "HOLM_BONFERRONI",
+        "family": "All eligible single-asset strategy vs same-asset buy-and-hold hypotheses plus cross-sectional top-1 vs equal-weight benchmark; base costs; final chronological holdout only.",
+        "family_size": len(family_pvalues),
+        "alpha": FAMILYWISE_ALPHA,
+        "bootstrap_replicates_per_hypothesis": BOOTSTRAP_PVALUE_REPS,
+        "raw_pvalues": family_pvalues,
+        "holm_adjusted_pvalues": adjusted,
+        "familywise_significant_count": sum(p <= FAMILYWISE_ALPHA for p in adjusted.values()),
+        "pre_screen_pass_count": sum(
+            bool(base[s]["strategies"][name]["final_holdout_20pct"].get("pre_screen_pass", False))
+            for s in eligible
+            for name in base[s]["strategies"]
+            if name != "buy_and_hold"
+        ) + (
+            int(bool(cross["top1_momentum"]["final_holdout_20pct"].get("pre_screen_pass", False)))
+            if cross is not None else 0
+        ),
+        "promotion_allowed": False,
+    }
     return {
         "ok": True,
         "version": VERSION,
@@ -575,6 +726,7 @@ def research(
         "single_asset_2x_cost": stress,
         "cross_sectional_base_cost": cross,
         "cross_sectional_2x_cost": cross_stress,
+        "multiple_testing": multiple_testing,
         "methodology": {
             "price_adjustment": (
                 "Yahoo Finance yfinance history auto_adjust=True with actions=True; research-only provider."
@@ -591,8 +743,9 @@ def research(
             ],
             "constraints": "Long-only ETFs, no leverage, no shorts, no options/futures.",
             "data_quality": "Approximate weekday coverage (US holidays included in expected weekday count) >=95%, maximum calendar gap <=7 days.",
-            "bootstrap": f"{BOOTSTRAP_REPS} moving-block resamples of {BOOTSTRAP_BLOCK} sessions; reports q05 of net return and relative excess versus benchmark.",
-            "promotion": "No strategy is promoted; family-wise multiple-testing correction, SIP parity, independent replication and sustained Paper validation remain required.",
+            "bootstrap": f"{BOOTSTRAP_REPS} moving-block resamples for return quantiles; {BOOTSTRAP_PVALUE_REPS} centered moving-block resamples per hypothesis for one-sided log-relative p-values.",
+            "multiple_testing": "Holm-Bonferroni family-wise error control at alpha 0.05 across all eligible base-cost final-holdout strategy-vs-benchmark hypotheses. Pre-screen also requires at least 30 holdout entries and positive 5th-percentile excess.",
+            "promotion": "No strategy is promoted; SIP parity, independent replication, multiple walk-forward folds and sustained Paper validation remain required.",
         },
         "candidate_promotion_allowed": False,
         "paper_approval": False,
