@@ -86,6 +86,18 @@ class RegimeObserverTests(unittest.TestCase):
         events = NewsEventAssessmentStore(event_db)
         published = (self.now - timedelta(minutes=6)).isoformat()
         seen = (self.now - timedelta(minutes=5)).isoformat()
+        source_db = os.path.join(self.tmp.name, "rocket_trader_alpaca_news.sqlite3")
+        with sqlite3.connect(source_db) as db:
+            db.execute("""CREATE TABLE news_articles (
+                source TEXT, article_id INTEGER, provider_created_at TEXT,
+                live_first_seen_at TEXT, url TEXT, point_in_time_eligible INTEGER
+            )""")
+            db.executemany("""INSERT INTO news_articles
+                (source,article_id,provider_created_at,live_first_seen_at,url,point_in_time_eligible)
+                VALUES(?,?,?,?,?,1)""", [
+                    ("wire-a", 101, published, seen, "https://wire-a.example/story"),
+                    ("wire-b", 102, published, seen, "https://wire-b.example/story"),
+                ])
         events.import_event({
             "event_id": "event-spy-systemic",
             "title": "Verified systemic market event",
@@ -93,12 +105,12 @@ class RegimeObserverTests(unittest.TestCase):
             "summary": "Two independent sources confirm a systemic event.",
             "affected_symbols": ["SPY", "QQQ", "IWM"],
             "sources": [
-                {"source": "wire-a", "article_id": "a1",
+                {"source": "wire-a", "article_id": "101",
                  "url": "https://wire-a.example/story",
                  "published_at": published, "first_seen_at": seen,
                  "source_domain": "wire-a.example",
                  "independent_source_group": "wire-a"},
-                {"source": "wire-b", "article_id": "b1",
+                {"source": "wire-b", "article_id": "102",
                  "url": "https://wire-b.example/story",
                  "published_at": published, "first_seen_at": seen,
                  "source_domain": "wire-b.example",
