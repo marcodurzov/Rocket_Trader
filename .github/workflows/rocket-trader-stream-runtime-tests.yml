@@ -13,8 +13,11 @@ on:
       - "rocket_trader_alpaca_activity_stager.py"
       - "rocket_trader_alpaca_cash_activity_bridge.py"
       - "rocket_trader_alpaca_cash_activity_bridge_test.py"
+      - "rocket_trader_alpaca_yahoo_etf_crosscheck.py"
+      - "rocket_trader_alpaca_yahoo_etf_crosscheck_test.py"
       - "rocket_trader_alpaca_activity_stager_test.py"
       - ".github/workflows/rocket-trader-stream-runtime-tests.yml"
+      - "requirements-yahoo.txt"
   pull_request:
     branches: [main]
     paths:
@@ -40,6 +43,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install research comparison dependencies
+        run: pip install -r requirements-yahoo.txt
       - name: Compile observer and accounting modules
         run: python -m py_compile rocket_trader_stream_runtime.py rocket_trader_stream_runtime_test.py rocket_trader_realized_pnl_ledger.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_alpaca_fee_resolver.py rocket_trader_fx_provider.py rocket_trader_alpaca_activity_stager.py rocket_trader_alpaca_activity_stager_test.py rocket_trader_alpaca_cash_activity_bridge.py rocket_trader_alpaca_cash_activity_bridge_test.py
       - name: Run offline runtime and accounting tests
@@ -51,3 +56,4 @@ jobs:
           python -m unittest -v rocket_trader_fx_provider_test.py
           python -m unittest -v rocket_trader_alpaca_activity_stager_test.py
           python -m unittest -v rocket_trader_alpaca_cash_activity_bridge_test.py
+          python -m unittest -v rocket_trader_alpaca_yahoo_etf_crosscheck_test.py
