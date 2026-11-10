@@ -13,6 +13,7 @@ from rocket_trader_equity_multiyear_research_v0_2 import (
     bootstrap_relative_pvalue,
     holm_adjust,
     data_quality_metrics,
+    evaluate_single_asset,
     fetch_daily_bars,
     fetch_yahoo_daily_bars,
     normalize_frame,
@@ -107,6 +108,20 @@ class EquityResearchV02Tests(unittest.TestCase):
     def test_holm_rejects_invalid_pvalues(self):
         with self.assertRaisesRegex(Exception, "Invalid p-value"):
             holm_adjust({"bad": 1.2})
+
+    def test_single_asset_evaluation_emits_holdout_pvalues_for_candidates(self):
+        frame = synthetic_frame(periods=1600, seed=71)
+        result = evaluate_single_asset("SPY", frame)
+        candidates = result["strategies"]
+        self.assertIn("buy_and_hold", candidates)
+        for name, metrics in candidates.items():
+            if name == "buy_and_hold":
+                continue
+            self.assertIn(
+                "bootstrap_p_value_excess_vs_buy_hold",
+                metrics["final_holdout_20pct"],
+                msg=f"Missing p-value for {name}",
+            )
 
     def test_data_quality_rejects_missing_sessions(self):
         frame = synthetic_frame(periods=2000)
