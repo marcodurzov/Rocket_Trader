@@ -67,6 +67,8 @@ class CryptoResearchMultipleTestingTests(unittest.TestCase):
         }
         self.assertTrue(expected.issubset(positions))
         for name in expected:
+            self.assertTrue(positions[name].index.equals(frame.index))
+        for name in expected:
             self.assertTrue(((positions[name] >= 0.0) & (positions[name] <= 1.0)).all())
 
     def test_next_open_execution_excludes_unavailable_overnight_gap(self):
