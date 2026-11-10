@@ -146,10 +146,11 @@ class AlpacaCashActivityBridge:
             ).fetchone()
             if existing and existing["payload_hash"] != digest:
                 raise AlpacaCashActivityError("Cash activity ID collision with different payload")
-            if existing and existing["status"] == "RESOLVED_EXTERNAL_DEPOSIT":
+            if existing and str(existing["status"]).startswith("RESOLVED_"):
                 return {
                     "processed": True, "duplicate": True, "activity_id": activity_id,
-                    "reason": "already_confirmed_external_deposit",
+                    "reason": "already_resolved",
+                    "resolution_status": existing["status"],
                 }
             conn.execute("""
                 INSERT OR IGNORE INTO alpaca_cash_activity_review
