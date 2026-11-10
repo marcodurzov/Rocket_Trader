@@ -22,7 +22,7 @@ class AlpacaActivityFeeResolverTests(unittest.TestCase):
             "id": "20261109::exec-buy",
             "activity_type": "CFEE",
             "net_amount": "0",
-            "qty": "-0.0001",
+            "qty": "-0.00000025",
             "price": "10000",
             "symbol": "BTCUSD",
             "status": "executed",
@@ -34,8 +34,8 @@ class AlpacaActivityFeeResolverTests(unittest.TestCase):
             "symbol": "BTC/USD",
             "side": "BUY",
         })
-        self.assertEqual(Decimal(result["fee_usd"]), Decimal("1.0000"))
-        self.assertEqual(Decimal(result["fee_asset_qty"]), Decimal("-0.0001"))
+        self.assertEqual(Decimal(result["fee_usd"]), Decimal("0.00250000"))
+        self.assertEqual(Decimal(result["fee_asset_qty"]), Decimal("-0.00000025"))
         self.assertIn("exec-buy", result["fee_source"])
 
     def test_crypto_sell_usd_fee_uses_negative_net_amount(self):
