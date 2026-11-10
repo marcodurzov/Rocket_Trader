@@ -1,0 +1,50 @@
+name: Rocket Trader - Paper Observer Container
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dockerfile.paper-observer"
+      - "docker-compose.paper-observer.yml"
+      - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_stream_runtime_test.py"
+      - "rocket_trader_realized_pnl_ledger.py"
+      - "rocket_trader_paper_fill_ledger_bridge.py"
+      - "rocket_trader_alpaca_fee_resolver.py"
+      - "rocket_trader_fx_provider.py"
+      - ".github/workflows/rocket-trader-paper-observer-container.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile.paper-observer"
+      - "docker-compose.paper-observer.yml"
+      - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_realized_pnl_ledger.py"
+      - "rocket_trader_paper_fill_ledger_bridge.py"
+      - "rocket_trader_alpaca_fee_resolver.py"
+      - "rocket_trader_fx_provider.py"
+      - ".github/workflows/rocket-trader-paper-observer-container.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: |
+          printf '%s\n' 'ALPACA_API_KEY=test-paper-key' 'ALPACA_SECRET_KEY=test-paper-secret' > .env
+          docker compose -f docker-compose.paper-observer.yml config --quiet
+      - name: Build Paper observer image
+        run: docker build --pull -f Dockerfile.paper-observer -t rocket-trader-paper-observer:ci .
+      - name: Verify image includes runtime and accounting modules
+        run: |
+          docker run --rm --entrypoint python rocket-trader-paper-observer:ci -m py_compile \
+            /app/rocket_trader_stream_runtime.py \
+            /app/rocket_trader_realized_pnl_ledger.py \
+            /app/rocket_trader_paper_fill_ledger_bridge.py \
+            /app/rocket_trader_alpaca_fee_resolver.py \
+            /app/rocket_trader_fx_provider.py
