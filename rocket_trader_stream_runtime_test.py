@@ -183,7 +183,7 @@ class StreamRuntimeTests(unittest.TestCase):
                 self.calls = 0
             def sync(self):
                 self.calls += 1
-                return {"total_staged": 3, "inserted_this_sync": 3}
+                return {"total_staged": 3, "inserted_this_sync": 3, "ledger_posting_enabled": False, "blocked_activity_types": []}
         config = RuntimeConfig(
             api_key="key", secret_key="secret", db_path=self.db,
             equity_symbols=("SPY",), crypto_symbols=(),
