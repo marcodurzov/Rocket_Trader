@@ -248,6 +248,7 @@ def _calendar_seasonality_positions(index: Any) -> Dict[str, pd.Series]:
     First and last observed month/quarter are excluded because the dataset may
     begin or end mid-period; only fully observed calendar periods are tested.
     """
+    output_index = index.index if isinstance(index, pd.Series) else pd.Index(index)
     dates = pd.DatetimeIndex(pd.to_datetime(index, utc=True))
     month_keys = dates.to_period("M")
     unique_months = sorted(set(month_keys))
@@ -274,9 +275,9 @@ def _calendar_seasonality_positions(index: Any) -> Dict[str, pd.Series]:
     # Calendar membership is known before the session opens; unlike price
     # signals, no close-derived one-bar shift is required.
     return {
-        "turn_of_month_last1_first3": pd.Series(turn_of_month, index=dates),
-        "month_first3_sessions": pd.Series(month_first3, index=dates),
-        "quarter_end_last2_first2": pd.Series(quarter_turn, index=dates),
+        "turn_of_month_last1_first3": pd.Series(turn_of_month, index=output_index),
+        "month_first3_sessions": pd.Series(month_first3, index=output_index),
+        "quarter_end_last2_first2": pd.Series(quarter_turn, index=output_index),
     }
 
 
