@@ -1,0 +1,28 @@
+name: Rocket Trader Regime Selector Tests
+
+on:
+  pull_request:
+    paths:
+      - "rocket_trader_regime_selector.py"
+      - "tests/test_rocket_trader_regime_selector.py"
+      - ".github/workflows/rocket-trader-regime-selector-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "rocket_trader_regime_selector.py"
+      - "tests/test_rocket_trader_regime_selector.py"
+      - ".github/workflows/rocket-trader-regime-selector-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  regime-selector-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run offline regression tests
+        run: python -m unittest discover -s tests -p "test_rocket_trader_regime_selector.py" -v
