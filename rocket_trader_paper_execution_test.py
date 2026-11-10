@@ -172,7 +172,7 @@ class PaperExecutionTests(unittest.TestCase):
             non_marginable_buying_power="100",
         )
         with self.assertRaisesRegex(PaperExecutionError, "exceeds available cash"):
-            self.adapter.submit(self.order(quantity=2, entry_price=60))
+            self.adapter.submit(self.order(quantity=2))
         self.assertEqual(self.client.submit_count, 0)
 
 
