@@ -156,6 +156,27 @@ class StreamRuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, {"ROCKET_TRADER_LEDGER_ENABLED": "false"}, clear=False):
             self.assertIsNone(build_fill_ledger_bridge(config))
 
+    def test_enabled_ledger_bridge_builds_with_durable_paths(self):
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        ledger_path = os.path.join(self.tmp.name, "ledger.sqlite3")
+        inbox_path = os.path.join(self.tmp.name, "fill-inbox.sqlite3")
+        env = {
+            "ROCKET_TRADER_LEDGER_ENABLED": "true",
+            "ROCKET_TRADER_LEDGER_DB": ledger_path,
+            "ROCKET_TRADER_LEDGER_INBOX_DB": inbox_path,
+            "ROCKET_TRADER_INITIAL_CAPITAL_MXN": "1000.00",
+            "ROCKET_TRADER_MILESTONE_MXN": "100000.00",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            bridge = build_fill_ledger_bridge(config)
+        self.assertIsNotNone(bridge)
+        self.assertEqual(bridge.status()["pending_or_failed"], 0)
+        self.assertTrue(os.path.exists(ledger_path))
+        self.assertTrue(os.path.exists(inbox_path))
+
     def test_invalid_ledger_enable_flag_is_rejected(self):
         config = RuntimeConfig(
             api_key="key", secret_key="secret", db_path=self.db,
