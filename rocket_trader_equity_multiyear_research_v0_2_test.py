@@ -10,6 +10,8 @@ import pandas as pd
 
 from rocket_trader_equity_multiyear_research_v0_2 import (
     bootstrap_q05_relative,
+    bootstrap_relative_pvalue,
+    holm_adjust,
     data_quality_metrics,
     fetch_daily_bars,
     fetch_yahoo_daily_bars,
@@ -77,6 +79,34 @@ class EquityResearchV02Tests(unittest.TestCase):
         strategy = np.full(250, 0.001)
         benchmark = np.zeros(250)
         self.assertGreater(bootstrap_q05_relative(strategy, benchmark), 0)
+
+    def test_centered_block_bootstrap_pvalue_detects_constant_positive_excess(self):
+        strategy = np.full(250, 0.001)
+        benchmark = np.zeros(250)
+        pvalue = bootstrap_relative_pvalue(strategy, benchmark, seed=7, reps=2000)
+        self.assertLessEqual(pvalue, 0.001)
+
+    def test_centered_block_bootstrap_pvalue_does_not_reward_negative_excess(self):
+        strategy = np.full(250, -0.001)
+        benchmark = np.zeros(250)
+        pvalue = bootstrap_relative_pvalue(strategy, benchmark, seed=7, reps=2000)
+        self.assertEqual(pvalue, 1.0)
+
+    def test_holm_adjustment_controls_familywise_error_monotonically(self):
+        adjusted = holm_adjust({
+            "p01": 0.01,
+            "p04": 0.04,
+            "p03": 0.03,
+            "p002": 0.002,
+        })
+        self.assertAlmostEqual(adjusted["p002"], 0.008)
+        self.assertAlmostEqual(adjusted["p01"], 0.03)
+        self.assertAlmostEqual(adjusted["p03"], 0.06)
+        self.assertAlmostEqual(adjusted["p04"], 0.06)
+
+    def test_holm_rejects_invalid_pvalues(self):
+        with self.assertRaisesRegex(Exception, "Invalid p-value"):
+            holm_adjust({"bad": 1.2})
 
     def test_data_quality_rejects_missing_sessions(self):
         frame = synthetic_frame(periods=2000)
