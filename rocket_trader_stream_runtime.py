@@ -394,7 +394,7 @@ class AlpacaPaperObserverRuntime:
                         self.fill_ledger_bridge.retry_pending()
                         self.last_ledger_retry_monotonic = now_monotonic
                     self._update_ledger_health()
-        finally
+        finally:
             self.stop()
 
     def stop(self) -> None:
