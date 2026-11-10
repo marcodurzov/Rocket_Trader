@@ -47,12 +47,21 @@ def _timestamp(value: Any) -> datetime:
         result = value
     else:
         raw = str(value or "").strip()
-        if raw.endswith("Z"):
-            raw = raw[:-1] + "+00:00"
-        try:
-            result = datetime.fromisoformat(raw)
-        except ValueError as exc:
-            raise AlpacaCashActivityError("Cash activity timestamp is invalid") from exc
+        if len(raw) == 10:
+            try:
+                # Alpaca cash activity dates may be date-only. Normalize to UTC
+                # midnight as a date key; the FX resolver must use a daily rate
+                # for that date, not pretend this is an intraday execution time.
+                result = datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
+            except ValueError as exc:
+                raise AlpacaCashActivityError("Cash activity date is invalid") from exc
+        else:
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            try:
+                result = datetime.fromisoformat(raw)
+            except ValueError as exc:
+                raise AlpacaCashActivityError("Cash activity timestamp is invalid") from exc
     if result.tzinfo is None or result.utcoffset() is None:
         raise AlpacaCashActivityError("Cash activity timestamp must be timezone-aware")
     return result.astimezone(timezone.utc)
