@@ -499,7 +499,7 @@ def research(symbols: Sequence[str] = DEFAULT_SYMBOLS, years: int = DEFAULT_YEAR
     if failures:
         return {
             "ok": False, "version": VERSION,
-            "pipeline": "rocket_trader_crypto_multiyear_research",
+            "pipeline": "rocket_trader_crypto_multiyear_research_v0_2",
             "mode": "RESEARCH_ONLY", "symbols_processed": sorted(frames),
             "symbols_failed": failures, "candidate_promotion_allowed": False,
             "paper_approval": False, "orders_enabled": False, "orders_submitted": 0,
@@ -614,7 +614,7 @@ def research(symbols: Sequence[str] = DEFAULT_SYMBOLS, years: int = DEFAULT_YEAR
         "cross_sectional_2x_cost": cross_stress,
         "multiple_testing": multiple_testing,
         "methodology": {
-            "signal_timing": "Completed daily close signal shifted one bar before applying next daily return.",
+            "signal_timing": "Signals use completed daily close; execution at next daily open; returns are open-to-next-open, with final liquidation at the last available open.",
             "chronological_windows": "First 60% train, next 20% validation, final 20% holdout.",
             "strategy_hypotheses": [
                 "time_series_momentum_90d", "time_series_momentum_180d",
@@ -666,7 +666,7 @@ def self_test() -> Dict[str, Any]:
         frames["BTC/USD"]["close"],
         strategy_positions(frames["BTC/USD"])["buy_and_hold"],
     )
-    assert metric.bars == n
+    assert metric.bars == n - 1
     assert metric.bootstrap_q05_total_return == metric.bootstrap_q05_total_return
     return {
         "ok": True, "version": VERSION,
