@@ -21,6 +21,7 @@ def main() -> int:
     client = TradingClient(key, secret, paper=True)
     account = client.get_account()
     config = client.get_account_configurations()
+    positions = client.get_all_positions()
     apply_config = os.getenv("ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG", "false").strip().lower()
     if apply_config not in {"true", "false"}:
         raise RuntimeError("ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG must be true or false.")
@@ -60,6 +61,11 @@ def main() -> int:
         "no_shorting": bool(value(config, "no_shorting", False)),
         "max_options_trading_level": value(config, "max_options_trading_level", None),
         "trading_blocked": bool(value(account, "trading_blocked", True)),
+        "positions_count": len(positions),
+        "crypto_positions": [
+            {"symbol": str(value(p, "symbol", "")), "qty": str(value(p, "qty", "0"))}
+            for p in positions if "/" in str(value(p, "symbol", ""))
+        ],
         "orders_submitted": 0,
         "account_configuration_modified": 1 if apply_config == "true" else 0,
     }
