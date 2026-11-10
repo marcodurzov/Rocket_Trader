@@ -23,6 +23,11 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.ledger = RealizedPnLLedger(os.path.join(self.tmp.name, "ledger.sqlite3"))
         self.fee_ready = True
+        self.fx_calls = 0
+
+        def fx_resolver(_when):
+            self.fx_calls += 1
+            return LedgerFX(Decimal("18"), NOW, "TEST_FIXTURE")
 
         def fee_resolver(_payload):
             if not self.fee_ready:
@@ -32,9 +37,7 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
         self.bridge = PaperFillLedgerBridge(
             db_path=os.path.join(self.tmp.name, "inbox.sqlite3"),
             ledger=self.ledger,
-            fx_resolver=lambda _when: LedgerFX(
-                Decimal("18"), NOW, "TEST_FIXTURE"
-            ),
+            fx_resolver=fx_resolver,
             fee_resolver=fee_resolver,
         )
 
@@ -80,6 +83,7 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(PaperFillLedgerBridgeError, "fee_asset_qty"):
             self.bridge.process_trade_update(self.event())
         self.assertEqual(self.bridge.status()["pending_or_failed"], 1)
+        self.assertEqual(self.fx_calls, 1)
 
         self.fee_ready = True
         result = self.bridge.retry_pending()
@@ -88,6 +92,7 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
         self.assertEqual(result["failed"], [])
         self.assertEqual(self.bridge.status()["pending_or_failed"], 0)
         self.assertEqual(self.ledger.snapshot().event_count, 2)
+        self.assertEqual(self.fx_calls, 1)
 
     def test_execution_id_payload_collision_is_rejected(self):
         self.bridge.process_trade_update(self.event())
