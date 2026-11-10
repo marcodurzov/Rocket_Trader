@@ -1,0 +1,30 @@
+name: Rocket Trader - Alpaca Paper Fee Resolver
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_alpaca_fee_resolver.py"
+      - "rocket_trader_alpaca_fee_resolver_test.py"
+  push:
+    branches: [main]
+    paths:
+      - "rocket_trader_alpaca_fee_resolver.py"
+      - "rocket_trader_alpaca_fee_resolver_test.py"
+
+permissions:
+  contents: read
+
+jobs:
+  alpaca-fee-resolver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile fee resolver and tests
+        run: python -m py_compile rocket_trader_alpaca_fee_resolver.py rocket_trader_alpaca_fee_resolver_test.py
+      - name: Run offline fee resolver tests
+        run: python -m unittest -v rocket_trader_alpaca_fee_resolver_test.py
