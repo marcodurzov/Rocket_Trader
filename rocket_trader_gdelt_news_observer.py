@@ -84,7 +84,7 @@ class GDELTObserver:
         raw = str(value or "").strip()
         if not raw:
             return None
-        for pattern in ("%Y%m%dT%H%M%SZ", "%Y%m%dT%H%M%S"):
+        for pattern in ("%Y%m%dT%H%M%SZ",):
             try:
                 parsed = datetime.strptime(raw, pattern).replace(tzinfo=timezone.utc)
                 return parsed.isoformat()
