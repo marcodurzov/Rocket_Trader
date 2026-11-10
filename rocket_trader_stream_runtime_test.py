@@ -35,7 +35,7 @@ class StreamRuntimeTests(unittest.TestCase):
     def test_health_requires_recent_healthy_heartbeats(self):
         now = datetime.now(timezone.utc)
         self.recorder.heartbeat("crypto", "HEALTHY", now.isoformat())
-        self.assertTrue(self.recorder.health(120, now)["healthy"])
+        self.assertTrue(self.recorder.health(120)["healthy"])
         self.recorder.heartbeat("crypto", "ERROR", last_error="disconnected")
         self.assertFalse(self.recorder.health(120)["healthy"])
     def test_health_fails_when_never_started(self):
