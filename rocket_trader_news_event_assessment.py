@@ -78,8 +78,10 @@ class NewsEventAssessmentStore:
         event_type = str(data.get("event_type") or "").strip().lower()
         summary = str(data.get("summary") or "").strip()
         sources = data.get("sources")
-        symbols = sorted({str(x).strip().upper() for x in data.get("affected_symbols", [])
-                          if str(x).strip()})
+        raw_symbols = data.get("affected_symbols", [])
+        if not isinstance(raw_symbols, list):
+            raise ValueError("affected_symbols must be a JSON array.")
+        symbols = sorted({str(x).strip().upper() for x in raw_symbols if str(x).strip()})
         if not event_id or not title or not event_type or not isinstance(sources, list) or not sources:
             raise ValueError("event_id, title, event_type and at least one source are required.")
         prepared = []
@@ -124,7 +126,10 @@ class NewsEventAssessmentStore:
         novelty = unit(data.get("novelty", 0), "novelty")
         evaluator = str(data.get("evaluator_version") or "").strip()
         rationale = str(data.get("rationale") or "").strip()
-        point_in_time = bool(data.get("point_in_time_eligible", False))
+        point_in_time_value = data.get("point_in_time_eligible", False)
+        if not isinstance(point_in_time_value, bool):
+            raise ValueError("point_in_time_eligible must be a JSON boolean.")
+        point_in_time = point_in_time_value
         assessed = parse_aware(data.get("assessed_at") or datetime.now(timezone.utc).isoformat(),
                                "assessed_at")
         expires = parse_aware(data.get("expires_at") or
