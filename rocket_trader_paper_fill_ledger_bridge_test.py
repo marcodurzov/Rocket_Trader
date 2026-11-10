@@ -27,7 +27,7 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
         def fee_resolver(_payload):
             if not self.fee_ready:
                 return {"fee_usd": "0.0025"}
-            return {"fee_usd": "0.0025", "fee_asset_qty": "0"}
+            return {"fee_usd": "0.0025", "fee_asset_qty": "0", "fee_source": "TEST_FEE_SCHEDULE"}
 
         self.bridge = PaperFillLedgerBridge(
             db_path=os.path.join(self.tmp.name, "inbox.sqlite3"),
@@ -62,6 +62,11 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
             "0.0001",
         )
         self.assertEqual(self.bridge.status()["pending_or_failed"], 0)
+        fill = next(
+            row for row in self.ledger._events()
+            if row["event_type"] == "FILL"
+        )
+        self.assertEqual(fill["payload"]["fee_source"], "TEST_FEE_SCHEDULE")
 
     def test_replayed_execution_id_is_idempotent(self):
         event = self.event()
@@ -106,7 +111,7 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
             db_path=os.path.join(self.tmp.name, "fx-inbox.sqlite3"),
             ledger=self.ledger,
             fx_resolver=lambda _when: None,
-            fee_resolver=lambda _payload: {"fee_usd": "0", "fee_asset_qty": "0"},
+            fee_resolver=lambda _payload: {"fee_usd": "0", "fee_asset_qty": "0", "fee_source": "TEST_FEE_SCHEDULE"},
         )
         with self.assertRaisesRegex(PaperFillLedgerBridgeError, "validated LedgerFX"):
             bridge.process_trade_update(self.event(execution_id="exec-fx"))
