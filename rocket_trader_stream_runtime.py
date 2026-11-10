@@ -214,24 +214,62 @@ class MarketRuntimeRecorder:
                     last_error=excluded.last_error,updated_at=excluded.updated_at
             """, (component, status, last_event_at, last_error, _utc_now()))
 
-    def health(self, max_age_seconds: int = 120, now: Optional[datetime] = None) -> Dict[str, Any]:
+    def health(
+        self,
+        max_age_seconds: int = 120,
+        now: Optional[datetime] = None,
+        data_freshness_thresholds: Optional[Dict[str, int]] = None,
+    ) -> Dict[str, Any]:
+        """Report process heartbeat separately from market-data freshness.
+
+        Data freshness is diagnostic only: an equity feed is naturally quiet
+        outside exchange sessions, and Paper trade updates are event-driven.
+        Only components explicitly assigned a threshold receive FRESH/STALE
+        classification. A stale data event never masquerades as a dead process.
+        """
         with self._connect() as conn:
             rows = conn.execute("SELECT * FROM runtime_heartbeat ORDER BY component").fetchall()
         if not rows:
             raise RuntimeStorageError("Runtime has not emitted a heartbeat.")
         current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise RuntimeStorageError("Health reference time must be timezone-aware.")
+        thresholds = data_freshness_thresholds or {}
         components = {}
         for row in rows:
             updated = datetime.fromisoformat(row["updated_at"])
-            if updated.tzinfo is None:
+            if updated.tzinfo is None or updated.utcoffset() is None:
                 raise RuntimeStorageError("Naive heartbeat timestamp; health is unknown.")
             age = (current - updated).total_seconds()
+            event_age = None
+            freshness = "NOT_MONITORED"
+            event_at = row["last_event_at"]
+            threshold = thresholds.get(row["component"])
+            if event_at:
+                event_time = datetime.fromisoformat(event_at)
+                if event_time.tzinfo is None or event_time.utcoffset() is None:
+                    raise RuntimeStorageError("Naive last-event timestamp; freshness is unknown.")
+                event_age = (current - event_time).total_seconds()
+                if event_age < 0:
+                    freshness = "INVALID_FUTURE_TIMESTAMP"
+                elif threshold is None:
+                    freshness = "OBSERVED"
+                else:
+                    freshness = "FRESH" if event_age <= threshold else "STALE"
+            elif threshold is not None:
+                freshness = "NO_DATA_YET"
             components[row["component"]] = {
-                "status": row["status"], "age_seconds": age,
-                "last_event_at": row["last_event_at"], "last_error": row["last_error"],
+                "status": row["status"], "heartbeat_age_seconds": age,
+                "last_event_at": event_at, "event_age_seconds": event_age,
+                "data_freshness": freshness, "freshness_threshold_seconds": threshold,
+                "last_error": row["last_error"],
                 "healthy": row["status"] == "HEALTHY" and 0 <= age <= max_age_seconds,
             }
-        return {"healthy": all(x["healthy"] for x in components.values()), "components": components}
+        return {
+            "healthy": all(x["healthy"] for x in components.values()),
+            "components": components,
+            "data_freshness_is_diagnostic_only": True,
+        }
 
 
 class AlpacaPaperObserverRuntime:
@@ -329,7 +367,7 @@ def main() -> int:
     config = RuntimeConfig.from_env()
     recorder = MarketRuntimeRecorder(config.db_path)
     if args.healthcheck:
-        result = recorder.health(config.health_max_age_seconds)
+        result = recorder.health(\n            config.health_max_age_seconds,\n            data_freshness_thresholds={"crypto": 600},\n        )
         print(json.dumps(result, indent=2))
         return 0 if result["healthy"] else 1
     runtime = AlpacaPaperObserverRuntime(config, recorder)
