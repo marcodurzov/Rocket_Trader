@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - "rocket_trader_paper_fill_ledger_bridge.py"
-      - "rocket_trader_paper_fill_ledger_bridge_test.py"
+      - "rocket_trader_paper_fill_ledger_bridge_test.py rocket_trader_alpaca_fee_resolver.py rocket_trader_alpaca_fee_resolver_test.py"
       - "rocket_trader_realized_pnl_ledger.py"
       - "rocket_trader_realized_pnl_ledger_test.py"
+      - "rocket_trader_alpaca_fee_resolver.py"
+      - "rocket_trader_alpaca_fee_resolver_test.py"
       - ".github/workflows/rocket-trader-paper-fill-ledger-bridge.yml"
   push:
     branches: [main]
@@ -35,3 +37,4 @@ jobs:
         run: |
           python -m unittest -v rocket_trader_realized_pnl_ledger_test.py
           python -m unittest -v rocket_trader_paper_fill_ledger_bridge_test.py
+          python -m unittest -v rocket_trader_alpaca_fee_resolver_test.py
