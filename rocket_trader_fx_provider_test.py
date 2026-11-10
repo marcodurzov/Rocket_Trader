@@ -56,7 +56,7 @@ class ExchangerateDevFXProviderTests(unittest.TestCase):
 
     def test_rejects_stale_quote(self):
         provider = ExchangerateDevFXProvider(
-            opener=lambda _request, _timeout: FakeResponse(
+            opener=lambda _request, timeout=None: FakeResponse(
                 self.payload(effective_at=(NOW - timedelta(hours=1)).isoformat())
             )
         )
