@@ -104,9 +104,11 @@ Confirm a native-MXN deposit or withdrawal only after matching it to external
 evidence:
 
 ```bash
-python /app/rocket_trader_cash_activity_admin.py --confirm-deposit ACTIVITY_ID \
+docker compose -f docker-compose.paper-observer.yml exec rocket-trader-paper-observer \
+  python /app/rocket_trader_cash_activity_admin.py --confirm-deposit ACTIVITY_ID \
   --reference BANK_TRANSFER_REFERENCE
-python /app/rocket_trader_cash_activity_admin.py --confirm-withdrawal ACTIVITY_ID \
+docker compose -f docker-compose.paper-observer.yml exec rocket-trader-paper-observer \
+  python /app/rocket_trader_cash_activity_admin.py --confirm-withdrawal ACTIVITY_ID \
   --reference BANK_WITHDRAWAL_REFERENCE
 ```
 
@@ -115,7 +117,8 @@ For USD movements, additionally provide `--fx-rate`, `--fx-observed-at`
 journal without treating it as user funding:
 
 ```bash
-python /app/rocket_trader_cash_activity_admin.py --resolve-journal ACTIVITY_ID \
+docker compose -f docker-compose.paper-observer.yml exec rocket-trader-paper-observer \
+  python /app/rocket_trader_cash_activity_admin.py --resolve-journal ACTIVITY_ID \
   --reference ALPACA_PAPER_SEED_REFERENCE \
   --rationale "Broker statement confirms this is the simulator seed."
 ```
