@@ -200,9 +200,10 @@ def run_audit(
     feed = feed_map[feed_name.upper()]
     client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
 
+    symbol_list = sorted({str(x).strip().upper() for x in symbols if str(x).strip()})
     results = []
     errors = []
-    for symbol in sorted({str(x).strip().upper() for x in symbols if str(x).strip()}):
+    for symbol in symbol_list:
         try:
             yahoo = yahoo_loader(symbol, start, current)
             alpaca = alpaca_loader(client, symbol, start, current, feed)
@@ -217,7 +218,7 @@ def run_audit(
         "period_start": start.isoformat(),
         "period_end": current.isoformat(),
         "years_requested": years,
-        "symbols_requested": sorted({str(x).strip().upper() for x in symbols if str(x).strip()}),
+        "symbols_requested": symbol_list,
         "feed": feed_name.upper(),
         "alpaca_adjustment": "ALL",
         "yahoo_adjustment": "auto_adjust=True; actions=True; repair=True",
