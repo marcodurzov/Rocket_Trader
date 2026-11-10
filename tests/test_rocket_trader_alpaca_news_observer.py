@@ -39,7 +39,7 @@ class AlpacaNewsObserverTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db = os.path.join(self.tmp.name, "alpaca-news.sqlite3")
-        self.now = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
+        self.now = datetime.now(timezone.utc)
 
     def tearDown(self):
         self.tmp.cleanup()
