@@ -59,6 +59,8 @@ def _not_found(exc: Exception) -> bool:
 
 def normalize_crypto_symbol(symbol: str) -> str:
     clean = str(symbol).strip().upper().replace("-", "/")
+    if "/" not in clean and clean.endswith("USD") and len(clean) > 3:
+        clean = clean[:-3] + "/USD"
     if "/" not in clean:
         raise CryptoPaperExecutionError("Crypto symbols must use BASE/USD pair notation.")
     base, quote = clean.split("/", 1)
@@ -158,7 +160,11 @@ class AlpacaCryptoPaperExecutionAdapter:
     def _available_position_qty(self, symbol: str) -> Decimal:
         positions = self.client.get_all_positions()
         for position in positions:
-            if str(_value(position, "symbol", "")).upper() == symbol:
+            try:
+                position_symbol = normalize_crypto_symbol(_value(position, "symbol", ""))
+            except CryptoPaperExecutionError:
+                continue
+            if position_symbol == symbol:
                 qty = _decimal(_value(position, "qty", "0"), "broker_position_qty")
                 if qty > 0:
                     return qty
@@ -423,8 +429,9 @@ class AlpacaCryptoPaperExecutionAdapter:
         positions = self.client.get_all_positions()
         crypto_positions = []
         for position in positions:
-            symbol = str(_value(position, "symbol", ""))
-            if "/" not in symbol:
+            try:
+                symbol = normalize_crypto_symbol(_value(position, "symbol", ""))
+            except CryptoPaperExecutionError:
                 continue
             crypto_positions.append(
                 {
