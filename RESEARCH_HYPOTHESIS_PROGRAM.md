@@ -12,7 +12,7 @@
 4. Model spread, commissions/fees, slippage, market impact, borrow/funding where applicable, rejected orders, partial fills, and minimum notional.
 5. Separate train, validation, walk-forward, and final untouched holdout. Purge overlapping labels and embargo where required.
 6. Record every experiment, parameter set, data fingerprint, code commit, benchmark, and failed result. Estimate multiple-testing / backtest-overfitting risk (PBO/CSCV or defensible alternatives).
-7. Compare against buy-and-hold, cash, volatility-matched benchmark, and random-entry controls with identical exits/risk. A positive return alone is not evidence of skill.
+7. Compare against buy-and-hold, cash, volatility-matched benchmarks and deterministic fixed-schedule controls with identical exits/risk. If a permutation or Monte Carlo diagnostic is justified, use a recorded fixed seed and preserve every draw; never use unseeded randomness or select a winner from repeated random searches. A positive return alone is not evidence of skill.
 8. Report net CAGR/return, volatility, Sharpe/Sortino, max drawdown, Calmar, turnover, exposure, hit rate, average win/loss, profit factor, trade count, time in market, capacity, tail loss, and confidence intervals.
 9. No leverage, margin, shorting, derivatives, or instruments outside approved spot/equity scope for the first production candidate.
 10. Never relax data quality or risk gates to force activity. No edge means no trade.
@@ -97,6 +97,17 @@ Reddit practitioner discussions are useful for identifying failure modes and can
 - Ernest P. Chan, *Algorithmic Trading: Winning Strategies and Their Rationale*: https://onlinelibrary.wiley.com/doi/book/10.1002/9781118676998 — bibliographic/publisher reference; access may require purchase/library.
 
 Respect copyright and repository licenses. Use lawful open-access versions, institutional access, or public-domain texts; do not scrape pirated books or redistribute copyrighted material.
+
+## Determinism, uncertainty, and reproducibility
+
+Rocket Trader's decision logic must be deterministic and auditable given the same immutable inputs, configuration, code version and execution state:
+- No unseeded random decisions in signal generation, portfolio selection, sizing, risk controls or order routing.
+- Use timestamped/versioned market data, explicit tie-breaking, stable decimal arithmetic and persisted state transitions.
+- Every experiment records code SHA, dataset/version, parameters, costs, seed (if any), and broker execution events.
+- Internal simulation may use a pseudo-random generator only for a clearly named diagnostic, with a fixed recorded seed so the run is exactly reproducible.
+- Do not infer that an externally observed fill or market path is deterministic merely because the decision code is deterministic. Treat unknown future inputs, latency, partial fills and changing market conditions as uncertainty to be stress-tested.
+
+Alpaca explicitly documents that its Paper simulator may produce partial fills of random sizes 10% of the time when an order is marketable. That is a property of the simulator, not a reason to inject randomness into Rocket Trader's strategy. Record the broker's actual fill events and make the order state machine robust to full, partial, delayed, rejected and cancelled outcomes.
 
 ## First experimental sequence
 
