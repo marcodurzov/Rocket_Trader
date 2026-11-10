@@ -132,6 +132,22 @@ Regression tests include a deliberate 100% overnight gap and verify that a signa
 
 These corrected results remain research-only. Neither asset class has a validated positive net edge. Prior close-to-close results are archived for auditability but superseded for all decisions.
 
+## Mean-reversion tranche (2026-11-10)
+
+The corrected next-open pipelines now include three pre-registered long-only mean-reversion hypotheses:
+- RSI(2) below 10 with a 200-day trend filter and 5-day mean/RSI exit.
+- Bollinger(20, 2) lower-band entry with middle-band exit.
+- Five-day downside z-score below -2 with zero-crossing exit.
+
+Results:
+- Equity v0.4: 8 ETFs, 10 years, 73 hypotheses in the Holm family; 0 family-wise significant and 0 pre-screen passes.
+- Crypto v0.3: BTC/ETH eligible, SOL excluded; 19 hypotheses; 0 family-wise significant and 0 pre-screen passes.
+- Most mean-reversion variants underperformed their same-asset buy-and-hold benchmarks in the final holdout. A few point estimates were positive, but sample counts were low and all Holm-adjusted p-values were 1.0.
+- RSI(2) BTC returned +4.57% in its final holdout, but only 4 entries and Holm-adjusted p=1.0; this is not enough evidence.
+- TLT Bollinger(20,2) returned +8.83% and exceeded TLT buy-and-hold by +8.95 percentage points, but had 10 entries and Holm-adjusted p=1.0; it is not promoted.
+
+No strategy is approved. The next useful research tranche is a small, pre-registered set of deterministic calendar-seasonality and intraday hypotheses, but intraday strategies must use data granular enough to model the next executable bar. Do not test more parameters simply to search for a positive result.
+
 ## Determinism, uncertainty, and reproducibility
 
 Rocket Trader's decision logic must be deterministic and auditable given the same immutable inputs, configuration, code version and execution state:
