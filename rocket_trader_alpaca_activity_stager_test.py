@@ -100,6 +100,53 @@ class ActivityStagerTests(unittest.TestCase):
         report = self.make([[row]]).sync()
         self.assertEqual(report["blocked_activity_types"], ["FILL"])
 
+    def test_cash_deposit_credit_is_staged_for_capital_reconciliation_only(self):
+        activity = {
+            "id": "cash-deposit-1", "activity_type": "CSD",
+            "status": "executed", "date": "2026-11-10",
+            "net_amount": "250.00", "currency": "USD",
+        }
+        report = self.make([[activity]]).sync()
+        self.assertIn(
+            "CSD:STAGED_PENDING_CAPITAL_RECONCILIATION", report["counts"]
+        )
+        self.assertFalse(report["ledger_posting_enabled"])
+
+    def test_cash_withdrawal_debit_is_staged_not_counted_as_profit(self):
+        activity = {
+            "id": "cash-withdrawal-1", "activity_type": "CSW",
+            "status": "executed", "date": "2026-11-10",
+            "net_amount": "-100.00", "currency": "USD",
+        }
+        report = self.make([[activity]]).sync()
+        self.assertIn(
+            "CSW:STAGED_PENDING_CAPITAL_RECONCILIATION", report["counts"]
+        )
+        self.assertFalse(report["ledger_posting_enabled"])
+
+    def test_invalid_cash_credit_sign_is_blocked(self):
+        activity = {
+            "id": "cash-credit-invalid", "activity_type": "CSD",
+            "status": "executed", "date": "2026-11-10",
+            "net_amount": "-100.00", "currency": "USD",
+        }
+        report = self.make([[activity]]).sync()
+        self.assertIn(
+            "CSD:BLOCKED_INVALID_CASH_CREDIT_SIGN", report["counts"]
+        )
+        self.assertFalse(report["ledger_posting_enabled"])
+
+    def test_cash_activity_without_currency_is_blocked(self):
+        activity = {
+            "id": "cash-no-currency", "activity_type": "CSD",
+            "status": "executed", "date": "2026-11-10",
+            "net_amount": "100.00",
+        }
+        report = self.make([[activity]]).sync()
+        self.assertIn(
+            "CSD:BLOCKED_CASH_ACTIVITY_WITHOUT_CURRENCY", report["counts"]
+        )
+
     def test_rejects_live_configuration(self):
         old_live = os.environ.get("ALPACA_LIVE_ENABLED")
         old_mode = os.environ.get("ROCKET_TRADER_EXECUTION_MODE")
