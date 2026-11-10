@@ -56,6 +56,19 @@ Optional .env entry:
 - EXCHANGERATE_DEV_API_KEY=... (the public endpoint can be queried without a
   key; a key may be used according to the provider's plan and limits).
 
+## Account activity staging
+
+The runtime can optionally enable a read-only Alpaca Paper account-activity stager
+with `ROCKET_TRADER_ACTIVITY_STAGER_ENABLED=true`. It stores fills, fees and cash
+credits/debits durably and idempotently. Cash movements remain pending capital
+reconciliation; they are never automatically classified as user deposits or
+withdrawals because broker activity codes can also represent returned transfers.
+A failed sync marks the account-activity health component unhealthy and is retried
+every 15 minutes. This stager never posts to the capital ledger or submits orders.
+
+Set `ROCKET_TRADER_ACTIVITY_STAGER_DB` to a durable path if the default path
+beside the runtime database is not suitable.
+
 ## Important limitations
 
 - Equities use Alpaca IEX data, not SIP.

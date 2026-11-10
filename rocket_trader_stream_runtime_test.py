@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from rocket_trader_stream_runtime import (
     AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeConfig,
-    build_fill_ledger_bridge,
+    build_fill_ledger_bridge, build_activity_stager,
 )
 
 class StreamRuntimeTests(unittest.TestCase):
@@ -176,6 +176,87 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertEqual(bridge.status()["pending_or_failed"], 0)
         self.assertTrue(os.path.exists(ledger_path))
         self.assertTrue(os.path.exists(inbox_path))
+
+    def test_account_activity_stager_sync_sets_healthy_heartbeat(self):
+        class FakeStager:
+            def __init__(self):
+                self.calls = 0
+            def sync(self):
+                self.calls += 1
+                return {"total_staged": 3, "inserted_this_sync": 3, "ledger_posting_enabled": False, "blocked_activity_types": []}
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        stager = FakeStager()
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder, activity_stager=stager)
+        report = runtime._sync_account_activities()
+        self.assertEqual(report["total_staged"], 3)
+        self.assertEqual(stager.calls, 1)
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertTrue(health["healthy"])
+        self.assertEqual(health["components"]["account_activity"]["status"], "HEALTHY")
+
+    def test_blocked_account_activity_types_keep_runtime_unhealthy(self):
+        class BlockedStager:
+            def sync(self):
+                return {
+                    "total_staged": 4,
+                    "blocked_activity_types": ["DIV", "UNKNOWN"],
+                    "ledger_posting_enabled": False,
+                }
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder, activity_stager=BlockedStager())
+        report = runtime._sync_account_activities()
+        self.assertEqual(report["blocked_activity_types"], ["DIV", "UNKNOWN"])
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(health["healthy"])
+        self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
+
+    def test_activity_stager_cannot_enable_ledger_posting(self):
+        class UnsafeStager:
+            def sync(self):
+                return {"total_staged": 0, "ledger_posting_enabled": True}
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder, activity_stager=UnsafeStager())
+        self.assertIsNone(runtime._sync_account_activities())
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(health["healthy"])
+        self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
+
+    def test_account_activity_sync_failure_is_visible(self):
+        class FailingStager:
+            def sync(self):
+                raise RuntimeError("broker API unavailable")
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder, activity_stager=FailingStager())
+        self.assertIsNone(runtime._sync_account_activities())
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(health["healthy"])
+        self.assertEqual(
+            health["components"]["account_activity"]["status"], "ERROR"
+        )
+        self.assertIn(
+            "broker API unavailable",
+            health["components"]["account_activity"]["last_error"],
+        )
+
+    def test_activity_stager_is_disabled_by_default(self):
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        with patch.dict(os.environ, {"ROCKET_TRADER_ACTIVITY_STAGER_ENABLED": "false"}, clear=False):
+            self.assertIsNone(build_activity_stager(config))
 
     def test_invalid_ledger_enable_flag_is_rejected(self):
         config = RuntimeConfig(

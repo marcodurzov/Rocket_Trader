@@ -12,6 +12,8 @@ services:
       ROCKET_TRADER_RUNTIME_DB: /app/data/runtime.sqlite3
       ROCKET_TRADER_EQUITY_SYMBOLS: SPY,QQQ,IWM
       ROCKET_TRADER_CRYPTO_SYMBOLS: BTC/USD,ETH/USD,SOL/USD
+      ROCKET_TRADER_ACTIVITY_STAGER_ENABLED: "true"
+      ROCKET_TRADER_ACTIVITY_STAGER_DB: /app/data/rocket_trader_activity_stager.sqlite3
       ROCKET_TRADER_LEDGER_ENABLED: "true"
       ROCKET_TRADER_LEDGER_DB: /app/data/rocket_trader_ledger.sqlite3
       ROCKET_TRADER_LEDGER_INBOX_DB: /app/data/rocket_trader_fill_inbox.sqlite3
