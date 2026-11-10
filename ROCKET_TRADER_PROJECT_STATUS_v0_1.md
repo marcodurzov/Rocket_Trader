@@ -304,3 +304,14 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - Ten-year adjusted ETF research completed successfully after PR #41. All eight research ETF histories passed the current approximate weekday-coverage gate (about 96.3%); the strategy evaluation covers SPY, QQQ, and IWM with eight hypotheses. The report explicitly keeps `candidate_promotion_allowed=false`, `paper_approval=false`, `orders_enabled=false`, and `orders_submitted=0`. Family-wise multiple-testing correction, SIP parity, independent replication, and sustained Paper validation remain open gates.
 - The historical report is research-only and uses Yahoo Finance adjusted daily bars. It is not an execution feed and does not establish that a strategy has a tradable edge after live-market costs.
 - No continuous trading runtime has been deployed. GitHub Actions remain CI/research only. Crypto is 24/7; US equities are restricted to exchange sessions. A persistent Paper runtime, strategy approval, order/fill lifecycle integration, and broker/ledger reconciliation are still required before unattended Paper operation.
+
+
+### Persistent Paper observer runtime — 2026-11-10
+
+- PR #46 merged: adds a containerized, always-on OBSERVE_ONLY service.
+- It records Alpaca IEX minute bars for US equities, Alpaca US crypto minute bars (24/7), and Paper trade-update events into SQLite/WAL.
+- The runtime persists its database in a Docker named volume, exposes a heartbeat health check, rejects any mode other than OBSERVE_ONLY, and contains no order-submission code.
+- Offline runtime tests pass in GitHub Actions. No broker connection or orders were used in CI.
+- Deployment assets: `Dockerfile.paper-observer`, `docker-compose.paper-observer.yml`, and `PAPER_OBSERVER_RUNTIME.md`.
+- This is an always-on data observer, not yet an autonomous trading bot. It does not train/approve strategies, generate trading decisions, place Paper orders, or reconcile fills into the realized-P&L ledger. Deployment to a persistent host still needs to be completed and monitored.
+- GitHub Actions remain CI/research only; they are not used as a 24/7 trading host.
