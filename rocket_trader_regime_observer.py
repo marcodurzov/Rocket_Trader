@@ -109,8 +109,7 @@ class RegimeDecisionStore:
             age = (now - _parse_time(row["evaluated_at"])).total_seconds()
             components[row["asset_class"]] = {
                 "status": row["status"], "age_seconds": age,
-                "healthy": row["status"] in {"CASH_ABSTAIN", "CASH_NO_EDGE"}
-                    and 0 <= age <= max_age_seconds,
+                "healthy": row["status"] == "EVALUATED" and 0 <= age <= max_age_seconds,
             }
         return {"healthy": bool(components) and all(x["healthy"] for x in components.values()),
                 "components": components, "orders_enabled": False}
@@ -260,7 +259,8 @@ class PaperRegimeObserver:
                 }
                 market_timestamp = diagnostics.get("latest_bar_at")
             report["universes"][asset_class] = decision
-            self.store.save(asset_class, evaluated_at, market_timestamp, decision)
+            self.store.save(asset_class, evaluated_at, market_timestamp,
+                             {"status": "EVALUATED", "decision": decision})
         return report
 
     def health(self) -> Dict[str, object]:
