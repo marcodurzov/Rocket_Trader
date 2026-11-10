@@ -74,6 +74,10 @@ class GDELTObserver:
                 first_seen_at TEXT NOT NULL,
                 PRIMARY KEY(article_id, topic)
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS gdelt_article_metadata (
+                article_id INTEGER PRIMARY KEY, domain TEXT NOT NULL,
+                language TEXT, source_country TEXT, last_seen_at TEXT NOT NULL
+            )""")
 
     @staticmethod
     def parse_seen_date(value: str) -> Optional[str]:
@@ -165,12 +169,33 @@ class GDELTObserver:
                 (topic, now, now if success else None, int(count), error, int(success)))
 
     def _store_topic_associations(self, records: Sequence[NewsArticleRecord],
-                                  topic: str) -> None:
+                                  topic: str, payload: Dict[str, object]) -> None:
         now = utc_now()
+        articles = payload.get("articles", [])
+        metadata = {}
+        if isinstance(articles, list):
+            for item in articles:
+                if not isinstance(item, dict):
+                    continue
+                url = str(item.get("url") or "").strip()
+                if url:
+                    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
+                    metadata[int(digest[:15], 16)] = (
+                        str(item.get("domain") or "").strip().lower(),
+                        str(item.get("language") or "").strip(),
+                        str(item.get("sourcecountry") or "").strip(),
+                    )
         with sqlite3.connect(self.database_path) as db:
             db.executemany("""INSERT OR IGNORE INTO gdelt_article_topics
                 (article_id,topic,first_seen_at) VALUES(?,?,?)""",
                 [(record.article_id, topic, now) for record in records])
+            db.executemany("""INSERT INTO gdelt_article_metadata
+                (article_id,domain,language,source_country,last_seen_at)
+                VALUES(?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET
+                domain=excluded.domain, language=excluded.language,
+                source_country=excluded.source_country,last_seen_at=excluded.last_seen_at""",
+                [(record.article_id, *metadata.get(record.article_id, ("", "", "")), now)
+                 for record in records])
 
     def poll_once(self) -> Dict[str, object]:
         report: Dict[str, object] = {
@@ -182,7 +207,7 @@ class GDELTObserver:
                 payload = self.fetcher(topic)
                 records = self.parse_articles(payload, topic)
                 counts = self.store.ingest(records, observation_mode="LIVE")
-                self._store_topic_associations(records, topic.key)
+                self._store_topic_associations(records, topic.key, payload)
                 self._record_health(topic.key, True, len(records))
                 report["topics"][topic.key] = {"ok": True, "parsed": len(records), **counts}
                 report["articles_received"] += len(records)
