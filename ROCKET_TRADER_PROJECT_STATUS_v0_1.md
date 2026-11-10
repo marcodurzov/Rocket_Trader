@@ -419,7 +419,7 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - Yahoo historical retrieval now explicitly uses `repair=False`; report metadata reflects the actual setting.
 - Added a regression test that mocks Yahoo and asserts `repair=False`, `auto_adjust=True` and `actions=True`.
 - PR workflow run 42922818287: compile and all 6 offline tests passed. Live comparison was skipped on pull_request by design.
-- Post-merge push run 42922974687 was queued after merge. The real market-data result is pending and must be reviewed before claiming the provider correction solved the issue.
+- Post-merge push run 42922974687 completed successfully as a retrieval/report job. Its diagnostic result is recorded below: all eight ETFs were retrieved, but zero passed the full 10-year coverage gate because Alpaca IEX history begins in 2020 for this account.
 
 
 ### Post-merge live ETF history audit — 2026-11-10 (run 42922974687)
