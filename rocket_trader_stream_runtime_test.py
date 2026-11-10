@@ -102,6 +102,33 @@ class StreamRuntimeTests(unittest.TestCase):
             "Stream thread exited unexpectedly.",
         )
 
+    def test_quote_and_fill_streams_record_empirical_cost_observation(self):
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder)
+        now = datetime.now(timezone.utc)
+        quote = {
+            "symbol": "SPY", "timestamp": (now - timedelta(seconds=1)).isoformat(),
+            "bid_price": 100.0, "ask_price": 100.2,
+            "bid_size": 10, "ask_size": 10,
+        }
+        asyncio.run(runtime._quote_handler("EQUITY", "IEX")(quote))
+        fill = {
+            "event": "fill", "timestamp": now.isoformat(),
+            "symbol": "SPY", "side": "buy", "price": 100.2, "qty": 2,
+            "order": {"id": "cost-order-1", "symbol": "SPY", "side": "buy"},
+        }
+        asyncio.run(runtime._trade_update_handler(fill))
+        summary = runtime.cost_telemetry.summary()
+        self.assertEqual(summary["measured_fill_events"], 1)
+        self.assertEqual(summary["groups"][0]["symbol"], "SPY")
+        self.assertFalse(summary["costs_empirically_validated"])
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertTrue(health["healthy"])
+        self.assertEqual(health["components"]["execution_cost_telemetry"]["status"], "HEALTHY")
+
     def test_trade_update_is_forwarded_to_fill_ledger_bridge(self):
         class FakeBridge:
             def __init__(self):
