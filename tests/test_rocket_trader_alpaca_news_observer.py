@@ -54,7 +54,7 @@ class AlpacaNewsObserverTests(unittest.TestCase):
         self.assertTrue(report["healthy"])
         self.assertEqual(report["articles_fetched"], 2)
         self.assertEqual(report["new_articles"], 2)
-        self.assertEqual([call[0] for call in fake.calls], ["SPY", "BTCUSD"])
+        self.assertEqual([call[0] for call in fake.calls], ["BTCUSD", "SPY"])
         self.assertTrue(all(call[3] == 50 and call[4] for call in fake.calls))
         self.assertTrue(observer.health()["healthy"])
 
