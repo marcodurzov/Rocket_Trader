@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - "research/next-open-execution-model"
-      - "research/next-open-execution-model"
     paths:
       - "rocket_trader_crypto_multiyear_research_v0_2.py"
       - "rocket_trader_crypto_multiyear_research_v0_2_test.py"
@@ -58,7 +57,7 @@ jobs:
       - name: Offline regression tests
         run: python -m unittest -v rocket_trader_crypto_multiyear_research_v0_2_test.py
       - name: Run multi-year crypto research
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/next-open-execution-model')
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/next-open-execution-model'))
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -73,7 +72,7 @@ jobs:
             --years "$YEARS_INPUT" \
             --output research_artifacts/crypto_multiyear_research_v0_2.json
       - name: Verify research-only report
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/next-open-execution-model')
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/next-open-execution-model'))
         run: |
           python - <<'PY'
           import json
@@ -96,9 +95,9 @@ jobs:
           print('Symbols with data-quality issues:', data.get('symbols_with_data_quality_issues'))
           PY
       - uses: actions/upload-artifact@v4
-        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/next-open-execution-model'))
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/next-open-execution-model')))
         with:
-          name: rocket-trader-crypto-multiyear-research-v0-1
+          name: rocket-trader-crypto-multiyear-research-v0-2
           path: research_artifacts/
           if-no-files-found: warn
           retention-days: 30
