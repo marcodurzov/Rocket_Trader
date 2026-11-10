@@ -284,6 +284,7 @@ class AlpacaPaperObserverRuntime:
         self.threads: Dict[str, threading.Thread] = {}
         self.stop_event = threading.Event()
         self.last_events: Dict[str, Optional[str]] = {"equity": None, "crypto": None, "trading": None}
+        self.failed_components: set[str] = set()
 
     def _bar_handler(self, asset_class: str):
         async def handler(bar: Any) -> None:
@@ -340,9 +341,14 @@ class AlpacaPaperObserverRuntime:
             while not self.stop_event.wait(self.config.heartbeat_seconds):
                 for component, thread in self.threads.items():
                     if not thread.is_alive():
-                        self.recorder.heartbeat(component, "ERROR", self.last_events.get(component),
-                                                "Stream thread exited unexpectedly.")
-                        raise RuntimeError(f"{component} stream exited; refusing to continue with partial market connectivity.")
+                        self.failed_components.add(component)
+                        self.recorder.heartbeat(
+                            component, "ERROR", self.last_events.get(component),
+                            "Stream thread exited unexpectedly.",
+                        )
+                        raise RuntimeError(
+                            f"{component} stream exited; refusing to continue with partial market connectivity."
+                        )
                     self.recorder.heartbeat(component, "HEALTHY", self.last_events.get(component))
         finally:
             self.stop()
@@ -357,7 +363,9 @@ class AlpacaPaperObserverRuntime:
         for thread in self.threads.values():
             thread.join(timeout=5)
         for component in self.streams:
-            self.recorder.heartbeat(component, "STOPPED", self.last_events.get(component))
+            # Preserve the causal failure state; STOPPED is only a normal shutdown state.
+            if component not in self.failed_components:
+                self.recorder.heartbeat(component, "STOPPED", self.last_events.get(component))
 
 
 def main() -> int:
