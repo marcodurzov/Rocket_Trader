@@ -146,6 +146,14 @@ class MarketRuntimeRecorder:
                         updated_at TEXT NOT NULL
                     )
                 """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS paper_position_reconciliation (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        status TEXT NOT NULL,
+                        reconciled_at TEXT NOT NULL,
+                        report_json TEXT NOT NULL
+                    )
+                """)
         except Exception as exc:
             raise RuntimeStorageError("Could not initialize durable runtime database.") from exc
 
@@ -202,6 +210,25 @@ class MarketRuntimeRecorder:
             """, (digest, str(order_id or ""), str(client_id or ""), str(event_type or ""),
                   str(event_timestamp or ""), encoded, _utc_now()))
             return cursor.rowcount == 1
+
+    def record_position_reconciliation(self, report: Dict[str, Any]) -> None:
+        status = str(report.get("status") or "UNKNOWN").upper()
+        reconciled_at = str(report.get("reconciled_at") or _utc_now())
+        payload = json.dumps(report, sort_keys=True, separators=(",", ":"), default=str)
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO paper_position_reconciliation(status,reconciled_at,report_json)
+                   VALUES(?,?,?)""",
+                (status, reconciled_at, payload),
+            )
+
+    def latest_position_reconciliation(self) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT report_json FROM paper_position_reconciliation
+                   ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+        return json.loads(row["report_json"]) if row else None
 
     def heartbeat(self, component: str, status: str, last_event_at: Optional[str] = None,
                   last_error: Optional[str] = None) -> None:
@@ -272,6 +299,55 @@ class MarketRuntimeRecorder:
         }
 
 
+def reconcile_paper_positions(
+    reconciliation_gate: Any,
+    fill_ledger_bridge: Any,
+    *,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """Read-only broker position check after all fills/fees are ledgered."""
+    if reconciliation_gate is None or fill_ledger_bridge is None:
+        raise RuntimeStorageError("Position reconciliation requires a gate and the Paper fill ledger.")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise RuntimeStorageError("Position reconciliation clock must be timezone-aware.")
+    ledger_status = fill_ledger_bridge.status()
+    pending = int(ledger_status.get("pending_or_failed", 0))
+    if pending:
+        return {
+            "environment": "PAPER",
+            "status": "BLOCKED_PENDING_LEDGER_EVENTS",
+            "positions_match": False,
+            "pending_fills_or_fees": pending,
+            "orders_enabled": False,
+        }
+    try:
+        from rocket_trader_currency import FXQuote
+        ledger_fx = fill_ledger_bridge.fx_resolver(current)
+        fx_quote = FXQuote(
+            mxn_per_usd=ledger_fx.mxn_per_usd,
+            observed_at=ledger_fx.observed_at,
+            source=ledger_fx.source,
+        )
+        report = reconciliation_gate.reconcile(
+            ledger_snapshot=fill_ledger_bridge.ledger.snapshot(),
+            fx_quote=fx_quote,
+            now=current,
+        )
+        report["reconciled_at"] = current.isoformat()
+        report["orders_enabled"] = False
+        return report
+    except Exception as exc:
+        return {
+            "environment": "PAPER",
+            "status": "RECONCILIATION_ERROR",
+            "positions_match": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "orders_enabled": False,
+        }
+
+
 def account_activity_reconciliation_clear(
     activity_report: Dict[str, Any],
     cash_status: Optional[Dict[str, Any]],
@@ -315,9 +391,11 @@ class AlpacaPaperObserverRuntime:
         fill_ledger_bridge: Any = None,
         activity_stager: Any = None,
         cash_activity_bridge: Any = None,
+        position_reconciliation_gate: Any = None,
         *,
         ledger_retry_interval_seconds: int = 900,
         activity_retry_interval_seconds: int = 900,
+        position_reconciliation_interval_seconds: int = 60,
     ) -> None:
         if config.mode != "OBSERVE_ONLY":
             raise RuntimeConfigurationError("Only OBSERVE_ONLY is supported.")
@@ -331,6 +409,12 @@ class AlpacaPaperObserverRuntime:
         self.fill_ledger_bridge = fill_ledger_bridge
         self.activity_stager = activity_stager
         self.cash_activity_bridge = cash_activity_bridge
+        self.position_reconciliation_gate = position_reconciliation_gate
+        self.position_reconciliation_interval_seconds = max(
+            1, int(position_reconciliation_interval_seconds)
+        )
+        self.last_position_reconciliation_monotonic = 0.0
+        self.last_position_reconciliation: Optional[Dict[str, Any]] = None
         self.ledger_retry_interval_seconds = max(1, int(ledger_retry_interval_seconds))
         self.last_ledger_retry_monotonic = 0.0
         self.activity_retry_interval_seconds = max(1, int(activity_retry_interval_seconds))
@@ -347,6 +431,28 @@ class AlpacaPaperObserverRuntime:
             )
         else:
             self.recorder.heartbeat("ledger", "HEALTHY")
+
+    def _reconcile_paper_positions(self) -> Optional[Dict[str, Any]]:
+        if self.position_reconciliation_gate is None:
+            return None
+        now = datetime.now(timezone.utc)
+        report = reconcile_paper_positions(
+            self.position_reconciliation_gate,
+            self.fill_ledger_bridge,
+            now=now,
+        )
+        self.last_position_reconciliation = report
+        self.recorder.record_position_reconciliation(report)
+        if report.get("status") == "RECONCILED" and report.get("positions_match") is True:
+            self.recorder.heartbeat(
+                "position_reconciliation", "HEALTHY", now.isoformat()
+            )
+        else:
+            self.recorder.heartbeat(
+                "position_reconciliation", "ERROR", now.isoformat(),
+                str(report.get("status") or "position reconciliation failed"),
+            )
+        return report
 
     def _sync_account_activities(self) -> Optional[Dict[str, Any]]:
         if self.activity_stager is None:
@@ -469,6 +575,10 @@ class AlpacaPaperObserverRuntime:
             self.recorder.heartbeat("account_activity", "STARTING")
             self._sync_account_activities()
             self.last_activity_retry_monotonic = time.monotonic()
+        if self.position_reconciliation_gate is not None:
+            self.recorder.heartbeat("position_reconciliation", "STARTING")
+            self._reconcile_paper_positions()
+            self.last_position_reconciliation_monotonic = time.monotonic()
         for component, stream in self.streams.items():
             self.recorder.heartbeat(component, "STARTING")
             thread = threading.Thread(target=stream.run, name=f"rocket-{component}-stream", daemon=True)
@@ -507,6 +617,14 @@ class AlpacaPaperObserverRuntime:
                         self.fill_ledger_bridge.retry_pending()
                         self.last_ledger_retry_monotonic = now_monotonic
                     self._update_ledger_health()
+                if self.position_reconciliation_gate is not None:
+                    now_monotonic = time.monotonic()
+                    if (
+                        now_monotonic - self.last_position_reconciliation_monotonic
+                        >= self.position_reconciliation_interval_seconds
+                    ):
+                        self._reconcile_paper_positions()
+                        self.last_position_reconciliation_monotonic = now_monotonic
         finally:
             self.stop()
 
@@ -570,6 +688,25 @@ def build_fill_ledger_bridge(config: RuntimeConfig):
         ) from exc
 
 
+def build_position_reconciliation_gate(config: RuntimeConfig, fill_ledger_bridge: Any):
+    """Build a read-only TradingClient-backed position reconciliation gate."""
+    if fill_ledger_bridge is None:
+        return None
+    try:
+        from alpaca.trading.client import TradingClient
+        from rocket_trader_paper_reconciliation import AlpacaPaperReconciliationGate
+        client = TradingClient(
+            api_key=config.api_key,
+            secret_key=config.secret_key,
+            paper=True,
+        )
+        return AlpacaPaperReconciliationGate(client)
+    except Exception as exc:
+        raise RuntimeConfigurationError(
+            f"Could not initialize read-only Paper position reconciliation: {exc}"
+        ) from exc
+
+
 def build_cash_activity_bridge(config: RuntimeConfig, fill_ledger_bridge: Any, activity_stager: Any):
     """Attach explicit cash-movement review to the same durable Paper databases.
 
@@ -628,6 +765,9 @@ def main() -> int:
     cash_activity_bridge = build_cash_activity_bridge(
         config, fill_ledger_bridge, activity_stager
     )
+    position_reconciliation_gate = build_position_reconciliation_gate(
+        config, fill_ledger_bridge
+    )
     if args.healthcheck:
         result = recorder.health(
             config.health_max_age_seconds,
@@ -651,10 +791,22 @@ def main() -> int:
             result["ledger_accounting"] = ledger_status
             result["ledger_accounting_healthy"] = ledger_status["pending_or_failed"] == 0
             result["healthy"] = result["healthy"] and result["ledger_accounting_healthy"]
+        if position_reconciliation_gate is not None:
+            latest_reconciliation = recorder.latest_position_reconciliation()
+            result["position_reconciliation"] = latest_reconciliation
+            position_component = result.get("components", {}).get("position_reconciliation", {})
+            result["position_reconciliation_healthy"] = (
+                position_component.get("healthy", False)
+                and latest_reconciliation is not None
+                and latest_reconciliation.get("status") == "RECONCILED"
+                and latest_reconciliation.get("positions_match") is True
+            )
+            result["healthy"] = result["healthy"] and result["position_reconciliation_healthy"]
         print(json.dumps(result, indent=2))
         return 0 if result["healthy"] else 1
     runtime = AlpacaPaperObserverRuntime(
-        config, recorder, fill_ledger_bridge, activity_stager, cash_activity_bridge
+        config, recorder, fill_ledger_bridge, activity_stager, cash_activity_bridge,
+        position_reconciliation_gate,
     )
     def request_stop(_signum, _frame):
         runtime.stop_event.set()

@@ -3,13 +3,16 @@
 """Offline tests for Paper observer runtime; no broker or network calls."""
 import asyncio, os, tempfile, unittest
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
+
+from rocket_trader_realized_pnl_ledger import LedgerFX
 
 from rocket_trader_stream_runtime import (
     AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeStorageError, RuntimeConfig,
     build_fill_ledger_bridge, build_activity_stager, sync_cash_activity_review,
-    account_activity_reconciliation_clear,
+    account_activity_reconciliation_clear, reconcile_paper_positions,
 )
 
 class StreamRuntimeTests(unittest.TestCase):
@@ -250,6 +253,64 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertFalse(account_activity_reconciliation_clear(
             blocked, {"pending_or_failed": 0}
         ))
+
+    def test_position_reconciliation_is_blocked_until_all_fills_and_fees_resolve(self):
+        class Bridge:
+            def __init__(self):
+                self.fx_called = False
+                self.ledger = SimpleNamespace(snapshot=lambda: None)
+            def status(self):
+                return {"pending_or_failed": 1}
+            def fx_resolver(self, _now):
+                self.fx_called = True
+                raise AssertionError("FX must not be requested while ledger events are pending")
+        class Gate:
+            def reconcile(self, **_kwargs):
+                raise AssertionError("broker positions must not be compared with an incomplete ledger")
+        bridge = Bridge()
+        result = reconcile_paper_positions(Gate(), bridge, now=datetime.now(timezone.utc))
+        self.assertEqual(result["status"], "BLOCKED_PENDING_LEDGER_EVENTS")
+        self.assertFalse(bridge.fx_called)
+
+    def test_position_reconciliation_persists_read_only_broker_result(self):
+        now = datetime.now(timezone.utc)
+        class Ledger:
+            def snapshot(self):
+                return SimpleNamespace(
+                    operating_capital_mxn=Decimal("1000.00"),
+                    open_positions={},
+                )
+        class Bridge:
+            ledger = Ledger()
+            def status(self):
+                return {"pending_or_failed": 0}
+            def fx_resolver(self, _when):
+                return LedgerFX(Decimal("18.5"), now, "fixture:USD/MXN")
+        class Gate:
+            def reconcile(self, *, ledger_snapshot, fx_quote, now):
+                self.assertion = (
+                    ledger_snapshot.operating_capital_mxn == Decimal("1000.00")
+                    and fx_quote.mxn_per_usd == Decimal("18.5")
+                    and now.tzinfo is not None
+                )
+                return {"environment": "PAPER", "status": "RECONCILED", "positions_match": True}
+        gate = Gate()
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder, fill_ledger_bridge=Bridge(),
+            position_reconciliation_gate=gate,
+        )
+        report = runtime._reconcile_paper_positions()
+        self.assertTrue(gate.assertion)
+        self.assertEqual(report["status"], "RECONCILED")
+        self.assertEqual(
+            self.recorder.latest_position_reconciliation()["status"], "RECONCILED"
+        )
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertTrue(health["components"]["position_reconciliation"]["healthy"])
 
     def test_healthcheck_mirrors_staged_cash_before_reading_review_status(self):
         class Stager:
