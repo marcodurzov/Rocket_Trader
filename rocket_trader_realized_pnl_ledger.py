@@ -15,7 +15,7 @@ import sqlite3
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_FLOOR
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
@@ -39,7 +39,14 @@ def _d(value: Any, name: str) -> Decimal:
 
 
 def _money(value: Decimal) -> Decimal:
+    """Round non-negative monetary allocations down to cents."""
     return value.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+
+
+def _pnl_money(value: Decimal) -> Decimal:
+    """Conservative cent rounding: profits down, losses away from zero."""
+    mode = ROUND_FLOOR if value < 0 else ROUND_DOWN
+    return value.quantize(Decimal("0.01"), rounding=mode)
 
 
 def _utc(value: Optional[datetime] = None) -> str:
@@ -307,8 +314,8 @@ class RealizedPnLLedger:
             "side": side,
             "quantity": str(qty),
             "price_usd": str(price),
-            "gross_usd": str(_money(qty * price)),
-            "fee_usd": str(_money(fee)),
+            "gross_usd": str(qty * price),
+            "fee_usd": str(fee),
             "fee_asset_qty": str(fee_asset),
             "net_acquired_quantity": str(qty + fee_asset if side == "BUY" else qty),
             "asset_class": asset_class,
@@ -408,7 +415,7 @@ class RealizedPnLLedger:
                         )
                     net_proceeds = gross - fee
                     pnl_usd = net_proceeds - cost_basis
-                    pnl_mxn = _money(pnl_usd * rate)
+                    pnl_mxn = pnl_usd * rate
                     realized_mxn += pnl_mxn
                     realized_rows.append({
                         "event_id": event["event_id"],
@@ -417,8 +424,8 @@ class RealizedPnLLedger:
                         "quantity": str(qty),
                         "gross_proceeds_usd": str(gross),
                         "exit_fee_usd": str(fee),
-                        "fifo_cost_basis_usd": str(_money(cost_basis)),
-                        "realized_net_pnl_usd": str(_money(pnl_usd)),
+                        "fifo_cost_basis_usd": str(cost_basis),
+                        "realized_net_pnl_usd": str(pnl_usd),
                         "fx_mxn_per_usd": str(rate),
                         "realized_net_pnl_mxn": str(pnl_mxn),
                     })
@@ -454,9 +461,9 @@ class RealizedPnLLedger:
             initial_capital_mxn=_money(state["initial"]),
             deposits_mxn=_money(state["deposits"]),
             withdrawals_mxn=_money(state["withdrawals"]),
-            realized_net_pnl_mxn=_money(state["realized_mxn"]),
-            operating_capital_mxn=_money(state["operating_capital"]),
-            earned_growth_capital_mxn=_money(
+            realized_net_pnl_mxn=_pnl_money(state["realized_mxn"]),
+            operating_capital_mxn=_pnl_money(state["operating_capital"]),
+            earned_growth_capital_mxn=_pnl_money(
                 state["initial"] + state["realized_mxn"]
             ),
             open_positions=state["open_positions"],
@@ -473,7 +480,7 @@ class RealizedPnLLedger:
         return {
             "period": period,
             "realized_trade_count": len(rows),
-            "realized_net_pnl_mxn": str(_money(total)),
+            "realized_net_pnl_mxn": str(_pnl_money(total)),
             "trades": rows,
         }
 
