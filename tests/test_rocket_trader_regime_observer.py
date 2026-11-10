@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from rocket_trader_regime_observer import (
     MarketFeatureBuilder, PaperRegimeObserver, RegimeDecisionStore,
 )
+from rocket_trader_news_event_assessment import NewsEventAssessmentStore
 
 
 class RegimeObserverTests(unittest.TestCase):
@@ -77,6 +78,54 @@ class RegimeObserverTests(unittest.TestCase):
         latest = observer.store.latest()
         self.assertEqual(len(latest), 2)
         self.assertTrue(all(item["status"] == "EVALUATED" for item in latest))
+
+    def test_approved_critical_news_is_applied_only_to_affected_universe(self):
+        self.add_bars("EQUITY", ("SPY", "QQQ", "IWM"))
+        self.add_bars("CRYPTO", ("BTC/USD", "ETH/USD", "SOL/USD"))
+        event_db = os.path.join(self.tmp.name, "news_events.sqlite3")
+        events = NewsEventAssessmentStore(event_db)
+        published = (self.now - timedelta(minutes=6)).isoformat()
+        seen = (self.now - timedelta(minutes=5)).isoformat()
+        events.import_event({
+            "event_id": "event-spy-systemic",
+            "title": "Verified systemic market event",
+            "event_type": "macro",
+            "summary": "Two independent sources confirm a systemic event.",
+            "affected_symbols": ["SPY", "QQQ", "IWM"],
+            "sources": [
+                {"source": "wire-a", "article_id": "a1",
+                 "url": "https://wire-a.example/story",
+                 "published_at": published, "first_seen_at": seen,
+                 "source_domain": "wire-a.example",
+                 "independent_source_group": "wire-a"},
+                {"source": "wire-b", "article_id": "b1",
+                 "url": "https://wire-b.example/story",
+                 "published_at": published, "first_seen_at": seen,
+                 "source_domain": "wire-b.example",
+                 "independent_source_group": "wire-b"},
+            ],
+        })
+        assessment_id = events.import_assessment({
+            "event_id": "event-spy-systemic", "severity": "CRITICAL",
+            "relevance": .9, "credibility": .9, "novelty": .9,
+            "point_in_time_eligible": True,
+            "evaluator_version": "human-reviewed-v1",
+            "rationale": "Reviewed, independent, time-valid evidence.",
+            "assessed_at": self.now.isoformat(),
+            "expires_at": (self.now + timedelta(hours=2)).isoformat(),
+        })
+        events.review(assessment_id, "human-reviewer", "approve", self.now)
+        observer = PaperRegimeObserver(self.market_db, self.decision_db, event_db=event_db)
+        report = observer.evaluate_once(now=self.now)
+        equity = report["universes"]["EQUITY"]
+        crypto = report["universes"]["CRYPTO"]
+        self.assertTrue(equity["news_overlay"]["block_new_entries"])
+        self.assertEqual(equity["news_overlay"]["exposure_multiplier"], 0.0)
+        self.assertEqual(equity["news_assessments_loaded"], 1)
+        self.assertFalse(crypto["news_overlay"]["block_new_entries"])
+        self.assertEqual(crypto["news_assessments_loaded"], 0)
+        self.assertEqual(equity["cash_weight"], 1.0)
+        self.assertEqual(crypto["cash_weight"], 1.0)
 
     def test_missing_universe_data_is_recorded_as_cash_abstention(self):
         self.add_bars("EQUITY", ("SPY", "QQQ", "IWM"))
