@@ -109,15 +109,20 @@ def main() -> int:
                 raise RuntimeError("Broker shows BTC inventory without a matching buy fill; manual review required.")
             print("result=BUY_CANCELLED_OR_UNFILLED_NO_POSITION")
             return 0
-        if held != filled:
+        if held <= 0:
+            raise RuntimeError("Buy fill exists but no net BTC inventory is available to close.")
+        if held > filled:
             raise RuntimeError(
-                f"Broker BTC position {held} does not equal smoke buy fill {filled}; refusing to sell uncertain inventory."
+                f"Broker BTC position {held} exceeds the smoke buy fill {filled}; refusing to sell unrelated inventory."
             )
-
+        # Sell the broker-confirmed net quantity, not the gross buy fill.
+        # Alpaca crypto fees may be deducted in base asset, so these values differ.
+        sell_quantity = held
+        print(f"net_quantity_delta_for_fees_or_adjustments={filled - held}")
         sell = order_state(adapter, SELL_ID)
         if not sell.get("found"):
             sell = adapter.submit(CryptoOrderIntent(
-                client_order_id=SELL_ID, symbol=SYMBOL, side=Side.SELL, quantity=filled,
+                client_order_id=SELL_ID, symbol=SYMBOL, side=Side.SELL, quantity=sell_quantity,
             ))
         sell = settle(adapter, client, SELL_ID, sell)
         residual = held_btc(client)
