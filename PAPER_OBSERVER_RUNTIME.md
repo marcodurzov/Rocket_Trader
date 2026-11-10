@@ -21,17 +21,54 @@ LIVE. The runtime explicitly rejects any mode other than OBSERVE_ONLY.
 The named Docker volume `rocket_trader_data` persists bars, Paper trade events,
 and heartbeats across container restarts. Back it up before changing hosts.
 
+## Paper fill accounting
+
+The Compose deployment enables the read-only Paper fill ledger bridge. On each
+Alpaca Paper fill update it:
+
+- Persists the raw trade update in the observer database.
+- Resolves a timestamped USD/MXN quote and stores it with the fill before fee
+  retries, preventing a later retry from substituting a newer FX rate.
+- Looks up actual Alpaca Paper CFEE / FEE activities by execution ID.
+- Records the fill in the immutable FIFO MXN ledger only when both FX and fees
+  are adequately supported.
+- Retries pending fee resolution every 15 minutes. The activity query is cached
+  for 15 minutes to limit API requests.
+
+The initial ledger capital defaults to MXN 1,000 and the growth milestone to
+MXN 100,000. These values are persisted. Changing either value after the ledger
+has been initialized causes startup to fail; do not delete or recreate the
+ledger to change policy.
+
+The USD/MXN provider is exchangerate.dev. Its free quotes are delayed by about
+15 minutes and are indicative, not settlement rates. The bridge accepts only a
+quote whose effective_at is at or before the fill and no more than 45 minutes
+old. There is no fallback. A stale/closed FX market can therefore leave a fill
+unaccounted and make the accounting health check fail.
+
+Crypto fees may be posted by Alpaca at end of day; fills remain pending until
+the fee activity is available. Daily regulatory fees without exact execution
+linkage (notably some equity sell fees) are not allocated by guesswork and
+remain pending/manual-review. The runtime health check reports this as
+unhealthy rather than presenting incomplete accounting as clean.
+
+Optional .env entry:
+- EXCHANGERATE_DEV_API_KEY=... (the public endpoint can be queried without a
+  key; a key may be used according to the provider's plan and limits).
+
 ## Important limitations
 
 - Equities use Alpaca IEX data, not SIP.
 - Crypto uses Alpaca's US crypto stream and runs continuously, including weekends.
 - Equity bars naturally stop outside exchange sessions; a quiet equity stream
   outside market hours is not itself a failure.
-- The container uses Alpaca Paper trade updates and never constructs a trading
-  client or submits orders.
+- The container uses Alpaca Paper trade updates for accounting only. It
+  constructs no order-submission client and never submits, cancels, or modifies
+  orders.
 - No strategy is currently approved. This service is data collection and
   operational groundwork only.
-- A later execution runtime must add a strategy approval artifact, the Core
-  risk gate, persistent drawdown guard, ledger, broker reconciliation, order
-  idempotency, position lifecycle, session/calendar controls, and recovery
-  tests before any Paper orders can be enabled.
+- No strategy is approved and no order execution is enabled. A separate
+  execution runtime must still integrate the Core risk gate, persistent
+  drawdown guard, broker order/position reconciliation, order idempotency,
+  partial-fill exits, session/calendar controls, and recovery tests before
+  any Paper orders can be enabled.
