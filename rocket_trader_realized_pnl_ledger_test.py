@@ -82,6 +82,38 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             )
         self.assertEqual(self.ledger.snapshot().event_count, 1)
 
+    def test_sub_cent_crypto_fees_are_not_erased(self):
+        self.ledger.record_fill(
+            fill_id="small-buy", symbol="BTC/USD", side="BUY",
+            quantity="0.0001", price_usd="10000", fee_usd="0.0025",
+            fx=FX, occurred_at=NOW, asset_class="CRYPTO_SPOT",
+        )
+        self.ledger.record_fill(
+            fill_id="small-sell", symbol="BTC/USD", side="SELL",
+            quantity="0.0001", price_usd="10000", fee_usd="0.0025",
+            fx=FX, occurred_at=NOW, asset_class="CRYPTO_SPOT",
+        )
+        snapshot = self.ledger.snapshot()
+        # Both $0.0025 fees are below one cent but together cost $0.005 USD.
+        self.assertEqual(snapshot.realized_net_pnl_mxn, Decimal("-0.09"))
+
+    def test_partial_fill_pnl_is_aggregated_before_cent_rounding(self):
+        self.ledger.record_fill(
+            fill_id="partial-buy", symbol="BTC/USD", side="BUY",
+            quantity="0.001", price_usd="10000", fee_usd="0",
+            fx=FX, occurred_at=NOW, asset_class="CRYPTO_SPOT",
+        )
+        for index in range(10):
+            self.ledger.record_fill(
+                fill_id=f"partial-sell-{index}", symbol="BTC/USD", side="SELL",
+                quantity="0.0001", price_usd="10010", fee_usd="0",
+                fx=FX, occurred_at=NOW, asset_class="CRYPTO_SPOT",
+            )
+        snapshot = self.ledger.snapshot()
+        # Each partial fill earns MXN 0.018; rounding each fill first loses 0.008 each.
+        self.assertEqual(snapshot.realized_net_pnl_mxn, Decimal("0.18"))
+        self.assertEqual(snapshot.open_positions, {})
+
     def test_short_sell_is_blocked(self):
         with self.assertRaisesRegex(LedgerError, "exceeds FIFO inventory"):
             self.fill("sell-no-inventory", "SELL", "0.001", "10000")
