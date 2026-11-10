@@ -1,0 +1,111 @@
+name: Rocket Trader - Equity Multi-year Benchmark Research v0.4 (10y, next-open)
+
+on:
+  push:
+    branches:
+      - main
+      - "research/mean-reversion-next-open"
+    paths:
+      - "rocket_trader_equity_multiyear_research_v0_4.py"
+      - "rocket_trader_equity_multiyear_research_v0_4_test.py"
+      - "requirements-yahoo.txt"
+      - ".github/workflows/rocket-trader-equity-multiyear-research-v0.4.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_equity_multiyear_research_v0_4.py"
+      - "rocket_trader_equity_multiyear_research_v0_4_test.py"
+      - ".github/workflows/rocket-trader-equity-multiyear-research-v0.4.yml"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Historical research source; Yahoo is separate from the Alpaca execution venue
+        required: false
+        default: 'YAHOO'
+        type: choice
+        options:
+          - YAHOO
+          - ALPACA
+      years:
+        description: Calendar years of adjusted daily ETF data (minimum 3)
+        required: false
+        default: '10'
+        type: string
+      feed:
+        description: IEX default; SIP requires Algo Trader Plus entitlement
+        required: false
+        default: 'IEX'
+        type: choice
+        options:
+          - IEX
+          - SIP
+  schedule:
+    - cron: '0 18 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocket-trader-equity-multiyear-research-v0-4
+  cancel-in-progress: false
+
+jobs:
+  equity-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-alpaca.txt
+          pip install -r requirements-yahoo.txt
+      - name: Offline self-test
+        run: python rocket_trader_equity_multiyear_research_v0_4.py --self-test
+      - name: Offline regression tests
+        run: python -m unittest -v rocket_trader_equity_multiyear_research_v0_4_test.py
+      - name: Run ten-year adjusted ETF research
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/mean-reversion-next-open'))
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          YEARS_INPUT: ${{ inputs.years || '10' }}
+          FEED_INPUT: ${{ inputs.feed || 'IEX' }}
+          SOURCE_INPUT: ${{ inputs.source || 'YAHOO' }}
+        run: |
+          python rocket_trader_equity_multiyear_research_v0_4.py --years "$YEARS_INPUT" --feed "$FEED_INPUT" --source "$SOURCE_INPUT" --output research_artifacts/equity_multiyear_research_v0_4.json
+      - name: Verify research-only report
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/mean-reversion-next-open'))
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('research_artifacts/equity_multiyear_research_v0_4.json').read_text())
+          assert d['ok'] is True
+          assert d['data_quality_pass'] is True
+          assert d['orders_enabled'] is False and d['orders_submitted'] == 0
+          assert d['candidate_promotion_allowed'] is False and d['paper_approval'] is False
+          mt=d['multiple_testing']
+          assert mt['method'] == 'HOLM_BONFERRONI'
+          assert mt['promotion_allowed'] is False
+          assert mt['family_size'] == len(mt['raw_pvalues']) == len(mt['holm_adjusted_pvalues'])
+          assert all(0 <= p <= 1 for p in mt['holm_adjusted_pvalues'].values())
+          print('Data quality pass:', d.get('data_quality_pass'))
+          print('Multiple-testing family size:', mt['family_size'])
+          print('Family-wise significant hypotheses:', mt['familywise_significant_count'])
+          print('Pre-screen pass count:', mt['pre_screen_pass_count'])
+          print('Symbols with data issues:', d.get('symbols_with_data_quality_issues'))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/research/mean-reversion-next-open')))
+        with:
+          name: rocket-trader-equity-multiyear-research-v0-4
+          path: research_artifacts/
+          if-no-files-found: warn
+          retention-days: 30
