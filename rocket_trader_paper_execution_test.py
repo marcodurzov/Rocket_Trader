@@ -165,6 +165,15 @@ class PaperExecutionTests(unittest.TestCase):
             self.adapter.submit(self.order())
         self.assertEqual(self.client.submit_count, 0)
 
+    def test_blocks_unset_options_level_without_leaking_type_error(self):
+        self.client.get_account_configurations = lambda: SimpleNamespace(
+            max_margin_multiplier="1", no_shorting=True,
+            max_options_trading_level=None,
+        )
+        with self.assertRaisesRegex(PaperExecutionError, "must enforce"):
+            self.adapter.submit(self.order())
+        self.assertEqual(self.client.submit_count, 0)
+
     def test_blocks_order_that_exceeds_cash_with_market_buffer(self):
         self.client.get_account = lambda: SimpleNamespace(
             status="ACTIVE", currency="USD", trading_blocked=False,
