@@ -153,9 +153,14 @@ class PaperFillLedgerBridge:
 
         try:
             fee = self.fee_resolver(payload)
-            if not isinstance(fee, dict) or "fee_usd" not in fee or "fee_asset_qty" not in fee:
+            if (
+                not isinstance(fee, dict)
+                or "fee_usd" not in fee
+                or "fee_asset_qty" not in fee
+                or not str(fee.get("fee_source", "")).strip()
+            ):
                 raise PaperFillLedgerBridgeError(
-                    "Fee resolver must explicitly provide fee_usd and fee_asset_qty."
+                    "Fee resolver must explicitly provide fee_usd, fee_asset_qty, and fee_source."
                 )
             fx = self.fx_resolver(occurred_at)
             if not isinstance(fx, LedgerFX):
@@ -168,6 +173,7 @@ class PaperFillLedgerBridge:
                 price_usd=price,
                 fee_usd=fee["fee_usd"],
                 fee_asset_qty=fee["fee_asset_qty"],
+                fee_source=fee["fee_source"],
                 fx=fx,
                 occurred_at=occurred_at,
                 asset_class=asset_class,
