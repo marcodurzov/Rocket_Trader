@@ -12,6 +12,11 @@ services:
       ROCKET_TRADER_RUNTIME_DB: /app/data/runtime.sqlite3
       ROCKET_TRADER_EQUITY_SYMBOLS: SPY,QQQ,IWM
       ROCKET_TRADER_CRYPTO_SYMBOLS: BTC/USD,ETH/USD,SOL/USD
+      ROCKET_TRADER_LEDGER_ENABLED: "true"
+      ROCKET_TRADER_LEDGER_DB: /app/data/rocket_trader_ledger.sqlite3
+      ROCKET_TRADER_LEDGER_INBOX_DB: /app/data/rocket_trader_fill_inbox.sqlite3
+      ROCKET_TRADER_INITIAL_CAPITAL_MXN: "1000.00"
+      ROCKET_TRADER_MILESTONE_MXN: "100000.00"
     volumes:
       - rocket_trader_data:/app/data
     healthcheck:

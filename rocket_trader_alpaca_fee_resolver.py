@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -70,21 +72,32 @@ class AlpacaPaperActivitiesClient:
         secret_key: Optional[str] = None,
         *,
         timeout_seconds: int = 10,
+        cache_seconds: int = 900,
         opener: Callable[..., Any] = urllib.request.urlopen,
     ) -> None:
         self.api_key = api_key or os.getenv("ALPACA_API_KEY", "")
         self.secret_key = secret_key or os.getenv("ALPACA_SECRET_KEY", "")
         if not self.api_key or not self.secret_key:
             raise AlpacaFeeResolutionError("Alpaca Paper API credentials are required")
-        if timeout_seconds <= 0:
-            raise AlpacaFeeResolutionError("timeout_seconds must be positive")
+        if timeout_seconds <= 0 or cache_seconds < 0:
+            raise AlpacaFeeResolutionError("Invalid fee activity client timing configuration")
         self.timeout_seconds = timeout_seconds
+        self.cache_seconds = cache_seconds
         self.opener = opener
+        self._cache: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
+        self._cache_lock = threading.RLock()
 
     def list_fee_activities(self, fill_time: datetime) -> List[Dict[str, Any]]:
         fill_time = _timestamp(fill_time)
-        after = (fill_time - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        until = (fill_time + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cache_key = fill_time.date().isoformat()
+        now_monotonic = time.monotonic()
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+            if cached and now_monotonic - cached[0] <= self.cache_seconds:
+                return list(cached[1])
+        day_start = datetime.combine(fill_time.date(), datetime.min.time(), tzinfo=timezone.utc)
+        after = (day_start - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        until = (day_start + timedelta(days=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
         token = None
         output: List[Dict[str, Any]] = []
         seen_tokens = set()
@@ -128,6 +141,8 @@ class AlpacaPaperActivitiesClient:
                 raise AlpacaFeeResolutionError("Fee activity pagination cursor did not advance")
             seen_tokens.add(next_token)
             token = next_token
+        with self._cache_lock:
+            self._cache[cache_key] = (time.monotonic(), list(output))
         return output
 
 

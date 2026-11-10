@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Offline tests for Alpaca Paper Account Activities fee resolution."""
 
+import json
 import unittest
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -10,13 +11,38 @@ from rocket_trader_alpaca_fee_resolver import (
     AlpacaActivityFeeResolver,
     AlpacaFeeNotAvailable,
     AlpacaFeeResolutionError,
+    AlpacaPaperActivitiesClient,
 )
 
 
 NOW = datetime(2026, 11, 9, 16, 0, tzinfo=timezone.utc)
 
 
+class FakeResponse:
+    status = 200
+    def __enter__(self):
+        return self
+    def __exit__(self, *_args):
+        return False
+    def read(self):
+        return b"[]"
+
+
 class AlpacaActivityFeeResolverTests(unittest.TestCase):
+    def test_paper_activity_client_caches_same_utc_fill_day(self):
+        calls = []
+        client = AlpacaPaperActivitiesClient(
+            api_key="paper-key",
+            secret_key="paper-secret",
+            cache_seconds=900,
+            opener=lambda request, timeout=None: (calls.append(request) or FakeResponse()),
+        )
+        first = client.list_fee_activities(NOW)
+        second = client.list_fee_activities(NOW.replace(hour=22))
+        self.assertEqual(first, [])
+        self.assertEqual(second, [])
+        self.assertEqual(len(calls), 1)
+
     def test_crypto_buy_base_asset_fee_is_converted_to_usd(self):
         activities = [{
             "id": "20261109::exec-buy",
