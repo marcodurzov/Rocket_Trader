@@ -1,0 +1,35 @@
+name: Rocket Trader - Paper Account Activity Audit
+
+on:
+  push:
+    branches:
+      - paper-account-activity-audit
+    paths:
+      - "alpaca_paper_account_activity_audit.py"
+      - "rocket_trader_alpaca_activity_stager.py"
+      - ".github/workflows/paper-account-activity-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-activity-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+      ALPACA_LIVE_ENABLED: "false"
+      ROCKET_TRADER_EXECUTION_MODE: "PAPER"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install requests
+        run: pip install "requests>=2.32,<3"
+      - name: Compile audit
+        run: python -m py_compile alpaca_paper_account_activity_audit.py rocket_trader_alpaca_activity_stager.py
+      - name: Read-only activity and fee audit
+        run: python alpaca_paper_account_activity_audit.py
