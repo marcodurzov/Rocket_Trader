@@ -220,6 +220,15 @@ class CryptoPaperExecutionTests(unittest.TestCase):
             self.adapter.submit(self.buy())
         self.assertEqual(self.client.submit_count, 0)
 
+    def test_blocks_unset_options_level_without_leaking_type_error(self):
+        self.client.get_account_configurations = lambda: SimpleNamespace(
+            max_margin_multiplier="1", no_shorting=True,
+            max_options_trading_level=None,
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "must enforce"):
+            self.adapter.submit(self.buy())
+        self.assertEqual(self.client.submit_count, 0)
+
     def test_blocks_crypto_buy_above_cash_only_budget(self):
         self.client.get_account = lambda: SimpleNamespace(
             status="ACTIVE", currency="USD", crypto_status="ACTIVE",
