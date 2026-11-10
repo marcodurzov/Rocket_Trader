@@ -16,6 +16,8 @@ on:
       - "rocket_trader_regime_selector.py"
       - "rocket_trader_regime_observer.py"
       - "rocket_trader_news_event_assessment.py"
+      - "rocket_trader_execution_cost_telemetry.py"
+      - "tests/test_rocket_trader_execution_cost_telemetry.py"
       - "tests/test_rocket_trader_news_event_assessment.py"
       - "tests/test_rocket_trader_regime_observer.py"
       - "rocket_trader_stream_runtime_test.py"
@@ -71,6 +73,7 @@ jobs:
             /app/rocket_trader_regime_selector.py \
             /app/rocket_trader_regime_observer.py \
             /app/rocket_trader_news_event_assessment.py \
+            /app/rocket_trader_execution_cost_telemetry.py \
             /app/rocket_trader_realized_pnl_ledger.py \
             /app/rocket_trader_paper_fill_ledger_bridge.py \
             /app/rocket_trader_alpaca_fee_resolver.py \
