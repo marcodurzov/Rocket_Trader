@@ -227,7 +227,7 @@ class CryptoPaperExecutionTests(unittest.TestCase):
             cash="10", non_marginable_buying_power="10",
         )
         with self.assertRaisesRegex(CryptoPaperExecutionError, "exceeds available cash"):
-            self.adapter.submit(self.buy(notional_usd="10"))
+            self.adapter.submit(self.buy(notional="10"))
         self.assertEqual(self.client.submit_count, 0)
 
     def test_rejects_non_paper_and_non_usd_pairs(self):
