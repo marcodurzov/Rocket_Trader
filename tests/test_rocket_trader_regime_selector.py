@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from rocket_trader_regime_selector import (
     MarketState, RegimeClassifier, RegimeLabel, NewsAssessment, NewsSeverity,
     NewsRiskOverlay, StrategyCandidate, RegimeAwarePortfolioSelector,
@@ -48,9 +49,36 @@ class RegimeSelectorTests(unittest.TestCase):
         news = NewsAssessment("event-1", "2026-11-10T11:59:00Z",
                               NewsSeverity.CRITICAL, 1, 1, 1, ("SPY",),
                               True, "human-reviewed-v1", "systemic event")
-        result = RegimeAwarePortfolioSelector().select(self.state(), [self.candidate()], [news])
+        result = RegimeAwarePortfolioSelector().select(self.state(), [self.candidate()], [news],
+            now=datetime.fromisoformat("2026-11-10T12:00:00+00:00"))
         self.assertTrue(result.abstain)
         self.assertEqual(result.cash_weight, 1)
+
+    def test_stale_critical_news_expires(self):
+        from datetime import datetime
+        news = NewsAssessment("old-critical", "2026-11-10T00:00:00+00:00",
+                              NewsSeverity.CRITICAL, 1, 1, 1, ("SPY",),
+                              True, "human-reviewed-v1", "stale")
+        risk = NewsRiskOverlay().evaluate([news], "SPY",
+            now=datetime.fromisoformat("2026-11-10T12:00:00+00:00"))
+        self.assertFalse(risk.block_new_entries)
+        self.assertEqual(risk.exposure_multiplier, 1)
+
+    def test_low_confidence_critical_does_not_hard_block(self):
+        from datetime import datetime
+        news = NewsAssessment("weak-critical", "2026-11-10T11:59:00+00:00",
+                              NewsSeverity.CRITICAL, .3, .5, .5, ("SPY",),
+                              True, "human-reviewed-v1", "weak evidence")
+        risk = NewsRiskOverlay().evaluate([news], "SPY",
+            now=datetime.fromisoformat("2026-11-10T12:00:00+00:00"))
+        self.assertFalse(risk.block_new_entries)
+        self.assertLess(risk.exposure_multiplier, 1)
+
+    def test_naive_news_timestamp_rejected(self):
+        with self.assertRaises(ValueError):
+            NewsAssessment("bad-time", "2026-11-10T11:59:00",
+                           NewsSeverity.HIGH, 1, 1, 1, (), True,
+                           "human-reviewed-v1", "naive timestamp")
 
     def test_historical_backfill_cannot_change_risk(self):
         news = NewsAssessment("old", "2020-01-01T00:00:00Z",

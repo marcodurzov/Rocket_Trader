@@ -9,6 +9,7 @@ versioned evaluator and be point-in-time eligible before they can affect risk.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from math import isfinite
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -155,6 +156,12 @@ class NewsAssessment:
             _unit(name, getattr(self, name))
         if not self.event_id or not self.observed_at:
             raise ValueError("news event_id and observed_at are required")
+        try:
+            observed = datetime.fromisoformat(self.observed_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("news observed_at must be an ISO-8601 timestamp") from exc
+        if observed.tzinfo is None or observed.utcoffset() is None:
+            raise ValueError("news observed_at must be timezone-aware")
         if self.severity != NewsSeverity.UNKNOWN and not self.evaluator_version:
             raise ValueError("a versioned evaluator is required for scored news")
 
@@ -171,12 +178,21 @@ class NewsRiskOverlay:
     """News can reduce exposure or block entries; it can never increase risk."""
 
     def evaluate(self, assessments: Sequence[NewsAssessment],
-                 symbol: Optional[str] = None) -> NewsRisk:
+                 symbol: Optional[str] = None,
+                 now: Optional[datetime] = None,
+                 max_age_seconds: int = 21600) -> NewsRisk:
+        if max_age_seconds <= 0:
+            raise ValueError("max_age_seconds must be positive")
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("news evaluation time must be timezone-aware")
         relevant = []
         for item in assessments:
-            if not item.point_in_time_eligible:
+            if not item.point_in_time_eligible or item.severity == NewsSeverity.UNKNOWN:
                 continue
-            if item.severity == NewsSeverity.UNKNOWN:
+            observed = datetime.fromisoformat(item.observed_at.replace("Z", "+00:00"))
+            age = (current - observed).total_seconds()
+            if age < 0 or age > max_age_seconds:
                 continue
             if symbol and item.affected_symbols and symbol.upper() not in {
                 s.upper() for s in item.affected_symbols
@@ -187,7 +203,7 @@ class NewsRiskOverlay:
                 relevant.append((item, weight))
         if not relevant:
             return NewsRisk(1.0, False, 0.0,
-                            ("No eligible, scored, relevant news; no risk increase.",))
+                            ("No fresh, eligible, scored news; no risk increase.",))
         multiplier = 1.0
         block = False
         reasons: List[str] = []
@@ -202,10 +218,10 @@ class NewsRiskOverlay:
                 factor = 0.50
             elif item.severity == NewsSeverity.CRITICAL:
                 factor = 0.0
-                block = True
+                if weight >= 0.65:
+                    block = True
             else:
                 factor = 1.0
-            # Discount weak or stale/low-novelty assessments toward neutral.
             factor = 1.0 - weight * (1.0 - factor)
             multiplier = min(multiplier, factor)
             reasons.append(f"{item.event_id}: {item.severity.value}, weighted={weight:.3f}")
@@ -285,9 +301,10 @@ class RegimeAwarePortfolioSelector:
             + defensive * regime.risk_off))
 
     def select(self, state: MarketState, candidates: Iterable[StrategyCandidate],
-               news: Sequence[NewsAssessment] = ()) -> PortfolioDecision:
+               news: Sequence[NewsAssessment] = (),
+               now: Optional[datetime] = None) -> PortfolioDecision:
         regime = self.classifier.assess(state)
-        news_risk = self.news_overlay.evaluate(news)
+        news_risk = self.news_overlay.evaluate(news, now=now)
         rationale: List[str] = list(regime.rationale) + list(news_risk.rationale)
         if regime.label == RegimeLabel.UNKNOWN or news_risk.block_new_entries:
             why = "Data quality gate" if regime.label == RegimeLabel.UNKNOWN else "Critical eligible news"
