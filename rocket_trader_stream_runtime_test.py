@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Offline tests for Paper observer runtime; no broker or network calls."""
-import os, tempfile, unittest
+import asyncio, os, tempfile, unittest
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from rocket_trader_stream_runtime import (
     AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeConfig,
+    build_fill_ledger_bridge,
 )
 
 class StreamRuntimeTests(unittest.TestCase):
@@ -96,6 +97,73 @@ class StreamRuntimeTests(unittest.TestCase):
             result["components"]["equity"]["last_error"],
             "Stream thread exited unexpectedly.",
         )
+
+    def test_trade_update_is_forwarded_to_fill_ledger_bridge(self):
+        class FakeBridge:
+            def __init__(self):
+                self.calls = []
+            def process_trade_update(self, update):
+                self.calls.append(update)
+                return {"processed": True}
+            def status(self):
+                return {"pending_or_failed": 0, "counts": {}}
+
+        bridge = FakeBridge()
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder, bridge)
+        event = {
+            "event": "fill",
+            "execution_id": "exec-runtime-1",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "qty": "1",
+            "price": "100",
+            "order": {"id": "order-1", "symbol": "SPY", "side": "buy"},
+        }
+        asyncio.run(runtime._trade_update_handler(event))
+        self.assertEqual(len(bridge.calls), 1)
+        result = self.recorder.health(max_age_seconds=120)
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["components"]["ledger"]["status"], "HEALTHY")
+
+    def test_fill_ledger_bridge_error_is_visible_without_killing_trade_stream(self):
+        class FailingBridge:
+            def process_trade_update(self, _update):
+                raise RuntimeError("fee not yet posted")
+            def status(self):
+                return {"pending_or_failed": 1, "counts": {"FAILED": 1}}
+
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(config, self.recorder, FailingBridge())
+        event = {"event": "fill", "order": {"id": "order-2"}}
+        asyncio.run(runtime._trade_update_handler(event))
+        result = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(result["healthy"])
+        self.assertEqual(result["components"]["trading"]["status"], "HEALTHY")
+        self.assertEqual(result["components"]["ledger"]["status"], "ERROR")
+        self.assertEqual(result["components"]["ledger"]["last_error"], "fee not yet posted")
+
+    def test_ledger_bridge_is_disabled_by_default(self):
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        with patch.dict(os.environ, {"ROCKET_TRADER_LEDGER_ENABLED": "false"}, clear=False):
+            self.assertIsNone(build_fill_ledger_bridge(config))
+
+    def test_invalid_ledger_enable_flag_is_rejected(self):
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        with patch.dict(os.environ, {"ROCKET_TRADER_LEDGER_ENABLED": "maybe"}, clear=False):
+            with self.assertRaisesRegex(RuntimeConfigurationError, "must be boolean"):
+                build_fill_ledger_bridge(config)
 
     def test_runtime_rejects_any_trading_mode(self):
         env = {"ROCKET_TRADER_RUNTIME_MODE":"LIVE", "ALPACA_API_KEY":"x",
