@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from rocket_trader_stream_runtime import (
     AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeConfig,
-    build_fill_ledger_bridge, build_activity_stager,
+    build_fill_ledger_bridge, build_activity_stager, sync_cash_activity_review,
 )
 
 class StreamRuntimeTests(unittest.TestCase):
@@ -229,6 +229,37 @@ class StreamRuntimeTests(unittest.TestCase):
         health = self.recorder.health(max_age_seconds=120)
         self.assertFalse(health["healthy"])
         self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
+
+    def test_healthcheck_mirrors_staged_cash_before_reading_review_status(self):
+        class Stager:
+            def __init__(self):
+                self.rows = [{
+                    "id": "cash-health-1", "activity_type": "CSD",
+                    "net_amount": "25", "currency": "MXN",
+                    "date": "2026-11-10", "status": "executed",
+                }]
+            def cash_movements(self):
+                return list(self.rows)
+        class Bridge:
+            def __init__(self):
+                self.processed = []
+            def process_activity(self, activity):
+                self.processed.append(activity)
+            def status(self):
+                return {"pending_or_failed": 1, "manual_review": [
+                    {"activity_id": self.processed[0]["id"]}
+                ]}
+        stager, bridge = Stager(), Bridge()
+        status = sync_cash_activity_review(stager, bridge)
+        self.assertEqual(len(bridge.processed), 1)
+        self.assertEqual(status["pending_or_failed"], 1)
+
+    def test_cash_healthcheck_requires_a_durable_stager(self):
+        class Bridge:
+            def status(self):
+                return {"pending_or_failed": 0}
+        with self.assertRaisesRegex(RuntimeStorageError, "requires a stager"):
+            sync_cash_activity_review(None, Bridge())
 
     def test_cash_activity_bridge_resolves_staged_cash_and_controls_health(self):
         class Stager:
