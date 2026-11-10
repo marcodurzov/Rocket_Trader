@@ -13,7 +13,7 @@ import hashlib
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -250,6 +250,12 @@ class AlpacaCashActivityBridge:
                     raise AlpacaCashActivityError(
                         "USD deposit requires a validated timestamped LedgerFX"
                     )
+                fx_time = fx.observed_at.astimezone(timezone.utc)
+                fx_age = occurred_at - fx_time
+                if fx_age < timedelta(0) or fx_age > timedelta(hours=24):
+                    raise AlpacaCashActivityError(
+                        "USD deposit FX must be at or before the activity and no more than 24 hours old"
+                    )
                 amount_mxn = amount * fx.mxn_per_usd
                 fx_data = fx.as_dict()
             elif currency == "MXN":
@@ -287,6 +293,133 @@ class AlpacaCashActivityBridge:
                 "confirmation_reference": reference,
                 "counts_as_trading_profit": False,
             }
+
+    def confirm_external_withdrawal(
+        self,
+        activity_id: str,
+        *,
+        confirmation_reference: str,
+    ) -> Dict[str, Any]:
+        """Post a CSW only after explicit confirmation of an external withdrawal."""
+        activity_id = str(activity_id or "").strip()
+        reference = str(confirmation_reference or "").strip()
+        if not activity_id or not reference:
+            raise AlpacaCashActivityError("activity_id and traceable confirmation_reference are required")
+        with self._lock:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT payload_json,status,resolution_reference FROM alpaca_cash_activity_review WHERE activity_id=?",
+                    (activity_id,),
+                ).fetchone()
+            if row is None:
+                raise AlpacaCashActivityError("Cash activity must be staged for review before confirmation")
+            if row["status"] == "RESOLVED_EXTERNAL_WITHDRAWAL":
+                return {
+                    "processed": True, "duplicate": True, "activity_id": activity_id,
+                    "confirmation_reference": row["resolution_reference"],
+                    "counts_as_trading_profit": False,
+                }
+            if row["status"] != "PENDING":
+                raise AlpacaCashActivityError("Cash activity is not in a confirmable review state")
+            payload = json.loads(row["payload_json"])
+            if str(payload.get("activity_type") or "").upper() != "CSW":
+                raise AlpacaCashActivityError("Only CSW cash debits can be confirmed as external withdrawals")
+            status = str(payload.get("status") or "executed").lower()
+            if status not in {"executed", "complete", "completed"}:
+                raise AlpacaCashActivityError(f"CSW activity is not final: {status}")
+            amount = _decimal(payload.get("net_amount"), "net_amount")
+            if amount >= 0:
+                raise AlpacaCashActivityError("CSW net_amount must be negative")
+            currency = str(payload.get("currency") or "").upper()
+            occurred_at = _timestamp(
+                payload.get("transaction_time") or payload.get("created_at") or payload.get("date")
+            )
+            if currency == "USD":
+                fx = self.fx_resolver(occurred_at)
+                if not isinstance(fx, LedgerFX):
+                    raise AlpacaCashActivityError("USD withdrawal requires a validated timestamped LedgerFX")
+                fx_time = fx.observed_at.astimezone(timezone.utc)
+                fx_age = occurred_at - fx_time
+                if fx_age < timedelta(0) or fx_age > timedelta(hours=24):
+                    raise AlpacaCashActivityError(
+                        "USD withdrawal FX must be at or before the activity and no more than 24 hours old"
+                    )
+                amount_mxn = abs(amount) * fx.mxn_per_usd
+                fx_data = fx.as_dict()
+            elif currency == "MXN":
+                amount_mxn = abs(amount)
+                fx_data = {"source": "native_MXN_activity", "mxn_per_usd": None, "observed_at": None}
+            else:
+                raise AlpacaCashActivityError(f"Unsupported cash withdrawal currency: {currency or 'missing'}")
+            event_id = f"ALPACA-CASH-WITHDRAWAL-{activity_id}"
+            inserted = self.ledger.record_withdrawal(
+                event_id=event_id, amount_mxn=amount_mxn, occurred_at=occurred_at,
+            )
+            with self._connect() as conn:
+                conn.execute("""
+                    UPDATE alpaca_cash_activity_review
+                    SET status='RESOLVED_EXTERNAL_WITHDRAWAL',
+                        resolution_reference=?,resolved_at=?,reason=?
+                    WHERE activity_id=?
+                """, (
+                    reference, datetime.now(timezone.utc).isoformat(),
+                    "Explicitly confirmed as an external withdrawal; excluded from trading profit.",
+                    activity_id,
+                ))
+            return {
+                "processed": True, "duplicate": not inserted,
+                "activity_id": activity_id, "ledger_event_id": event_id,
+                "withdrawal_mxn": str(amount_mxn), "fx": fx_data,
+                "confirmation_reference": reference,
+                "counts_as_trading_profit": False,
+            }
+
+    def resolve_journal_as_non_user_capital(
+        self,
+        activity_id: str,
+        *,
+        resolution_reference: str,
+        rationale: str,
+    ) -> Dict[str, Any]:
+        """Resolve a JNLC only when evidence shows it is not user funding."""
+        activity_id = str(activity_id or "").strip()
+        reference = str(resolution_reference or "").strip()
+        explanation = str(rationale or "").strip()
+        if not activity_id or not reference or not explanation:
+            raise AlpacaCashActivityError(
+                "activity_id, traceable resolution_reference, and rationale are required"
+            )
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT payload_json,status,resolution_reference FROM alpaca_cash_activity_review WHERE activity_id=?",
+                (activity_id,),
+            ).fetchone()
+            if row is None:
+                raise AlpacaCashActivityError("Cash activity must be staged for review before resolution")
+            if row["status"] == "RESOLVED_NON_USER_CAPITAL":
+                return {
+                    "processed": True, "duplicate": True, "activity_id": activity_id,
+                    "resolution_reference": row["resolution_reference"],
+                    "ledger_effect": "NONE",
+                }
+            if row["status"] != "PENDING":
+                raise AlpacaCashActivityError("Cash activity is not in a resolvable review state")
+            payload = json.loads(row["payload_json"])
+            if str(payload.get("activity_type") or "").upper() != "JNLC":
+                raise AlpacaCashActivityError("Only JNLC journals can use non-user-capital resolution")
+            conn.execute("""
+                UPDATE alpaca_cash_activity_review
+                SET status='RESOLVED_NON_USER_CAPITAL',
+                    resolution_reference=?,resolved_at=?,reason=?
+                WHERE activity_id=?
+            """, (
+                reference, datetime.now(timezone.utc).isoformat(),
+                explanation, activity_id,
+            ))
+        return {
+            "processed": True, "duplicate": False, "activity_id": activity_id,
+            "resolution_reference": reference, "ledger_effect": "NONE",
+        }
 
     def retry_pending(self) -> Dict[str, Any]:
         with self._connect() as conn:
