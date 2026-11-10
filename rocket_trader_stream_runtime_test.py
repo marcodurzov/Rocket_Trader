@@ -42,9 +42,9 @@ class StreamRuntimeTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.recorder.health()
     def test_health_separates_heartbeat_from_data_freshness(self):
-        now = datetime.now(timezone.utc)
-        event_at = now - timedelta(minutes=20)
+        event_at = datetime.now(timezone.utc) - timedelta(minutes=20)
         self.recorder.heartbeat("crypto", "HEALTHY", event_at.isoformat())
+        now = datetime.now(timezone.utc)
         result = self.recorder.health(
             max_age_seconds=120, now=now,
             data_freshness_thresholds={"crypto": 600},
@@ -54,8 +54,8 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertGreaterEqual(result["components"]["crypto"]["event_age_seconds"], 1200)
         self.assertTrue(result["data_freshness_is_diagnostic_only"])
     def test_market_closed_equity_can_be_unmonitored(self):
-        now = datetime.now(timezone.utc)
         self.recorder.heartbeat("equity", "HEALTHY", None)
+        now = datetime.now(timezone.utc)
         result = self.recorder.health(max_age_seconds=120, now=now)
         self.assertTrue(result["healthy"])
         self.assertEqual(result["components"]["equity"]["data_freshness"], "NOT_MONITORED")
