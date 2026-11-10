@@ -181,11 +181,15 @@ class NewsEventAssessmentStore:
                 if not sources:
                     raise ValueError("Cannot approve an event without source evidence.")
                 if row["point_in_time_eligible"]:
+                    assessed_at = parse_aware(row["assessed_at"], "assessed_at")
+                    first_observed = parse_aware(row["first_observed_at"], "first_observed_at")
+                    if first_observed > assessed_at:
+                        raise ValueError("Assessment cannot predate the event's first live observation.")
                     for source in sources:
                         seen = parse_aware(source["first_seen_at"], "source.first_seen_at")
                         published = parse_aware(source["published_at"], "source.published_at")
-                        if seen > current or published > current:
-                            raise ValueError("Point-in-time source evidence cannot be from the future.")
+                        if seen > assessed_at or published > seen or seen > current:
+                            raise ValueError("Point-in-time source evidence must precede the assessment and review.")
                 if row["severity"] == NewsSeverity.CRITICAL.value:
                     independent = {source["independent_source_group"] for source in sources}
                     if len(independent) < 2:
