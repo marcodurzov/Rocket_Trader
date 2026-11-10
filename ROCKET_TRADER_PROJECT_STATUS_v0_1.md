@@ -397,7 +397,7 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - Crucial discrepancy: the executed code still used `yfinance.Ticker(...).history(..., repair=True)`, despite the earlier diagnosis/documentation saying repair had been disabled. The report itself records `repair=True`. This is a source-of-truth mismatch and must be fixed in code, not merely described in docs.
 - Artifact ID: `13812205814`. It contains a failure report with zero symbols compared; it is not usable historical evidence.
 - No candidate promotion, Paper approval or orders were enabled; `orders_submitted=0`.
-- Current corrective branch `docs/continuity-handoff-and-yahoo-audit-fix` changes the provider call to `repair=False` and updates this handoff/status documentation. It is not merged until CI is green and the next real data run is reviewed.
+- PR #96 merged as `d001fc3f3661b1cae39de535c52b235975f164ae`; it changes the provider call to `repair=False`, updates README/status, adds `ROCKET_TRADER_HANDOFF.md`, and adds a regression test asserting the provider parameter. PR CI run 42922818287 passed all 6 offline tests. The post-merge live-data run 42922974687 was queued; its actual result and artifact review are pending.
 
 ### Current continuation point
 1. Merge the repair correction only after PR checks pass.
@@ -410,3 +410,24 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 
 **Progress estimate at this checkpoint: 46%.** This is a conservative engineering/evidence maturity estimate, not a probability of profit. It must increase only when a meaningful end-to-end milestone is implemented and evidenced.
 
+
+
+### PR #96 merged — continuity handoff and Yahoo repair correction
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/96
+- Merge commit: `d001fc3f3661b1cae39de535c52b235975f164ae`.
+- Added `ROCKET_TRADER_HANDOFF.md` as the canonical continuity and working-rules document. README now points new conversations to it first.
+- Yahoo historical retrieval now explicitly uses `repair=False`; report metadata reflects the actual setting.
+- Added a regression test that mocks Yahoo and asserts `repair=False`, `auto_adjust=True` and `actions=True`.
+- PR workflow run 42922818287: compile and all 6 offline tests passed. Live comparison was skipped on pull_request by design.
+- Post-merge push run 42922974687 was queued after merge. The real market-data result is pending and must be reviewed before claiming the provider correction solved the issue.
+
+
+### Post-merge live ETF history audit — 2026-11-10 (run 42922974687)
+- Run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42922974687
+- Artifact: `13812508089` (`rocket-trader-alpaca-yahoo-etf-crosscheck`).
+- Yahoo retrieval succeeded after `repair=False`; all eight symbols returned data, with zero provider errors. Workflow job completed successfully.
+- This is **not** a full 10-year source parity pass: Yahoo returned 2,512 daily sessions; Alpaca IEX returned 1,582; common sessions were 1,581 from 2020-07-27 to 2026-11-09. Yahoo common-session coverage relative to its full series was 62.94%; IEX was 99.94%. Thus the full-period coverage gate correctly failed for all eight ETFs (0/8 diagnostic passes).
+- On the overlap, daily return correlations were 0.99835–0.99975; p95 absolute daily-return differences were 4.69–9.97 bps. However cumulative-return differences ranged from 1.3 bps (DIA) to 220.5 bps (SPY); SPY/QQQ/TLT differences need source-adjustment investigation before providers can be treated as interchangeable.
+- The job's green conclusion means data retrieval and report generation completed, **not** that the diagnostic gates passed. The report keeps candidate promotion, Paper approval and orders disabled; zero orders were submitted.
+- Interpretation: Alpaca IEX's available history is the binding 10-year limitation for this account. SIP entitlement was previously NOT_ENTITLED. Do not reduce the requested coverage threshold or splice Yahoo and IEX as if they were one homogeneous series.
+- Next: evaluate full-history source alternatives/entitlement economics and separately formalize (a) overlap parity and (b) full-period coverage. Investigate cumulative adjusted-return divergence, especially SPY, before strategy research uses any cross-source history.

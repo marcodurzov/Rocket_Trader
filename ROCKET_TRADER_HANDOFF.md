@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-10  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Current reviewed main SHA:** `a6f1b92136c041af0084bf28d7e686df0d444725`  
+**Latest audited code baseline SHA:** `d001fc3f3661b1cae39de535c52b235975f164ae`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -122,11 +122,13 @@ The system must:
 - PR #95: actual ETF history crosscheck now triggers on relevant pushes to main, as well as weekly schedule/manual dispatch.
 - Workflow run **42920786498** (job **130194785274**) completed with failure on 2026-11-10. Dependency install, compile, offline tests and artifact upload passed; live Yahoo history fetch failed for all eight ETFs with `ValueError: output array is read-only`.
 - Log/report proved the executed code still passed `repair=True`, contradicting earlier documentation that claimed `repair=False`. Artifact ID **13812205814** reports zero symbols compared. Do not treat it as historical validation.
-- A corrective branch `docs/continuity-handoff-and-yahoo-audit-fix` was created to change the Yahoo call and update documentation. Verify its PR/checks before merging. The correction is not considered validated until a new live comparison produces a reviewable artifact.
+- PR #96 merged as `d001fc3f3661b1cae39de535c52b235975f164ae`: adds this handoff, updates README/status, changes Yahoo history to `repair=False`, and adds a regression test that asserts this provider parameter.
+- PR #96 offline CI run **42922818287** succeeded: compile and all 6 tests passed. The live comparison step was correctly skipped for `pull_request` events.
+- Post-merge live comparison run **42922974687** was triggered by the push to main and was **queued** at the time of this update. Its result is pending; do not treat the fix as live-data-validated until the run completes and its artifact is inspected.
 
 ## 7. Next actions — ordered
 
-1. Complete and validate the Yahoo `repair=False` correction; merge only after CI; rerun the actual provider audit and inspect results/artifact. If provider instability persists, diagnose and choose a defensible alternative—never weaken coverage or quality gates.
+1. Resolve the ETF historical data-source limitation: IEX does not provide the requested full 10-year history for this account. SIP previously returned NOT_ENTITLED. Evaluate a properly licensed full-history source or entitlement upgrade only if economically justified; retain separate overlap-parity and full-period coverage gates. Investigate SPY/QQQ cumulative-return differences before treating providers as interchangeable. Never splice provider series or weaken coverage gates.
 2. Fix authoritative broker activity reconciliation so missed fills can be recovered idempotently from broker activities, with explicit handling for delayed fees, partial fills, corrections/busts and corporate actions.
 3. Collect enough Paper quote/fill observations to estimate spread/slippage/fees by asset, liquidity, session and order conditions, with minimum sample and confidence gates. Keep approval false until evidence supports it.
 4. Validate regime features, freshness, hysteresis, transitions and regime-conditioned performance using point-in-time history.
