@@ -275,7 +275,14 @@ class MarketRuntimeRecorder:
 class AlpacaPaperObserverRuntime:
     """Starts stock, crypto and Paper trade-update streams; never submits orders."""
 
-    def __init__(self, config: RuntimeConfig, recorder: MarketRuntimeRecorder) -> None:
+    def __init__(
+        self,
+        config: RuntimeConfig,
+        recorder: MarketRuntimeRecorder,
+        fill_ledger_bridge: Any = None,
+        *,
+        ledger_retry_interval_seconds: int = 900,
+    ) -> None:
         if config.mode != "OBSERVE_ONLY":
             raise RuntimeConfigurationError("Only OBSERVE_ONLY is supported.")
         self.config = config
@@ -285,6 +292,21 @@ class AlpacaPaperObserverRuntime:
         self.stop_event = threading.Event()
         self.last_events: Dict[str, Optional[str]] = {"equity": None, "crypto": None, "trading": None}
         self.failed_components: set[str] = set()
+        self.fill_ledger_bridge = fill_ledger_bridge
+        self.ledger_retry_interval_seconds = max(1, int(ledger_retry_interval_seconds))
+        self.last_ledger_retry_monotonic = 0.0
+
+    def _update_ledger_health(self) -> None:
+        if self.fill_ledger_bridge is None:
+            return
+        status = self.fill_ledger_bridge.status()
+        pending = int(status.get("pending_or_failed", 0))
+        if pending:
+            self.recorder.heartbeat(
+                "ledger", "ERROR", last_error=f"{pending} fill(s) pending, failed, or requiring manual review."
+            )
+        else:
+            self.recorder.heartbeat("ledger", "HEALTHY")
 
     def _bar_handler(self, asset_class: str):
         async def handler(bar: Any) -> None:
@@ -302,6 +324,13 @@ class AlpacaPaperObserverRuntime:
         self.recorder.record_trade_update(update)
         self.last_events["trading"] = _utc_now()
         self.recorder.heartbeat("trading", "HEALTHY", self.last_events["trading"])
+        if self.fill_ledger_bridge is not None:
+            try:
+                self.fill_ledger_bridge.process_trade_update(update)
+            except Exception as exc:
+                self.recorder.heartbeat("ledger", "ERROR", last_error=str(exc))
+            else:
+                self._update_ledger_health()
 
     def build_streams(self) -> Dict[str, Any]:
         try:
@@ -332,6 +361,9 @@ class AlpacaPaperObserverRuntime:
 
     def run(self) -> None:
         self.streams = self.build_streams()
+        if self.fill_ledger_bridge is not None:
+            self.recorder.heartbeat("ledger", "STARTING")
+            self._update_ledger_health()
         for component, stream in self.streams.items():
             self.recorder.heartbeat(component, "STARTING")
             thread = threading.Thread(target=stream.run, name=f"rocket-{component}-stream", daemon=True)
@@ -350,7 +382,19 @@ class AlpacaPaperObserverRuntime:
                             f"{component} stream exited; refusing to continue with partial market connectivity."
                         )
                     self.recorder.heartbeat(component, "HEALTHY", self.last_events.get(component))
-        finally:
+                if self.fill_ledger_bridge is not None:
+                    status = self.fill_ledger_bridge.status()
+                    counts = status.get("counts", {})
+                    retryable = int(counts.get("PENDING", 0)) + int(counts.get("FAILED", 0))
+                    now_monotonic = time.monotonic()
+                    if retryable and (
+                        now_monotonic - self.last_ledger_retry_monotonic
+                        >= self.ledger_retry_interval_seconds
+                    ):
+                        self.fill_ledger_bridge.retry_pending()
+                        self.last_ledger_retry_monotonic = now_monotonic
+                    self._update_ledger_health()
+        finally
             self.stop()
 
     def stop(self) -> None:
@@ -368,20 +412,71 @@ class AlpacaPaperObserverRuntime:
                 self.recorder.heartbeat(component, "STOPPED", self.last_events.get(component))
 
 
+def build_fill_ledger_bridge(config: RuntimeConfig):
+    enabled = os.getenv("ROCKET_TRADER_LEDGER_ENABLED", "false").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        if enabled not in {"0", "false", "no", "off", ""}:
+            raise RuntimeConfigurationError("ROCKET_TRADER_LEDGER_ENABLED must be boolean.")
+        return None
+
+    try:
+        from rocket_trader_realized_pnl_ledger import RealizedPnLLedger
+        from rocket_trader_paper_fill_ledger_bridge import PaperFillLedgerBridge
+        from rocket_trader_alpaca_fee_resolver import (
+            AlpacaActivityFeeResolver, AlpacaPaperActivitiesClient,
+        )
+        from rocket_trader_fx_provider import ExchangerateDevFXProvider
+        initial_capital = os.getenv("ROCKET_TRADER_INITIAL_CAPITAL_MXN", "1000.00")
+        milestone = os.getenv("ROCKET_TRADER_MILESTONE_MXN", "100000.00")
+        parent = Path(config.db_path).resolve().parent
+        ledger_path = os.getenv(
+            "ROCKET_TRADER_LEDGER_DB", str(parent / "rocket_trader_ledger.sqlite3")
+        )
+        inbox_path = os.getenv(
+            "ROCKET_TRADER_LEDGER_INBOX_DB", str(parent / "rocket_trader_fill_inbox.sqlite3")
+        )
+        ledger = RealizedPnLLedger(
+            ledger_path,
+            initial_capital_mxn=initial_capital,
+            milestone_mxn=milestone,
+        )
+        fee_client = AlpacaPaperActivitiesClient(
+            api_key=config.api_key, secret_key=config.secret_key
+        )
+        fee_resolver = AlpacaActivityFeeResolver(fee_client.list_fee_activities)
+        fx_provider = ExchangerateDevFXProvider()
+        return PaperFillLedgerBridge(
+            db_path=inbox_path,
+            ledger=ledger,
+            fx_resolver=fx_provider.quote_for_fill,
+            fee_resolver=fee_resolver,
+        )
+    except Exception as exc:
+        raise RuntimeConfigurationError(
+            f"Could not initialize Paper fill accounting; refusing partial startup: {exc}"
+        ) from exc
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Rocket Trader Paper observer runtime")
     parser.add_argument("--healthcheck", action="store_true")
     args = parser.parse_args()
     config = RuntimeConfig.from_env()
     recorder = MarketRuntimeRecorder(config.db_path)
+    fill_ledger_bridge = build_fill_ledger_bridge(config)
     if args.healthcheck:
         result = recorder.health(
             config.health_max_age_seconds,
             data_freshness_thresholds={"crypto": 600},
         )
+        if fill_ledger_bridge is not None:
+            ledger_status = fill_ledger_bridge.status()
+            result["ledger_accounting"] = ledger_status
+            result["ledger_accounting_healthy"] = ledger_status["pending_or_failed"] == 0
+            result["healthy"] = result["healthy"] and result["ledger_accounting_healthy"]
         print(json.dumps(result, indent=2))
         return 0 if result["healthy"] else 1
-    runtime = AlpacaPaperObserverRuntime(config, recorder)
+    runtime = AlpacaPaperObserverRuntime(config, recorder, fill_ledger_bridge)
     def request_stop(_signum, _frame):
         runtime.stop_event.set()
     signal.signal(signal.SIGTERM, request_stop)
