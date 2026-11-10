@@ -272,6 +272,22 @@ class MarketRuntimeRecorder:
         }
 
 
+def account_activity_reconciliation_clear(
+    activity_report: Dict[str, Any],
+    cash_status: Optional[Dict[str, Any]],
+) -> bool:
+    """Fail closed on blocked activity and unresolved cash movements."""
+    if activity_report.get("blocked_activity_types"):
+        return False
+    pending_capital = any(
+        key.endswith(":STAGED_PENDING_CAPITAL_RECONCILIATION") and int(count) > 0
+        for key, count in activity_report.get("counts", {}).items()
+    )
+    if cash_status is None:
+        return not pending_capital
+    return int(cash_status.get("pending_or_failed", 0)) == 0
+
+
 def sync_cash_activity_review(activity_stager: Any, cash_activity_bridge: Any):
     """Mirror already-staged cash movements before reporting reconciliation health.
 
@@ -627,7 +643,7 @@ def main() -> int:
                 result["cash_activity_reconciliation"] = cash_status
             result["account_activity_healthy"] = (
                 result.get("components", {}).get("account_activity", {}).get("healthy", False)
-                and (cash_status is None or int(cash_status.get("pending_or_failed", 0)) == 0)
+                and account_activity_reconciliation_clear(activity_status, cash_status)
             )
             result["healthy"] = result["healthy"] and result["account_activity_healthy"]
         if fill_ledger_bridge is not None:
