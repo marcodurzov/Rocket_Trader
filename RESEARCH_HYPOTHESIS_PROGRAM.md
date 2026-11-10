@@ -79,7 +79,8 @@ Do not import a library or framework into production solely because it is popula
 - Bailey et al. (2014), *Pseudo-Mathematics and Financial Charlatanism*: https://scholarworks.wmich.edu/math_pubs/40
 - Open 2026 survey, *Deep Reinforcement Learning for Portfolio Optimization and Algorithmic Trading: A Critical Survey*: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7363738
 - Open 2026 review, *Systematic review of reinforcement learning for automated equity portfolio management*: https://link.springer.com/article/10.1007/s10791-026-10336-1
-- MIT OpenCourseWare / Finance Theory I (Andrew Lo): https://learn.mit.edu/c/unit/xpro?resource=5535
+- 2026 survey, *Deep Reinforcement Learning for Portfolio Optimization and Algorithmic Trading: A Critical Survey* (SSRN preprint; treat as preprint, not peer-reviewed proof): https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7363738
+- MIT OpenCourseWare / Finance Theory I (Andrew Lo; free lecture notes, videos, exams and problem sets): https://ocw.mit.edu/courses/15-401-finance-theory-i-fall-2008/
 - MIT OpenCourseWare / Investments: https://learn.mit.edu/c/unit/ocw?resource=3912
 
 ## Community evidence (low weight)
