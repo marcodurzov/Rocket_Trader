@@ -14,6 +14,7 @@ import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -257,6 +258,21 @@ class AlpacaPaperExecutionAdapter:
                     )
                 return self._result(broker, duplicate=True)
 
+            account = self.verify_account()
+            estimated_cost = (
+                Decimal(str(order.entry_price))
+                * Decimal(str(order.quantity))
+                * Decimal("1.05")
+            )
+            available_cash = min(
+                Decimal(account["cash"]),
+                Decimal(account["non_marginable_buying_power"]),
+            )
+            if estimated_cost > available_cash:
+                raise PaperExecutionError(
+                    "Order plus 5% market-price buffer exceeds available cash-only buying power."
+                )
+
             with self._connect() as conn:
                 conn.execute(
                     """
@@ -315,16 +331,48 @@ class AlpacaPaperExecutionAdapter:
         return {"found": True, "mode": "PAPER", **broker}
 
     def verify_account(self) -> Dict[str, Any]:
-        """Read-only account check; TradingClient is pinned to paper=True."""
+        """Read-only Paper account check with hard cash-only/no-derivatives policy."""
         account = self.client.get_account()
-        status = str(_value(account, "status", "UNKNOWN"))
-        if status.upper() != "ACTIVE":
+        status = str(_value(account, "status", "UNKNOWN")).upper()
+        currency = str(_value(account, "currency", "UNKNOWN")).upper()
+        if status != "ACTIVE":
             raise PaperExecutionError(f"Paper account is not ACTIVE: {status}")
+        if currency != "USD":
+            raise PaperExecutionError("Paper account must be denominated in USD.")
         if bool(_value(account, "trading_blocked", False)):
             raise PaperExecutionError("Paper account reports trading_blocked=true.")
+        multiplier = str(_value(account, "multiplier", "UNKNOWN"))
+        if multiplier != "1":
+            raise PaperExecutionError(
+                f"Cash-only policy requires account multiplier 1; found {multiplier}."
+            )
+        if bool(_value(account, "shorting_enabled", True)):
+            raise PaperExecutionError("Cash-only policy requires shorting_enabled=false.")
+        try:
+            config = self.client.get_account_configurations()
+        except Exception as exc:
+            raise PaperExecutionError(
+                "Cannot verify account-level cash-only configuration; orders are blocked."
+            ) from exc
+        margin_cap = str(_value(config, "max_margin_multiplier", "UNKNOWN"))
+        no_shorting = bool(_value(config, "no_shorting", False))
+        options_level = int(_value(config, "max_options_trading_level", -1))
+        if margin_cap != "1" or not no_shorting or options_level != 0:
+            raise PaperExecutionError(
+                "Account configuration must enforce max_margin_multiplier=1, "
+                "no_shorting=true and max_options_trading_level=0."
+            )
+        try:
+            cash = Decimal(str(_value(account, "cash", "NaN")))
+            non_marginable = Decimal(str(_value(account, "non_marginable_buying_power", "NaN")))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise PaperExecutionError("Cash and non-marginable buying power are unavailable.") from exc
+        if not cash.is_finite() or not non_marginable.is_finite() or cash < 0 or non_marginable < 0:
+            raise PaperExecutionError("Cash and non-marginable buying power must be finite and non-negative.")
         return {
-            "status": status,
-            "currency": str(_value(account, "currency", "UNKNOWN")),
-            "trading_blocked": bool(_value(account, "trading_blocked", False)),
+            "status": status, "currency": currency, "trading_blocked": False,
+            "multiplier": multiplier, "max_margin_multiplier": margin_cap,
+            "no_shorting": no_shorting, "max_options_trading_level": options_level,
+            "cash": str(cash), "non_marginable_buying_power": str(non_marginable),
             "mode": "PAPER",
         }
