@@ -3,6 +3,7 @@
 """Offline tests for Paper observer runtime; no broker or network calls."""
 import asyncio, os, tempfile, unittest
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
