@@ -29,7 +29,14 @@ class FakeCryptoClient:
     def get_account(self):
         return SimpleNamespace(
             status="ACTIVE", currency="USD", crypto_status="ACTIVE",
-            trading_blocked=False,
+            trading_blocked=False, multiplier="1", shorting_enabled=False,
+            cash="100000", non_marginable_buying_power="100000",
+        )
+
+    def get_account_configurations(self):
+        return SimpleNamespace(
+            max_margin_multiplier="1", no_shorting=True,
+            max_options_trading_level=0,
         )
 
     def get_asset(self, symbol):
@@ -192,6 +199,35 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         )
         with self.assertRaises(CryptoPaperExecutionError):
             self.adapter.submit(self.buy())
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_blocks_margin_enabled_account(self):
+        self.client.get_account = lambda: SimpleNamespace(
+            status="ACTIVE", currency="USD", crypto_status="ACTIVE",
+            trading_blocked=False, multiplier="2", shorting_enabled=False,
+            cash="100000", non_marginable_buying_power="100000",
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "multiplier 1"):
+            self.adapter.submit(self.buy())
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_blocks_unsafe_account_configuration(self):
+        self.client.get_account_configurations = lambda: SimpleNamespace(
+            max_margin_multiplier="1", no_shorting=False,
+            max_options_trading_level=1,
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "must enforce"):
+            self.adapter.submit(self.buy())
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_blocks_crypto_buy_above_cash_only_budget(self):
+        self.client.get_account = lambda: SimpleNamespace(
+            status="ACTIVE", currency="USD", crypto_status="ACTIVE",
+            trading_blocked=False, multiplier="1", shorting_enabled=False,
+            cash="10", non_marginable_buying_power="10",
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "exceeds available cash"):
+            self.adapter.submit(self.buy(notional="10"))
         self.assertEqual(self.client.submit_count, 0)
 
     def test_rejects_non_paper_and_non_usd_pairs(self):

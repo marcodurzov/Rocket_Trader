@@ -42,7 +42,17 @@ class FakeClient:
         return order
 
     def get_account(self):
-        return SimpleNamespace(status="ACTIVE", currency="USD", trading_blocked=False)
+        return SimpleNamespace(
+            status="ACTIVE", currency="USD", trading_blocked=False,
+            multiplier="1", shorting_enabled=False, cash="100000",
+            non_marginable_buying_power="100000",
+        )
+
+    def get_account_configurations(self):
+        return SimpleNamespace(
+            max_margin_multiplier="1", no_shorting=True,
+            max_options_trading_level=0,
+        )
 
 
 class PaperExecutionTests(unittest.TestCase):
@@ -130,7 +140,40 @@ class PaperExecutionTests(unittest.TestCase):
         self.assertEqual(self.client.submit_count, 1)
 
     def test_read_only_account_verification(self):
-        self.assertEqual(self.adapter.verify_account()["mode"], "PAPER")
+        result = self.adapter.verify_account()
+        self.assertEqual(result["mode"], "PAPER")
+        self.assertEqual(result["multiplier"], "1")
+        self.assertTrue(result["no_shorting"])
+        self.assertEqual(result["max_options_trading_level"], 0)
+
+    def test_blocks_margin_multiplier_before_order_submission(self):
+        self.client.get_account = lambda: SimpleNamespace(
+            status="ACTIVE", currency="USD", trading_blocked=False,
+            multiplier="2", shorting_enabled=False, cash="100000",
+            non_marginable_buying_power="100000",
+        )
+        with self.assertRaisesRegex(PaperExecutionError, "multiplier 1"):
+            self.adapter.submit(self.order())
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_blocks_unsafe_account_configuration(self):
+        self.client.get_account_configurations = lambda: SimpleNamespace(
+            max_margin_multiplier="2", no_shorting=False,
+            max_options_trading_level=2,
+        )
+        with self.assertRaisesRegex(PaperExecutionError, "must enforce"):
+            self.adapter.submit(self.order())
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_blocks_order_that_exceeds_cash_with_market_buffer(self):
+        self.client.get_account = lambda: SimpleNamespace(
+            status="ACTIVE", currency="USD", trading_blocked=False,
+            multiplier="1", shorting_enabled=False, cash="100",
+            non_marginable_buying_power="100",
+        )
+        with self.assertRaisesRegex(PaperExecutionError, "exceeds available cash"):
+            self.adapter.submit(self.order(quantity=2))
+        self.assertEqual(self.client.submit_count, 0)
 
 
 if __name__ == "__main__":
