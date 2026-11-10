@@ -324,6 +324,15 @@ class AlpacaCashActivityBridge:
             payload = json.loads(row["payload_json"])
             if str(payload.get("activity_type") or "").upper() != "CSW":
                 raise AlpacaCashActivityError("Only CSW cash debits can be confirmed as external withdrawals")
+            description = str(payload.get("description") or "").lower()
+            return_markers = (
+                "return", "returned", "reversal", "reversed", "rejected",
+                "failed", "chargeback",
+            )
+            if any(marker in description for marker in return_markers):
+                raise AlpacaCashActivityError(
+                    "Activity description indicates a return/reversal; it cannot be confirmed as a new withdrawal"
+                )
             status = str(payload.get("status") or "executed").lower()
             if status not in {"executed", "complete", "completed"}:
                 raise AlpacaCashActivityError(f"CSW activity is not final: {status}")
