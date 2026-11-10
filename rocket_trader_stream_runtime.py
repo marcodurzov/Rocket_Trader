@@ -272,6 +272,23 @@ class MarketRuntimeRecorder:
         }
 
 
+def sync_cash_activity_review(activity_stager: Any, cash_activity_bridge: Any):
+    """Mirror already-staged cash movements before reporting reconciliation health.
+
+    This is local SQLite work only: it performs no broker/network request and
+    makes no accounting classification without an explicit operator action.
+    """
+    if cash_activity_bridge is None:
+        return None
+    if activity_stager is None or not hasattr(activity_stager, "cash_movements"):
+        raise RuntimeStorageError(
+            "Cash activity review requires a stager exposing durable cash movements."
+        )
+    for activity in activity_stager.cash_movements():
+        cash_activity_bridge.process_activity(activity)
+    return cash_activity_bridge.status()
+
+
 class AlpacaPaperObserverRuntime:
     """Starts stock, crypto and Paper trade-update streams; never submits orders."""
 
@@ -320,15 +337,10 @@ class AlpacaPaperObserverRuntime:
             return None
         try:
             report = self.activity_stager.sync()
-            cash_status = None
-            if self.cash_activity_bridge is not None:
-                if not hasattr(self.activity_stager, "cash_movements"):
-                    raise RuntimeStorageError(
-                        "Activity stager does not expose durable cash movements for reconciliation."
-                    )
-                for activity in self.activity_stager.cash_movements():
-                    self.cash_activity_bridge.process_activity(activity)
-                cash_status = self.cash_activity_bridge.status()
+            cash_status = sync_cash_activity_review(
+                self.activity_stager, self.cash_activity_bridge
+            )
+            if cash_status is not None:
                 report["cash_activity_reconciliation"] = cash_status
             if report.get("ledger_posting_enabled") is not False:
                 raise RuntimeStorageError(
@@ -608,7 +620,9 @@ def main() -> int:
         if activity_stager is not None:
             activity_status = activity_stager.report()
             result["account_activity"] = activity_status
-            cash_status = cash_activity_bridge.status() if cash_activity_bridge is not None else None
+            cash_status = sync_cash_activity_review(
+                activity_stager, cash_activity_bridge
+            )
             if cash_status is not None:
                 result["cash_activity_reconciliation"] = cash_status
             result["account_activity_healthy"] = (
