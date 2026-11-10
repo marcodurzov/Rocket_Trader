@@ -74,6 +74,55 @@ seed is a broker simulation balance, not a user deposit, not strategy-earned
 capital and not the MXN 100,000 milestone. It must remain separate from the
 user-capital ledger.
 
+## Explicit cash-movement reconciliation
+
+The observer now mirrors staged CSD, CSW and JNLC activities into the durable
+cash-review tables in the same SQLite database as the activity stager. It
+never books these movements automatically:
+
+- CSD is posted as an external deposit only after explicit operator
+  confirmation with a traceable bank/broker reference.
+- CSW is posted as an external withdrawal only after explicit operator
+  confirmation. Returned/reversed transfers are rejected from withdrawal
+  accounting.
+- JNLC can be resolved as non-user capital only with an evidence reference and
+  written rationale. This is appropriate for the documented Paper simulator
+  seed; it has no ledger effect.
+- USD deposits/withdrawals require a historical, timestamped USD/MXN quote at
+  or before the activity and no more than 24 hours old. The operator must
+  provide the rate, timestamp and source; no current quote is substituted for
+  an old cash movement.
+
+Inspect unresolved items from inside the running container:
+
+```bash
+docker compose -f docker-compose.paper-observer.yml exec rocket-trader-paper-observer \
+  python /app/rocket_trader_cash_activity_admin.py --list
+```
+
+Confirm a native-MXN deposit or withdrawal only after matching it to external
+evidence:
+
+```bash
+python /app/rocket_trader_cash_activity_admin.py --confirm-deposit ACTIVITY_ID \
+  --reference BANK_TRANSFER_REFERENCE
+python /app/rocket_trader_cash_activity_admin.py --confirm-withdrawal ACTIVITY_ID \
+  --reference BANK_WITHDRAWAL_REFERENCE
+```
+
+For USD movements, additionally provide `--fx-rate`, `--fx-observed-at`
+(timezone-aware ISO-8601) and `--fx-source`. Resolve a verified Paper seed
+journal without treating it as user funding:
+
+```bash
+python /app/rocket_trader_cash_activity_admin.py --resolve-journal ACTIVITY_ID \
+  --reference ALPACA_PAPER_SEED_REFERENCE \
+  --rationale "Broker statement confirms this is the simulator seed."
+```
+
+The command reads staged local data only; it does not call Alpaca or submit
+orders. Unresolved movements continue to fail the account-activity health gate.
+
 ## Important limitations
 
 - Equities use Alpaca IEX data, not SIP.
