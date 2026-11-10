@@ -74,6 +74,25 @@ seed is a broker simulation balance, not a user deposit, not strategy-earned
 capital and not the MXN 100,000 milestone. It must remain separate from the
 user-capital ledger.
 
+## Continuous Paper position reconciliation
+
+When the realized-P&L ledger is enabled, the observer also runs the existing
+read-only `AlpacaPaperReconciliationGate` against the Paper account and open
+broker positions. It runs at startup and every 60 seconds, but only compares
+positions after all fill/fee inbox items have resolved. If fills or fees are
+pending, position reconciliation is explicitly blocked rather than comparing
+an incomplete ledger with broker inventory.
+
+The report is appended to the durable runtime SQLite database and exposed by
+the Docker healthcheck. The healthcheck requires a recent `RECONCILED` report
+with matching quantities. A position mismatch, stale FX quote, broker API
+failure, or unresolved fill/fee causes the reconciliation component to remain
+unhealthy.
+
+This gate compares quantities and reports broker cash/equity in USD. It does
+not treat the Paper simulator's virtual USD balance as user-funded strategy
+capital, and it never submits or modifies orders.
+
 ## Explicit cash-movement reconciliation
 
 The observer now mirrors staged CSD, CSW and JNLC activities into the durable
