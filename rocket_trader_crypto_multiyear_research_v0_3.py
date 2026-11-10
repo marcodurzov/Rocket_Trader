@@ -705,7 +705,7 @@ def self_test() -> Dict[str, Any]:
         quality = data_quality_metrics(frames[symbol])
         assert quality["eligible_for_strategy_evidence"] is True
         pos = strategy_positions(frames[symbol])
-        assert len(pos) == 7
+        assert len(pos) == 10
         assert all(((w >= 0) & (w <= 1)).all() for w in pos.values())
     cross = evaluate_cross_sectional(frames)
     assert cross["bars"] > 0
