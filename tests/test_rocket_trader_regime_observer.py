@@ -89,14 +89,16 @@ class RegimeObserverTests(unittest.TestCase):
 
     def test_health_measures_observer_liveness_not_market_freshness(self):
         store = RegimeDecisionStore(self.decision_db)
-        evaluated = self.now.isoformat()
+        evaluated = datetime.now(timezone.utc).isoformat()
         store.save("EQUITY", evaluated, None, {
             "status": "EVALUATED",
             "decision": {"status": "CASH_ABSTAIN", "reason": "STALE_OR_UNALIGNED_DATA"},
         })
-        health = store.health(now=self.now) if False else store.latest()
-        self.assertEqual(health[0]["status"], "EVALUATED")
-        self.assertIn("decision", health[0]["decision"])
+        health = store.health()
+        self.assertTrue(health["healthy"])
+        latest = store.latest()
+        self.assertEqual(latest[0]["status"], "EVALUATED")
+        self.assertIn("decision", latest[0]["decision"])
 
 
 if __name__ == "__main__":
