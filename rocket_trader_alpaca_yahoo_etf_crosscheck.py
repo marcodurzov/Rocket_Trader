@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Independent daily ETF price-history cross-check: Alpaca market data vs Yahoo.
+
+RESEARCH/AUDIT ONLY. This module has no TradingClient and cannot submit orders.
+Alpaca IEX is compared with Yahoo auto-adjusted history on common sessions.
+This is a data-consistency audit, not proof of executable fills or profitability.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional
+
+import numpy as np
+import pandas as pd
+
+DEFAULT_SYMBOLS = ("DIA", "EEM", "EFA", "GLD", "IWM", "QQQ", "SPY", "TLT")
+
+
+class CrosscheckError(RuntimeError):
+    """A source returned missing, invalid, or incomparable price history."""
+
+
+def _close_series(values: Any, source: str) -> pd.Series:
+    """Normalize a Series/DataFrame/dict of closes into unique UTC session dates."""
+    if isinstance(values, pd.DataFrame):
+        if "close" in values.columns:
+            values = values["close"]
+        elif "Close" in values.columns:
+            values = values["Close"]
+        else:
+            raise CrosscheckError(f"{source}: close column is missing")
+        if isinstance(values, pd.DataFrame):
+            if values.shape[1] != 1:
+                raise CrosscheckError(f"{source}: close data is ambiguous")
+            values = values.iloc[:, 0]
+    if not isinstance(values, pd.Series):
+        values = pd.Series(values)
+    if values.empty:
+        raise CrosscheckError(f"{source}: zero daily closes returned")
+    index = pd.to_datetime(values.index, utc=True, errors="coerce")
+    if index.isna().any():
+        raise CrosscheckError(f"{source}: invalid timestamps")
+    out = pd.Series(pd.to_numeric(values.to_numpy(), errors="coerce"), index=index.date)
+    out = out[~out.index.duplicated(keep="last")].sort_index()
+    out = out.replace([np.inf, -np.inf], np.nan).dropna()
+    if out.empty or (out <= 0).any():
+        raise CrosscheckError(f"{source}: close prices must be finite and positive")
+    out.index.name = "session"
+    return out.astype(float)
+
+
+def compare_close_series(
+    symbol: str,
+    yahoo_close: Any,
+    alpaca_close: Any,
+    *,
+    min_common_sessions: int = 1000,
+    min_source_coverage: float = 0.95,
+    min_return_correlation: float = 0.995,
+    max_p95_abs_return_diff_bps: float = 20.0,
+) -> Dict[str, Any]:
+    """Compare adjusted closes and daily returns without fitting any strategy."""
+    yahoo = _close_series(yahoo_close, "Yahoo")
+    alpaca = _close_series(alpaca_close, "Alpaca")
+    common = pd.concat(
+        [yahoo.rename("yahoo"), alpaca.rename("alpaca")], axis=1, join="inner"
+    ).dropna()
+    if len(common) < 3:
+        raise CrosscheckError(f"{symbol}: fewer than three common daily sessions")
+
+    yahoo_ret = common["yahoo"].pct_change().dropna()
+    alpaca_ret = common["alpaca"].pct_change().dropna()
+    paired = pd.concat(
+        [yahoo_ret.rename("yahoo"), alpaca_ret.rename("alpaca")], axis=1
+    ).dropna()
+    if len(paired) < 2:
+        raise CrosscheckError(f"{symbol}: insufficient paired daily returns")
+
+    abs_diff_bps = (paired["alpaca"] - paired["yahoo"]).abs() * 10000.0
+    corr = float(paired["yahoo"].corr(paired["alpaca"]))
+    if not np.isfinite(corr):
+        corr = 0.0
+    yahoo_coverage = len(common) / len(yahoo)
+    alpaca_coverage = len(common) / len(alpaca)
+    yahoo_total = float((1.0 + paired["yahoo"]).prod() - 1.0)
+    alpaca_total = float((1.0 + paired["alpaca"]).prod() - 1.0)
+    yahoo_norm = common["yahoo"] / common["yahoo"].iloc[0]
+    alpaca_norm = common["alpaca"] / common["alpaca"].iloc[0]
+    normalized_close_diff_pct = (
+        (alpaca_norm / yahoo_norm - 1.0).abs() * 100.0
+    )
+
+    gates = {
+        "minimum_common_sessions": len(common) >= min_common_sessions,
+        "minimum_source_coverage": min(yahoo_coverage, alpaca_coverage) >= min_source_coverage,
+        "minimum_daily_return_correlation": corr >= min_return_correlation,
+        "maximum_p95_abs_return_difference": float(abs_diff_bps.quantile(0.95))
+        <= max_p95_abs_return_diff_bps,
+    }
+    return {
+        "symbol": symbol,
+        "yahoo_sessions": int(len(yahoo)),
+        "alpaca_sessions": int(len(alpaca)),
+        "common_sessions": int(len(common)),
+        "first_common_session": str(common.index[0]),
+        "last_common_session": str(common.index[-1]),
+        "yahoo_coverage_on_common": round(float(yahoo_coverage), 6),
+        "alpaca_coverage_on_common": round(float(alpaca_coverage), 6),
+        "daily_return_correlation": round(corr, 8),
+        "mean_abs_daily_return_difference_bps": round(float(abs_diff_bps.mean()), 4),
+        "p95_abs_daily_return_difference_bps": round(float(abs_diff_bps.quantile(0.95)), 4),
+        "max_abs_daily_return_difference_bps": round(float(abs_diff_bps.max()), 4),
+        "yahoo_cumulative_return_common_period": round(yahoo_total, 8),
+        "alpaca_cumulative_return_common_period": round(alpaca_total, 8),
+        "cumulative_return_difference_bps": round((alpaca_total - yahoo_total) * 10000.0, 4),
+        "max_normalized_close_difference_pct": round(float(normalized_close_diff_pct.max()), 4),
+        "diagnostic_gates": gates,
+        "diagnostic_pass": all(gates.values()),
+    }
+
+
+def fetch_yahoo_history(symbol: str, start: datetime, end: datetime) -> pd.Series:
+    import yfinance as yf
+    frame = yf.Ticker(symbol).history(
+        start=start.date().isoformat(),
+        end=end.date().isoformat(),
+        interval="1d",
+        auto_adjust=True,
+        actions=True,
+        repair=True,
+        timeout=30,
+    )
+    if frame is None or frame.empty or "Close" not in frame.columns:
+        raise CrosscheckError(f"Yahoo returned no adjusted daily history for {symbol}")
+    return _close_series(frame["Close"], "Yahoo")
+
+
+def fetch_alpaca_history(
+    client: Any,
+    symbol: str,
+    start: datetime,
+    end: datetime,
+    feed: Any,
+) -> pd.Series:
+    from alpaca.data.enums import Adjustment
+    from alpaca.data.requests import StockBarsRequest
+    from alpaca.data.timeframe import TimeFrame
+    request = StockBarsRequest(
+        symbol_or_symbols=symbol,
+        timeframe=TimeFrame.Day,
+        start=start,
+        end=end,
+        limit=10000,
+        adjustment=Adjustment.ALL,
+        feed=feed,
+    )
+    response = client.get_stock_bars(request)
+    bars = response.data.get(symbol, [])
+    if not bars:
+        raise CrosscheckError(f"Alpaca {feed} returned no adjusted daily history for {symbol}")
+    frame = pd.DataFrame({
+        "timestamp": [bar.timestamp for bar in bars],
+        "close": [bar.close for bar in bars],
+    }).set_index("timestamp")
+    return _close_series(frame["close"], "Alpaca")
+
+
+def run_audit(
+    *,
+    api_key: str,
+    secret_key: str,
+    symbols: Iterable[str] = DEFAULT_SYMBOLS,
+    years: int = 10,
+    feed_name: str = "IEX",
+    now: Optional[datetime] = None,
+    yahoo_loader=fetch_yahoo_history,
+    alpaca_loader=fetch_alpaca_history,
+) -> Dict[str, Any]:
+    if years < 1 or years > 20:
+        raise CrosscheckError("years must be between 1 and 20")
+    if not api_key or not secret_key:
+        raise CrosscheckError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise CrosscheckError("now must be timezone-aware")
+    current = current.astimezone(timezone.utc)
+    start = current - timedelta(days=365.25 * years)
+
+    from alpaca.data.enums import DataFeed
+    from alpaca.data.historical import StockHistoricalDataClient
+    feed_map = {"IEX": DataFeed.IEX, "SIP": DataFeed.SIP}
+    if feed_name.upper() not in feed_map:
+        raise CrosscheckError("feed must be IEX or SIP")
+    feed = feed_map[feed_name.upper()]
+    client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
+
+    symbol_list = sorted({str(x).strip().upper() for x in symbols if str(x).strip()})
+    results = []
+    errors = []
+    for symbol in symbol_list:
+        try:
+            yahoo = yahoo_loader(symbol, start, current)
+            alpaca = alpaca_loader(client, symbol, start, current, feed)
+            results.append(compare_close_series(symbol, yahoo, alpaca))
+        except Exception as exc:
+            errors.append({"symbol": symbol, "error_type": type(exc).__name__, "error": str(exc)})
+
+    return {
+        "ok": bool(results) and not errors,
+        "pipeline": "rocket_trader_alpaca_yahoo_etf_crosscheck_v0_1",
+        "mode": "DATA_AUDIT_ONLY",
+        "period_start": start.isoformat(),
+        "period_end": current.isoformat(),
+        "years_requested": years,
+        "symbols_requested": symbol_list,
+        "feed": feed_name.upper(),
+        "alpaca_adjustment": "ALL",
+        "yahoo_adjustment": "auto_adjust=True; actions=True; repair=True",
+        "price_series": "daily adjusted close",
+        "results": results,
+        "errors": errors,
+        "symbols_diagnostic_pass": sum(bool(x["diagnostic_pass"]) for x in results),
+        "symbols_compared": len(results),
+        "all_diagnostic_gates_pass": bool(results) and not errors and all(x["diagnostic_pass"] for x in results),
+        "research_cost_assumptions_validated": False,
+        "research_cost_note": (
+            "This price-history comparison does not validate historical bid/ask spread, "
+            "commissions, market impact, or realized Paper slippage. Existing 5 bps/side "
+            "ETF assumptions remain unverified."
+        ),
+        "execution_fill_validation": False,
+        "candidate_promotion_allowed": False,
+        "paper_approval": False,
+        "orders_enabled": False,
+        "orders_submitted": 0,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
+    parser.add_argument("--years", type=int, default=10)
+    parser.add_argument("--feed", choices=("IEX", "SIP"), default="IEX")
+    parser.add_argument("--output", default="artifacts/alpaca_yahoo_etf_crosscheck.json")
+    args = parser.parse_args()
+    if os.getenv("ALPACA_PAPER", "").strip().lower() != "true":
+        parser.error("ALPACA_PAPER must be exactly 'true' (audit is read-only).")
+
+    try:
+        report = run_audit(
+            api_key=os.getenv("ALPACA_API_KEY", "").strip(),
+            secret_key=os.getenv("ALPACA_SECRET_KEY", "").strip(),
+            symbols=args.symbols,
+            years=args.years,
+            feed_name=args.feed,
+        )
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0 if report["ok"] else 1
+    except Exception as exc:
+        print(json.dumps({
+            "ok": False, "mode": "DATA_AUDIT_ONLY",
+            "error_type": type(exc).__name__, "error": str(exc),
+            "orders_submitted": 0,
+        }, indent=2))
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
