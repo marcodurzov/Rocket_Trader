@@ -1,0 +1,31 @@
+name: Rocket Trader - Paper Cash-Only Account Preflight
+
+on:
+  push:
+    branches:
+      - paper-account-cash-only-preflight
+    paths:
+      - "alpaca_paper_cash_only_preflight.py"
+      - ".github/workflows/paper-account-cash-only-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paper-cash-only-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+      ALPACA_LIVE_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "alpaca-py>=0.43,<1.0"
+      - name: Read-only cash-only account preflight (no orders, no config changes)
+        run: python alpaca_paper_cash_only_preflight.py
