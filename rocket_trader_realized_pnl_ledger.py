@@ -262,6 +262,14 @@ class RealizedPnLLedger:
             snap = self.snapshot()
             if amount > snap.operating_capital_mxn:
                 raise LedgerError("Withdrawal exceeds operating capital")
+            if snap.milestone_reached:
+                available_above_floor = max(
+                    Decimal("0"), snap.operating_capital_mxn - self.milestone_mxn
+                )
+                if amount > available_above_floor:
+                    raise LedgerError(
+                        "Withdrawal would breach the protected MXN 100,000 operating-capital floor"
+                    )
             return self._append(event_id, "WITHDRAWAL_MXN", occurred_at, {
                 "amount_mxn": str(amount), "currency": "MXN"
             })
