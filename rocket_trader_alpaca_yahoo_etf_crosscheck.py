@@ -133,7 +133,7 @@ def fetch_yahoo_history(symbol: str, start: datetime, end: datetime) -> pd.Serie
         interval="1d",
         auto_adjust=True,
         actions=True,
-        repair=True,
+        repair=False,
         timeout=30,
     )
     if frame is None or frame.empty or "Close" not in frame.columns:
@@ -221,7 +221,7 @@ def run_audit(
         "symbols_requested": symbol_list,
         "feed": feed_name.upper(),
         "alpaca_adjustment": "ALL",
-        "yahoo_adjustment": "auto_adjust=True; actions=True; repair=True",
+        "yahoo_adjustment": "auto_adjust=True; actions=True; repair=False",
         "price_series": "daily adjusted close",
         "results": results,
         "errors": errors,

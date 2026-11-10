@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """Offline tests for independent adjusted-close source comparison."""
 import unittest
+import sys
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -9,6 +12,7 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     CrosscheckError,
     _close_series,
     compare_close_series,
+    fetch_yahoo_history,
 )
 
 
@@ -62,6 +66,26 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         with self.assertRaisesRegex(CrosscheckError, "timestamps"):
             _close_series(invalid, "fixture")
 
+    def test_yahoo_history_disables_repair_workaround(self):
+        calls = {}
+        class FakeTicker:
+            def history(self, **kwargs):
+                calls.update(kwargs)
+                return pd.DataFrame(
+                    {"Close": [100.0, 101.0, 102.0]},
+                    index=pd.date_range("2024-01-02", periods=3, freq="B", tz="UTC"),
+                )
+        fake_yfinance = SimpleNamespace(Ticker=lambda symbol: FakeTicker())
+        with patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            result = fetch_yahoo_history(
+                "SPY",
+                pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime(),
+                pd.Timestamp("2024-01-10", tz="UTC").to_pydatetime(),
+            )
+        self.assertEqual(len(result), 3)
+        self.assertFalse(calls["repair"])
+        self.assertTrue(calls["auto_adjust"])
+        self.assertTrue(calls["actions"])
     def test_duplicate_session_keeps_last_observation(self):
         idx = [self.dates[0], self.dates[0], self.dates[1]]
         series = pd.Series([100.0, 101.0, 102.0], index=idx)
