@@ -109,6 +109,11 @@ class ExecutionCostTelemetry:
                 ON paper_fill_cost_observations(symbol,fill_timestamp)""")
             db.execute("""CREATE INDEX IF NOT EXISTS idx_fill_cost_order
                 ON paper_fill_cost_observations(order_id,event_type)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS paper_quote_telemetry_errors (
+                error_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_class TEXT NOT NULL, error TEXT NOT NULL,
+                observed_at TEXT NOT NULL
+            )""")
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.db_path, timeout=30)
@@ -142,6 +147,13 @@ class ExecutionCostTelemetry:
             )
             queue.append(record)
         return True
+
+    def record_quote_error(self, asset_class: str, error: str) -> None:
+        with self._connect() as db:
+            db.execute("""INSERT INTO paper_quote_telemetry_errors
+                (asset_class,error,observed_at) VALUES(?,?,?)""",
+                (str(asset_class).upper(), str(error)[:500],
+                 datetime.now(timezone.utc).isoformat()))
 
     def _select_quote(self, symbol: str, fill_time: Optional[datetime]
                       ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -276,8 +288,17 @@ class ExecutionCostTelemetry:
                 "p90_adverse_slippage_bps": _percentile90(adverse),
             })
         measured = len(eligible_rows)
+        with self._connect() as db:
+            quote_errors = db.execute(
+                "SELECT COUNT(*) FROM paper_quote_telemetry_errors"
+            ).fetchone()[0]
+            last_quote_error = db.execute("""SELECT asset_class,error,observed_at
+                FROM paper_quote_telemetry_errors ORDER BY error_id DESC LIMIT 1"""
+            ).fetchone()
         return {
             "status": "DESCRIPTIVE_ONLY_NOT_VALIDATED",
+            "quote_ingestion_errors": int(quote_errors),
+            "last_quote_error": dict(last_quote_error) if last_quote_error else None,
             "fill_events_total": total, "measured_fill_events": measured,
             "unmeasured_fill_events": total - measured,
             "unmeasured_rate": (total - measured) / total if total else None,
