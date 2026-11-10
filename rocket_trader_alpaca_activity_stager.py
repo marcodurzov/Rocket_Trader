@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 
 
 PAPER_BASE_URL = "https://paper-api.alpaca.markets"
-SUPPORTED_STAGED_TYPES = {"FILL", "CFEE", "FEE"}
+SUPPORTED_STAGED_TYPES = {"FILL", "CFEE", "FEE", "CSD", "CSW"}
 
 
 class ActivityIngestionError(RuntimeError):
@@ -164,6 +164,29 @@ class AlpacaPaperActivityStager:
         if activity_type == "FEE":
             if activity.get("net_amount") is None:
                 return "BLOCKED_INCOMPLETE_FEE"
+        if activity_type in {"CSD", "CSW"}:
+            # Cash credits/debits are staged for capital reconciliation only.
+            # Alpaca documents CSD as including returned withdrawals and CSW
+            # as including returned deposits, so neither event is safe to
+            # book as a new external contribution/withdrawal from type alone.
+            if activity.get("net_amount") is None:
+                return "BLOCKED_INCOMPLETE_CASH_ACTIVITY"
+            if not activity.get("currency"):
+                return "BLOCKED_CASH_ACTIVITY_WITHOUT_CURRENCY"
+            if not (activity.get("date") or activity.get("created_at")):
+                return "BLOCKED_CASH_ACTIVITY_WITHOUT_TIMESTAMP"
+            try:
+                from decimal import Decimal, InvalidOperation
+                amount = Decimal(str(activity["net_amount"]))
+                if not amount.is_finite() or amount == 0:
+                    return "BLOCKED_INVALID_CASH_AMOUNT"
+            except (InvalidOperation, TypeError, ValueError):
+                return "BLOCKED_INVALID_CASH_AMOUNT"
+            if activity_type == "CSD" and amount < 0:
+                return "BLOCKED_INVALID_CASH_CREDIT_SIGN"
+            if activity_type == "CSW" and amount > 0:
+                return "BLOCKED_INVALID_CASH_DEBIT_SIGN"
+            return "STAGED_PENDING_CAPITAL_RECONCILIATION"
         # Staged is not the same as ledger-ready: fee matching and activity
         # completeness are intentionally a separate acceptance gate.
         return "STAGED_PENDING_RECONCILIATION"
@@ -294,6 +317,8 @@ class AlpacaPaperActivityStager:
             "ledger_posting_enabled": False,
             "reason": (
                 "Awaiting verified fee matching, corporate-action handling, "
-                "correction/bust handling and broker reconciliation."
+                "correction/bust handling and broker reconciliation. CSD/CSW "
+                "cash movements are staged separately and must be reconciled "
+                "before any external deposit or withdrawal is posted to capital."
             ),
         }
