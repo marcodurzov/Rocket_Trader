@@ -107,8 +107,14 @@ class RegimeDecisionStore:
         components = {}
         for row in rows:
             age = (now - _parse_time(row["evaluated_at"])).total_seconds()
+            decision = row["decision"].get("decision", {})
+            diagnostics = decision.get("diagnostics", {})
+            if not diagnostics:
+                diagnostics = decision.get("features", {})
             components[row["asset_class"]] = {
                 "status": row["status"], "age_seconds": age,
+                "decision_status": decision.get("status", "UNKNOWN"),
+                "market_data_status": diagnostics.get("status", "UNKNOWN"),
                 "healthy": row["status"] == "EVALUATED" and 0 <= age <= max_age_seconds,
             }
         return {"healthy": bool(components) and all(x["healthy"] for x in components.values()),
