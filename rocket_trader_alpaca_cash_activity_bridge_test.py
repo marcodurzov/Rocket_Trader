@@ -77,6 +77,26 @@ class AlpacaCashActivityBridgeTests(unittest.TestCase):
         self.assertEqual(self.ledger.snapshot().withdrawals_mxn, Decimal("0.00"))
         self.assertEqual(self.bridge.status()["pending_or_failed"], 1)
 
+    def test_missing_fx_is_persisted_and_retryable(self):
+        calls = []
+        bridge = AlpacaCashActivityBridge(
+            db_path=os.path.join(self.tmp.name, "retry-inbox.sqlite3"),
+            ledger=self.ledger,
+            fx_resolver=lambda when: (calls.append(when) or None),
+        )
+        event = {
+            "id": "cash-deposit-retry", "activity_type": "CSD",
+            "net_amount": "10", "currency": "USD",
+            "date": NOW.date().isoformat(), "status": "executed",
+        }
+        with self.assertRaisesRegex(AlpacaCashActivityError, "validated timestamped LedgerFX"):
+            bridge.process_activity(event)
+        self.assertEqual(bridge.status()["pending_or_failed"], 1)
+        bridge.fx_resolver = lambda when: LedgerFX(Decimal("18.50"), NOW, "RETRY_FX")
+        result = bridge.retry_pending()
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(self.ledger.snapshot().deposits_mxn, Decimal("185.00"))
+
     def test_non_cash_activity_is_ignored(self):
         result = self.bridge.process_activity({"activity_type": "CFEE", "id": "fee-1"})
         self.assertTrue(result["ignored"])
