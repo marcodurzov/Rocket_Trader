@@ -65,7 +65,7 @@ class ExchangerateDevFXProviderTests(unittest.TestCase):
 
     def test_rejects_future_quote_to_prevent_lookahead(self):
         provider = ExchangerateDevFXProvider(
-            opener=lambda _request, _timeout: FakeResponse(
+            opener=lambda _request, timeout=None: FakeResponse(
                 self.payload(effective_at=(NOW + timedelta(minutes=1)).isoformat())
             )
         )
@@ -74,14 +74,14 @@ class ExchangerateDevFXProviderTests(unittest.TestCase):
 
     def test_rejects_provider_stale_flag(self):
         provider = ExchangerateDevFXProvider(
-            opener=lambda _request, _timeout: FakeResponse(self.payload(stale=True))
+            opener=lambda _request, timeout=None: FakeResponse(self.payload(stale=True))
         )
         with self.assertRaisesRegex(FXProviderError, "marked stale"):
             provider.quote_for_fill(NOW, now=NOW)
 
     def test_rejects_wrong_base_currency(self):
         provider = ExchangerateDevFXProvider(
-            opener=lambda _request, _timeout: FakeResponse(self.payload(base="EUR"))
+            opener=lambda _request, timeout=None: FakeResponse(self.payload(base="EUR"))
         )
         with self.assertRaisesRegex(FXProviderError, "non-USD"):
             provider.quote_for_fill(NOW, now=NOW)
