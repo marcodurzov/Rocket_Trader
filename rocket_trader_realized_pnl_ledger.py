@@ -285,6 +285,7 @@ class RealizedPnLLedger:
         fee_usd: Any,
         fx: LedgerFX,
         fee_asset_qty: Any = "0",
+        fee_source: str = "UNSPECIFIED_LEGACY_CALLER",
         occurred_at: datetime,
         asset_class: str,
     ) -> bool:
@@ -295,6 +296,9 @@ class RealizedPnLLedger:
         price = _d(price_usd, "price_usd")
         fee = _d(fee_usd, "fee_usd")
         fee_asset = _d(fee_asset_qty, "fee_asset_qty")
+        fee_source = str(fee_source).strip()
+        if not fee_source:
+            raise LedgerError("fee_source is required")
         if not symbol or side not in {"BUY", "SELL"}:
             raise LedgerError("Fill requires a symbol and BUY/SELL side")
         if asset_class not in {"US_EQUITY", "CRYPTO_SPOT"}:
@@ -325,6 +329,7 @@ class RealizedPnLLedger:
             "gross_usd": str(qty * price),
             "fee_usd": str(fee),
             "fee_asset_qty": str(fee_asset),
+            "fee_source": fee_source,
             "net_acquired_quantity": str(qty + fee_asset if side == "BUY" else qty),
             "asset_class": asset_class,
             "fx": fx.as_dict(),
