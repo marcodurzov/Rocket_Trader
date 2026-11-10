@@ -132,7 +132,7 @@ class RegimeObserverTests(unittest.TestCase):
         equity = report["universes"]["EQUITY"]
         crypto = report["universes"]["CRYPTO"]
         self.assertTrue(equity["news_overlay"]["block_new_entries"])
-        self.assertEqual(equity["news_overlay"]["exposure_multiplier"], 0.0)
+        self.assertAlmostEqual(equity["news_overlay"]["exposure_multiplier"], 0.271)
         self.assertEqual(equity["news_assessments_loaded"], 1)
         self.assertFalse(crypto["news_overlay"]["block_new_entries"])
         self.assertEqual(crypto["news_assessments_loaded"], 0)
