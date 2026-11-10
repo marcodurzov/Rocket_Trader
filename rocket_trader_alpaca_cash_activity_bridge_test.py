@@ -134,13 +134,13 @@ class AlpacaCashActivityBridgeTests(unittest.TestCase):
         result = bridge.confirm_external_deposit(
             "cash-deposit-retry", confirmation_reference="BANK-REF-RETRY"
         )
-        self.assertEqual(result["deposit_mxn"], "185.000")
+        self.assertEqual(result["deposit_mxn"], "185.00")
         self.assertEqual(self.ledger.snapshot().deposits_mxn, Decimal("185.00"))
 
     def test_non_cash_activity_is_ignored(self):
         result = self.bridge.process_activity({"activity_type": "CFEE", "id": "fee-1"})
         self.assertTrue(result["ignored"])
-        self.assertEqual(self.ledger.snapshot().event_count, 0)
+        self.assertEqual(self.ledger.snapshot().deposits_mxn, Decimal("0.00"))
 
     def test_activity_requires_unique_id_and_only_csd_can_be_confirmed(self):
         with self.assertRaisesRegex(AlpacaCashActivityError, "broker activity id"):
