@@ -442,7 +442,7 @@ class RealizedPnLLedger:
             if qty > 0:
                 open_positions[symbol] = {
                     "quantity": str(qty),
-                    "fifo_cost_basis_usd": str(_money(cost)),
+                    "fifo_cost_basis_usd": str(cost),
                 }
         return {
             "initial": initial, "deposits": deposits, "withdrawals": withdrawals,
@@ -488,7 +488,7 @@ class RealizedPnLLedger:
         """Create an immutable proposed payout close; never transfers money."""
         summary = self.monthly_summary(period)
         state = self._replay()
-        capital = _money(state["operating_capital"])
+        capital = _pnl_money(state["operating_capital"])
         threshold_reached = state["milestone_reached"] or capital >= self.milestone_mxn
         if summary["realized_trade_count"] == 0:
             reserve_pct, reinvest_pct, personal_pct = Decimal("0"), Decimal("1"), Decimal("0")
@@ -524,7 +524,7 @@ class RealizedPnLLedger:
             **summary,
             "operating_capital_mxn": str(capital),
             "earned_growth_capital_mxn": str(
-                _money(state["initial"] + state["realized_mxn"])
+                _pnl_money(state["initial"] + state["realized_mxn"])
             ),
             "milestone_mxn": str(self.milestone_mxn),
             "milestone_reached": bool(threshold_reached),
