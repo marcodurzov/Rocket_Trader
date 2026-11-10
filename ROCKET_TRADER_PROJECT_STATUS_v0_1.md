@@ -397,7 +397,7 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - Crucial discrepancy: the executed code still used `yfinance.Ticker(...).history(..., repair=True)`, despite the earlier diagnosis/documentation saying repair had been disabled. The report itself records `repair=True`. This is a source-of-truth mismatch and must be fixed in code, not merely described in docs.
 - Artifact ID: `13812205814`. It contains a failure report with zero symbols compared; it is not usable historical evidence.
 - No candidate promotion, Paper approval or orders were enabled; `orders_submitted=0`.
-- Current corrective branch `docs/continuity-handoff-and-yahoo-audit-fix` changes the provider call to `repair=False` and updates this handoff/status documentation. It is not merged until CI is green and the next real data run is reviewed.
+- PR #96 merged as `d001fc3f3661b1cae39de535c52b235975f164ae`; it changes the provider call to `repair=False`, updates README/status, adds `ROCKET_TRADER_HANDOFF.md`, and adds a regression test asserting the provider parameter. PR CI run 42922818287 passed all 6 offline tests. The post-merge live-data run 42922974687 was queued; its actual result and artifact review are pending.
 
 ### Current continuation point
 1. Merge the repair correction only after PR checks pass.
@@ -410,3 +410,13 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 
 **Progress estimate at this checkpoint: 46%.** This is a conservative engineering/evidence maturity estimate, not a probability of profit. It must increase only when a meaningful end-to-end milestone is implemented and evidenced.
 
+
+
+### PR #96 merged — continuity handoff and Yahoo repair correction
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/96
+- Merge commit: `d001fc3f3661b1cae39de535c52b235975f164ae`.
+- Added `ROCKET_TRADER_HANDOFF.md` as the canonical continuity and working-rules document. README now points new conversations to it first.
+- Yahoo historical retrieval now explicitly uses `repair=False`; report metadata reflects the actual setting.
+- Added a regression test that mocks Yahoo and asserts `repair=False`, `auto_adjust=True` and `actions=True`.
+- PR workflow run 42922818287: compile and all 6 offline tests passed. Live comparison was skipped on pull_request by design.
+- Post-merge push run 42922974687 was queued after merge. The real market-data result is pending and must be reviewed before claiming the provider correction solved the issue.
