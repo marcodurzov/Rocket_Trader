@@ -15,6 +15,7 @@ on:
       - "rocket_trader_alpaca_cash_activity_bridge_test.py"
       - "rocket_trader_alpaca_yahoo_etf_crosscheck.py"
       - "rocket_trader_alpaca_yahoo_etf_crosscheck_test.py"
+      - "MARKET_DATA_SOURCE_AUDIT.md"
       - "rocket_trader_alpaca_activity_stager_test.py"
       - ".github/workflows/rocket-trader-stream-runtime-tests.yml"
       - "requirements-yahoo.txt"
