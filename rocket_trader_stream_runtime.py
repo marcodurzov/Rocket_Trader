@@ -281,6 +281,7 @@ class AlpacaPaperObserverRuntime:
         recorder: MarketRuntimeRecorder,
         fill_ledger_bridge: Any = None,
         activity_stager: Any = None,
+        cash_activity_bridge: Any = None,
         *,
         ledger_retry_interval_seconds: int = 900,
         activity_retry_interval_seconds: int = 900,
@@ -296,6 +297,7 @@ class AlpacaPaperObserverRuntime:
         self.failed_components: set[str] = set()
         self.fill_ledger_bridge = fill_ledger_bridge
         self.activity_stager = activity_stager
+        self.cash_activity_bridge = cash_activity_bridge
         self.ledger_retry_interval_seconds = max(1, int(ledger_retry_interval_seconds))
         self.last_ledger_retry_monotonic = 0.0
         self.activity_retry_interval_seconds = max(1, int(activity_retry_interval_seconds))
@@ -318,6 +320,16 @@ class AlpacaPaperObserverRuntime:
             return None
         try:
             report = self.activity_stager.sync()
+            cash_status = None
+            if self.cash_activity_bridge is not None:
+                if not hasattr(self.activity_stager, "cash_movements"):
+                    raise RuntimeStorageError(
+                        "Activity stager does not expose durable cash movements for reconciliation."
+                    )
+                for activity in self.activity_stager.cash_movements():
+                    self.cash_activity_bridge.process_activity(activity)
+                cash_status = self.cash_activity_bridge.status()
+                report["cash_activity_reconciliation"] = cash_status
             if report.get("ledger_posting_enabled") is not False:
                 raise RuntimeStorageError(
                     "Activity stager must remain read-only with ledger posting disabled."
@@ -328,14 +340,24 @@ class AlpacaPaperObserverRuntime:
                 if key.endswith(":STAGED_PENDING_CAPITAL_RECONCILIATION")
                 and int(count) > 0
             }
-            if blocked or pending_capital:
+            if cash_status is not None and int(cash_status.get("pending_or_failed", 0)) == 0:
+                # Every staged movement has an explicit, durable resolution.
+                pending_capital = {}
+            if blocked or pending_capital or (
+                cash_status is not None and int(cash_status.get("pending_or_failed", 0)) > 0
+            ):
                 reasons = []
                 if blocked:
                     reasons.append(
                         "unsupported/invalid activity types: "
                         + ", ".join(sorted({str(x) for x in blocked}))
                     )
-                if pending_capital:
+                if cash_status is not None and int(cash_status.get("pending_or_failed", 0)) > 0:
+                    reasons.append(
+                        "cash movements awaiting explicit resolution: "
+                        + str(cash_status.get("manual_review", []))
+                    )
+                elif pending_capital:
                     reasons.append(
                         "unresolved cash/journal movements: "
                         + ", ".join(
@@ -520,6 +542,29 @@ def build_fill_ledger_bridge(config: RuntimeConfig):
         ) from exc
 
 
+def build_cash_activity_bridge(config: RuntimeConfig, fill_ledger_bridge: Any, activity_stager: Any):
+    """Attach explicit cash-movement review to the same durable Paper databases.
+
+    Deposits are never auto-classified. The operator must confirm a staged CSD
+    with a traceable external reference before it enters the capital ledger.
+    """
+    if fill_ledger_bridge is None or activity_stager is None:
+        return None
+    try:
+        from rocket_trader_alpaca_cash_activity_bridge import AlpacaCashActivityBridge
+        from rocket_trader_fx_provider import ExchangerateDevFXProvider
+        fx_provider = ExchangerateDevFXProvider()
+        return AlpacaCashActivityBridge(
+            db_path=activity_stager.db_path,
+            ledger=fill_ledger_bridge.ledger,
+            fx_resolver=fx_provider.quote_for_fill,
+        )
+    except Exception as exc:
+        raise RuntimeConfigurationError(
+            f"Could not initialize Paper cash-activity reconciliation: {exc}"
+        ) from exc
+
+
 def build_activity_stager(config: RuntimeConfig):
     enabled = os.getenv("ROCKET_TRADER_ACTIVITY_STAGER_ENABLED", "false").strip().lower()
     if enabled not in {"1", "true", "yes", "on"}:
@@ -552,6 +597,9 @@ def main() -> int:
     recorder = MarketRuntimeRecorder(config.db_path)
     fill_ledger_bridge = build_fill_ledger_bridge(config)
     activity_stager = build_activity_stager(config)
+    cash_activity_bridge = build_cash_activity_bridge(
+        config, fill_ledger_bridge, activity_stager
+    )
     if args.healthcheck:
         result = recorder.health(
             config.health_max_age_seconds,
@@ -560,8 +608,12 @@ def main() -> int:
         if activity_stager is not None:
             activity_status = activity_stager.report()
             result["account_activity"] = activity_status
+            cash_status = cash_activity_bridge.status() if cash_activity_bridge is not None else None
+            if cash_status is not None:
+                result["cash_activity_reconciliation"] = cash_status
             result["account_activity_healthy"] = (
                 result.get("components", {}).get("account_activity", {}).get("healthy", False)
+                and (cash_status is None or int(cash_status.get("pending_or_failed", 0)) == 0)
             )
             result["healthy"] = result["healthy"] and result["account_activity_healthy"]
         if fill_ledger_bridge is not None:
@@ -572,7 +624,7 @@ def main() -> int:
         print(json.dumps(result, indent=2))
         return 0 if result["healthy"] else 1
     runtime = AlpacaPaperObserverRuntime(
-        config, recorder, fill_ledger_bridge, activity_stager
+        config, recorder, fill_ledger_bridge, activity_stager, cash_activity_bridge
     )
     def request_stop(_signum, _frame):
         runtime.stop_event.set()

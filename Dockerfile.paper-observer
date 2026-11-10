@@ -1,11 +1,14 @@
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
-RUN pip install --no-cache-dir "alpaca-py>=0.43,<1.0"
+RUN pip install --no-cache-dir "alpaca-py>=0.43,<1.0" "requests>=2.32,<3"
 COPY rocket_trader_stream_runtime.py /app/rocket_trader_stream_runtime.py
 COPY rocket_trader_realized_pnl_ledger.py /app/rocket_trader_realized_pnl_ledger.py
 COPY rocket_trader_paper_fill_ledger_bridge.py /app/rocket_trader_paper_fill_ledger_bridge.py
 COPY rocket_trader_alpaca_fee_resolver.py /app/rocket_trader_alpaca_fee_resolver.py
 COPY rocket_trader_fx_provider.py /app/rocket_trader_fx_provider.py
+COPY rocket_trader_alpaca_activity_stager.py /app/rocket_trader_alpaca_activity_stager.py
+COPY rocket_trader_alpaca_cash_activity_bridge.py /app/rocket_trader_alpaca_cash_activity_bridge.py
+COPY rocket_trader_cash_activity_admin.py /app/rocket_trader_cash_activity_admin.py
 RUN mkdir -p /app/data
 CMD ["python", "/app/rocket_trader_stream_runtime.py"]

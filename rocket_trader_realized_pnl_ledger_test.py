@@ -158,6 +158,25 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             self.ledger.snapshot().operating_capital_mxn, Decimal("100000.00")
         )
 
+    def test_duplicate_withdrawal_is_idempotent_before_capital_guard(self):
+        self.ledger.record_deposit(
+            event_id="funding-for-idempotent-withdrawal",
+            amount_mxn="500", occurred_at=NOW,
+        )
+        self.assertTrue(self.ledger.record_withdrawal(
+            event_id="withdrawal-idempotent", amount_mxn="100", occurred_at=NOW
+        ))
+        # Simulate a retry after the withdrawal was committed. It must not
+        # re-run the balance guard or deduct the same movement twice.
+        self.assertFalse(self.ledger.record_withdrawal(
+            event_id="withdrawal-idempotent", amount_mxn="100", occurred_at=NOW
+        ))
+        with self.assertRaisesRegex(LedgerError, "different event payload"):
+            self.ledger.record_withdrawal(
+                event_id="withdrawal-idempotent", amount_mxn="101", occurred_at=NOW
+            )
+        self.assertEqual(self.ledger.snapshot().withdrawals_mxn, Decimal("100.00"))
+
     def test_withdrawal_cannot_exceed_operating_capital(self):
         with self.assertRaisesRegex(LedgerError, "exceeds operating capital"):
             self.ledger.record_withdrawal(

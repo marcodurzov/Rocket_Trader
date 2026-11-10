@@ -230,6 +230,59 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertFalse(health["healthy"])
         self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
 
+    def test_cash_activity_bridge_resolves_staged_cash_and_controls_health(self):
+        class Stager:
+            db_path = os.path.join(tempfile.gettempdir(), "unused-activity.sqlite3")
+            def sync(self):
+                return {
+                    "total_staged": 1,
+                    "blocked_activity_types": [],
+                    "counts": {"CSD:STAGED_PENDING_CAPITAL_RECONCILIATION": 1},
+                    "ledger_posting_enabled": False,
+                }
+            def cash_movements(self):
+                return [{
+                    "id": "cash-activity-1", "activity_type": "CSD",
+                    "net_amount": "100", "currency": "MXN",
+                    "date": "2026-11-10", "status": "executed",
+                }]
+        class CashBridge:
+            def __init__(self, pending):
+                self.pending = pending
+                self.processed = []
+            def process_activity(self, activity):
+                self.processed.append(activity)
+                return {"manual_review": True}
+            def status(self):
+                return {
+                    "pending_or_failed": self.pending,
+                    "manual_review": [{"activity_id": "cash-activity-1"}] if self.pending else [],
+                }
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        stager = Stager()
+        unresolved = CashBridge(1)
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder, activity_stager=stager,
+            cash_activity_bridge=unresolved,
+        )
+        report = runtime._sync_account_activities()
+        self.assertEqual(len(unresolved.processed), 1)
+        self.assertIn("cash_activity_reconciliation", report)
+        self.assertFalse(self.recorder.health(max_age_seconds=120)["healthy"])
+
+        resolved = CashBridge(0)
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder, activity_stager=stager,
+            cash_activity_bridge=resolved,
+        )
+        report = runtime._sync_account_activities()
+        self.assertEqual(len(resolved.processed), 1)
+        self.assertEqual(report["cash_activity_reconciliation"]["pending_or_failed"], 0)
+        self.assertTrue(self.recorder.health(max_age_seconds=120)["healthy"])
+
     def test_pending_capital_movements_keep_runtime_unhealthy(self):
         class PendingCapitalStager:
             def sync(self):

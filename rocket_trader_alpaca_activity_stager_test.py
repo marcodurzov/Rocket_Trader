@@ -159,6 +159,20 @@ class ActivityStagerTests(unittest.TestCase):
             "CSD:BLOCKED_CASH_ACTIVITY_WITHOUT_CURRENCY", report["counts"]
         )
 
+    def test_cash_movements_returns_only_durable_cash_review_rows(self):
+        rows = [
+            {"id": "deposit-1", "activity_type": "CSD", "status": "executed",
+             "date": "2026-11-10", "net_amount": "250", "currency": "USD"},
+            {"id": "seed-1", "activity_type": "JNLC", "status": "executed",
+             "date": "2026-09-28", "net_amount": "100000", "currency": "USD"},
+            {"id": "fill-1", **fill("fill-1")},
+        ]
+        stager = self.make([rows])
+        stager.sync()
+        movements = stager.cash_movements()
+        self.assertEqual({row["id"] for row in movements}, {"deposit-1", "seed-1"})
+        self.assertTrue(all(row["activity_type"] in {"CSD", "CSW", "JNLC"} for row in movements))
+
     def test_rejects_live_configuration(self):
         old_live = os.environ.get("ALPACA_LIVE_ENABLED")
         old_mode = os.environ.get("ROCKET_TRADER_EXECUTION_MODE")

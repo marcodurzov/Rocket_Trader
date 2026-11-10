@@ -11,6 +11,8 @@ on:
       - "rocket_trader_alpaca_fee_resolver.py"
       - "rocket_trader_fx_provider.py"
       - "rocket_trader_alpaca_activity_stager.py"
+      - "rocket_trader_alpaca_cash_activity_bridge.py"
+      - "rocket_trader_alpaca_cash_activity_bridge_test.py"
       - "rocket_trader_alpaca_activity_stager_test.py"
       - ".github/workflows/rocket-trader-stream-runtime-tests.yml"
   pull_request:
@@ -22,6 +24,11 @@ on:
       - "rocket_trader_paper_fill_ledger_bridge.py"
       - "rocket_trader_alpaca_fee_resolver.py"
       - "rocket_trader_fx_provider.py"
+      - "rocket_trader_alpaca_activity_stager.py"
+      - "rocket_trader_alpaca_cash_activity_bridge.py"
+      - "rocket_trader_alpaca_cash_activity_bridge_test.py"
+      - "rocket_trader_cash_activity_admin.py"
+      - "Dockerfile.paper-observer"
       - ".github/workflows/rocket-trader-stream-runtime-tests.yml"
 
 jobs:
@@ -34,7 +41,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile observer and accounting modules
-        run: python -m py_compile rocket_trader_stream_runtime.py rocket_trader_stream_runtime_test.py rocket_trader_realized_pnl_ledger.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_alpaca_fee_resolver.py rocket_trader_fx_provider.py rocket_trader_alpaca_activity_stager.py rocket_trader_alpaca_activity_stager_test.py
+        run: python -m py_compile rocket_trader_stream_runtime.py rocket_trader_stream_runtime_test.py rocket_trader_realized_pnl_ledger.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_alpaca_fee_resolver.py rocket_trader_fx_provider.py rocket_trader_alpaca_activity_stager.py rocket_trader_alpaca_activity_stager_test.py rocket_trader_alpaca_cash_activity_bridge.py rocket_trader_alpaca_cash_activity_bridge_test.py
       - name: Run offline runtime and accounting tests
         run: |
           python -m unittest -v rocket_trader_stream_runtime_test.py
@@ -43,3 +50,4 @@ jobs:
           python -m unittest -v rocket_trader_alpaca_fee_resolver_test.py
           python -m unittest -v rocket_trader_fx_provider_test.py
           python -m unittest -v rocket_trader_alpaca_activity_stager_test.py
+          python -m unittest -v rocket_trader_alpaca_cash_activity_bridge_test.py

@@ -290,6 +290,21 @@ class AlpacaPaperActivityStager:
         })
         return report
 
+    def cash_movements(self) -> List[Dict[str, Any]]:
+        """Return durable staged CSD/CSW/JNLC payloads for explicit review.
+
+        This is a read-only view. It never classifies a movement as user
+        capital and never posts anything to the P&L ledger.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT payload_json FROM staged_activities
+                   WHERE activity_type IN ('CSD','CSW','JNLC')
+                     AND classification='STAGED_PENDING_CAPITAL_RECONCILIATION'
+                   ORDER BY occurred_at,activity_id"""
+            ).fetchall()
+        return [json.loads(row["payload_json"]) for row in rows]
+
     def report(self) -> Dict[str, Any]:
         with self._connect() as conn:
             rows = conn.execute(
