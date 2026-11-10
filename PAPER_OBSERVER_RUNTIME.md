@@ -59,15 +59,20 @@ Optional .env entry:
 ## Account activity staging
 
 The runtime can optionally enable a read-only Alpaca Paper account-activity stager
-with `ROCKET_TRADER_ACTIVITY_STAGER_ENABLED=true`. It stores fills, fees and cash
-credits/debits durably and idempotently. Cash movements remain pending capital
-reconciliation; they are never automatically classified as user deposits or
-withdrawals because broker activity codes can also represent returned transfers.
+with `ROCKET_TRADER_ACTIVITY_STAGER_ENABLED=true`. It stores fills, fees, cash
+credits/debits and JNLC cash journals durably and idempotently. CSD/CSW can
+represent returned transfers; JNLC is a cash journal and may represent the
+simulator's initial Paper balance. None is automatically classified as a user
+deposit or trading profit. Any unresolved cash/journal movement keeps the
+account-activity health component unhealthy until explicitly reconciled.
 A failed sync marks the account-activity health component unhealthy and is retried
 every 15 minutes. This stager never posts to the capital ledger or submits orders.
 
 Set `ROCKET_TRADER_ACTIVITY_STAGER_DB` to a durable path if the default path
-beside the runtime database is not suitable.
+beside the runtime database is not suitable. The default Alpaca Paper USD 100,000
+seed is a broker simulation balance, not a user deposit, not strategy-earned
+capital and not the MXN 100,000 milestone. It must remain separate from the
+user-capital ledger.
 
 ## Important limitations
 
