@@ -175,14 +175,13 @@ def build_references(prices: Sequence[DailyPrice], cost_bps_per_side: float
     }
     for name, signal in strategies.items():
         position = 0.0
-        gross, turnover = [], []
+        gross = []
         for i in range(n):
             if i > 0:
                 value = signal(i)
                 if value is not None:
                     position = 1.0 if value > 0 else 0.0
             gross.append(position * daily[i])
-            turnover.append(abs(position - (1.0 if i > 0 and gross[i - 1] != 0 else 0.0)))
         # Compute turnover from actual target-position transitions, not return sign.
         position = 0.0
         turnover = []
