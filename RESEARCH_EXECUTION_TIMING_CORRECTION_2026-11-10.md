@@ -62,3 +62,25 @@ Workflow: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42890334990
 ## Decision
 
 **No strategy approved.** The next research tranche should test pre-registered long-only mean-reversion hypotheses and regime filters using this corrected next-open execution model, with the same chronological holdout, realistic costs, 2x cost stress, bootstrap uncertainty and Holm correction. ML/RL remains deferred until simple hypotheses produce reproducible out-of-sample evidence.
+
+
+## Mean-reversion tranche — corrected next-open v0.4/v0.3
+
+Three fixed long-only mean-reversion hypotheses were added: RSI(2)/SMA200, Bollinger(20,2), and five-day downside z-score. They use the same next-open execution model, costs, chronological holdout and Holm correction.
+
+Equity:
+- 8 ETFs, 73 hypotheses, 0 Holm-significant, 0 pre-screen passes.
+- TLT Bollinger(20,2) holdout return +8.83%, excess over TLT buy-and-hold +8.95 pp, 10 entries, Holm-adjusted p=1.0.
+- RSI2 and z-score variants mostly underperformed their same-asset buy-and-hold benchmarks.
+
+Crypto:
+- BTC/USD and ETH/USD eligible; SOL/USD excluded for the 416-day gap.
+- 19 hypotheses, 0 Holm-significant, 0 pre-screen passes.
+- BTC RSI(2) holdout +4.57%, only 4 entries, Holm-adjusted p=1.0.
+- Bollinger and z-score variants were negative in BTC and ETH holdouts.
+
+These are exploratory results only. No strategy is promoted.
+
+Workflows:
+- Equity v0.4: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42892147119
+- Crypto v0.3: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42892147177
