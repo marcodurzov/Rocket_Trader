@@ -218,12 +218,40 @@ class AlpacaCryptoPaperExecutionAdapter:
             raise CryptoPaperExecutionError("Alpaca Paper account currency must be USD.")
         if crypto_status != "ACTIVE":
             raise CryptoPaperExecutionError("Alpaca Paper crypto_status is not ACTIVE.")
+        multiplier = str(_value(account, "multiplier", "UNKNOWN"))
+        if multiplier != "1":
+            raise CryptoPaperExecutionError(
+                f"Cash-only policy requires account multiplier 1; found {multiplier}."
+            )
+        if bool(_value(account, "shorting_enabled", True)):
+            raise CryptoPaperExecutionError("Cash-only policy requires shorting_enabled=false.")
+        try:
+            config = self.client.get_account_configurations()
+        except Exception as exc:
+            raise CryptoPaperExecutionError(
+                "Cannot verify account-level cash-only configuration; orders are blocked."
+            ) from exc
+        margin_cap = str(_value(config, "max_margin_multiplier", "UNKNOWN"))
+        no_shorting = bool(_value(config, "no_shorting", False))
+        options_level = int(_value(config, "max_options_trading_level", -1))
+        if margin_cap != "1" or not no_shorting or options_level != 0:
+            raise CryptoPaperExecutionError(
+                "Account configuration must enforce max_margin_multiplier=1, "
+                "no_shorting=true and max_options_trading_level=0."
+            )
+        cash = _decimal(_value(account, "cash", "NaN"), "account_cash")
+        non_marginable = _decimal(
+            _value(account, "non_marginable_buying_power", "NaN"),
+            "non_marginable_buying_power",
+        )
+        if cash < 0 or non_marginable < 0:
+            raise CryptoPaperExecutionError("Cash and non-marginable buying power cannot be negative.")
         return {
-            "status": status,
-            "currency": currency,
-            "crypto_status": crypto_status,
-            "trading_blocked": trading_blocked,
-            "mode": "PAPER",
+            "status": status, "currency": currency, "crypto_status": crypto_status,
+            "trading_blocked": trading_blocked, "multiplier": multiplier,
+            "max_margin_multiplier": margin_cap, "no_shorting": no_shorting,
+            "max_options_trading_level": options_level, "cash": str(cash),
+            "non_marginable_buying_power": str(non_marginable), "mode": "PAPER",
         }
 
     def submit(self, intent: CryptoOrderIntent) -> Dict[str, Any]:
@@ -239,7 +267,7 @@ class AlpacaCryptoPaperExecutionAdapter:
             raise CryptoPaperExecutionError("client_order_id must contain 1 to 48 characters.")
 
         symbol = normalize_crypto_symbol(intent.symbol)
-        self.verify_account()
+        account_snapshot = self.verify_account()
         self._validate_asset(symbol)
 
         if intent.side == Side.BUY:
@@ -250,6 +278,14 @@ class AlpacaCryptoPaperExecutionAdapter:
                 raise CryptoPaperExecutionError("BUY notional is below the USD 1 broker minimum.")
             if notional <= 0:
                 raise CryptoPaperExecutionError("BUY notional must be positive.")
+            available_cash = min(
+                Decimal(account_snapshot["cash"]),
+                Decimal(account_snapshot["non_marginable_buying_power"]),
+            )
+            if notional * Decimal("1.02") > available_cash:
+                raise CryptoPaperExecutionError(
+                    "BUY notional plus 2% fee/price buffer exceeds available cash-only buying power."
+                )
             quantity = None
         else:
             if intent.notional_usd is not None or intent.quantity is None:
