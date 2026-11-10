@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from rocket_trader_stream_runtime import (
     AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeStorageError, RuntimeConfig,
-    build_fill_ledger_bridge, build_activity_stager, sync_cash_activity_review,
+    build_fill_ledger_bridge, build_activity_stager, sync_cash_activity_review,\n    account_activity_reconciliation_clear,
 )
 
 class StreamRuntimeTests(unittest.TestCase):
@@ -229,6 +229,26 @@ class StreamRuntimeTests(unittest.TestCase):
         health = self.recorder.health(max_age_seconds=120)
         self.assertFalse(health["healthy"])
         self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
+
+    def test_healthcheck_blocks_pending_and_unsupported_cash_activity(self):
+        pending = {
+            "blocked_activity_types": [],
+            "counts": {"CSD:STAGED_PENDING_CAPITAL_RECONCILIATION": 1},
+        }
+        blocked = {
+            "blocked_activity_types": ["CSD"],
+            "counts": {},
+        }
+        self.assertFalse(account_activity_reconciliation_clear(pending, None))
+        self.assertFalse(account_activity_reconciliation_clear(
+            pending, {"pending_or_failed": 1}
+        ))
+        self.assertTrue(account_activity_reconciliation_clear(
+            pending, {"pending_or_failed": 0}
+        ))
+        self.assertFalse(account_activity_reconciliation_clear(
+            blocked, {"pending_or_failed": 0}
+        ))
 
     def test_healthcheck_mirrors_staged_cash_before_reading_review_status(self):
         class Stager:
