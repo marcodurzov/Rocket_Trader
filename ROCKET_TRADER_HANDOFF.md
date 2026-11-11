@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11 (PR #138 merged; adaptive strategy and event-evidence requirements reaffirmed)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main baseline SHA:** `873b26352bdb76f85809b33d1605123e5b301b7e` (documentation merge; no runtime code changed)  
+**Latest main HEAD before this Handoff refresh:** `bf8226b647c2caa1d80d9bf4f3e995fb6897d68e` (documentation-only follow-up; runtime code baseline unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
