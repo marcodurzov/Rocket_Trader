@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#152 merged; manual read-only Paper order/fill/fee audit workflow added)  
+**Last updated:** 2026-11-11 (PRs #141–#155 merged; safe Paper audit diagnostics and explicit journal recovery added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `92e427620a504a55a47b280cc617dcb3a94c2749` (PR #152 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `829e17343b7073e77ad1fd16ebc2611be2d88641` (PR #155 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **54%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -944,3 +944,28 @@ Next actions:
 - **The actual Paper account-activity endpoint has not yet been queried by this new workflow.** It must be manually dispatched by the user from GitHub Actions. If no CFEE activity appears, the report explicitly leaves fee evidence UNKNOWN; it does not infer zero fees.
 
 **Progress estimate:** 54% (engineering/evidence maturity only). A controlled real-Paper read-only audit is now prepared but awaits user dispatch. Full unattended recovery, persistent activity watermarks, corrections/busts, fee attribution, partial-exit automation, deployment, empirical costs and strategy edge remain open.
+
+
+### PR #154 — safe diagnostics for read-only Paper activity audit
+- Merged to main: `7aa7b8d5acaf0b5247c316842ec4824fb6f9c907`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/154
+- The prior manual audit run `43020228954` failed after entering the activity reconciliation step and printed only `AlpacaActivityReconciliationError`.
+- Added safe reporting of Rocket Trader's own `ValueError`/`RuntimeError` validation messages, plus a bounded cause-chain containing exception class names and HTTP status codes only. Raw SDK/HTTP exception text remains suppressed.
+- Added an offline regression test proving the safe message is emitted without printing the test secret.
+- PR CI run `43020664640`: success. Post-merge static CI run `43031972951`: success. The Paper audit job was skipped because this was a push event.
+- The failed run's artifact `13853579473` was created before this diagnostic change and contains no underlying cause. **The actual Paper activity failure is still undiagnosed until the user manually dispatches the audit again on the new main.**
+- No broker order, cancellation, replacement or account configuration mutation was performed by this PR.
+
+**Progress estimate:** 54% (engineering/evidence maturity only). Diagnostic visibility is improved; live Paper activity reconciliation remains unvalidated.
+
+### PR #155 — explicit read-only recovery of journaled crypto orders
+- Merged to main: `829e17343b7073e77ad1fd16ebc2611be2d88641`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/155
+- Added `AlpacaCryptoPaperExecutionAdapter.recover_journaled_orders()`: scans all locally journaled orders, re-queries each by client order ID, persists the broker snapshot, and reconciles individual FILL activities.
+- Reports `RECONCILED`, `BROKER_ORDER_NOT_FOUND`, `REQUIRES_REVIEW` or `RECONCILIATION_FAILED` with aggregate counts.
+- Recovery is read-only with respect to the broker: it never submits, cancels or replaces orders. Missing broker orders and incomplete/mismatched activity remain unresolved; no automatic resubmission is attempted.
+- Added offline tests for successful recovery, missing broker order, filled-order activity reconciliation and repeated-run idempotency.
+- PR CI run `43032346333`: success. Post-merge main run `43032427138` was still running when this note was drafted; update after conclusion.
+- Important boundary: this is an explicit adapter method, **not yet invoked automatically at process startup or by a persistent scheduled worker**. It is not an autonomous execution service and no real Paper order was placed by this PR.
+
+**Progress estimate:** 54% (engineering/evidence maturity only). Explicit recovery logic is implemented and offline-tested; automatic startup scheduling, durable activity watermarks, correction/bust handling, fee attribution, empirical costs, strategy edge and sustained Paper validation remain open.
