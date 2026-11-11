@@ -506,3 +506,15 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - This repeated the existing v0.4 research family as a regression/consistency check, not a new hypothesis. Family size 73, Holm-significant 0, pre-screen 0, candidate promotion false, Paper approval false, orders 0.
 - No Tiingo API call or subscription; only mocked contract tests. Independent cross-source validation remains open.
 - No progress percentage increase.
+
+
+---
+
+## 2026-11-11 — post-merge 10-year Yahoo research result
+- Workflow `42954130155` succeeded; artifact `13826686266`; 10-year Yahoo data returned for all 8 ETFs.
+- 2,511 daily bars per symbol, approximate weekday coverage 96.32%, maximum gap 4 days; data-quality gate passed all 8.
+- 73 final-holdout hypotheses; pre-screen pass 0; Holm-Bonferroni significant 0. No candidate promoted; Paper approval false; orders disabled; zero orders submitted.
+- Research cost assumption remains placeholder 5 bps per side, not empirical. The run used Yahoo, not Tiingo or Alpaca; it does not resolve prior IEX cumulative adjustment divergence (up to 220.5 bps SPY).
+- Artifact SHA256: `6929f6156d5c55665023fb0bcb007a311962c0c70e5837328a8d72e8656f9d0e`.
+- Paper runtime/accounting post-merge CI `42954130244` passed 166 tests; no persistent user-host Paper evidence.
+- Main baseline SHA at this update: `aaf4cf02c3d04c77925357df7687a1f9946abe2f`; progress unchanged at 46%.
