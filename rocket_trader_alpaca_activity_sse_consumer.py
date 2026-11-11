@@ -314,6 +314,10 @@ class DurableActivitySSEInbox:
                 "SELECT event_id FROM activity_sse_cursor WHERE singleton=1"
             ).fetchone()
             refs = {str(row["ref_id"]) for row in rows}
+            activity_hashes = {str(row["ref_id"]): str(row["payload_hash"]) for row in rows}
+            latest_delivery_row = conn.execute(
+                "SELECT event_id FROM activity_sse_deliveries ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
         previous_hash = self.GENESIS_HASH
         expected_sequence = 1
         for row in rows:
@@ -335,14 +339,29 @@ class DurableActivitySSEInbox:
         delivery_refs = {str(row["ref_id"]) for row in deliveries}
         cursor = str(cursor_row["event_id"]) if cursor_row else None
         delivery_ids = {str(row["event_id"]) for row in deliveries}
+        delivery_mismatches = sum(
+            1 for row in deliveries
+            if activity_hashes.get(str(row["ref_id"])) != str(row["payload_hash"])
+        )
+        latest_delivery = str(latest_delivery_row["event_id"]) if latest_delivery_row else None
+        cursor_is_latest = cursor == latest_delivery if cursor is not None else latest_delivery is None
         orphan_previous = sum(
             1 for row in rows if row["previous_id"] and row["previous_id"] not in refs
         )
+        integrity_valid = (
+            delivery_mismatches == 0
+            and cursor_is_latest
+            and (cursor is None or cursor in delivery_ids)
+            and delivery_refs.issubset(refs)
+        )
         return {
-            "valid": True, "activity_count": len(rows), "delivery_count": len(deliveries),
+            "valid": integrity_valid, "activity_count": len(rows), "delivery_count": len(deliveries),
             "cursor": cursor, "cursor_has_delivery": cursor in delivery_ids if cursor else False,
+            "cursor_is_latest_delivery": cursor_is_latest,
+            "delivery_payload_mismatch_count": delivery_mismatches,
             "orphan_previous_id_count": orphan_previous,
             "unreferenced_delivery_count": len(delivery_refs - refs),
+            "reason": None if integrity_valid else "delivery_or_cursor_integrity_failure",
         }
 
     def list_events(self, *, limit: int = 1000) -> list[Dict[str, Any]]:
@@ -438,10 +457,23 @@ class AlpacaPaperActivitySSEConsumer:
         attempt = 0
         while not stop_event.is_set():
             try:
-                self.connect_once()
+                report = self.connect_once()
                 attempt = 0
-            except ActivitySSEConsumerError:
+                print(json.dumps({
+                    "component": "paper_activity_sse",
+                    "status": "STREAM_ENDED_OR_RECONNECTING",
+                    "staged_count": report.get("staged_count", 0),
+                    "duplicate_count": report.get("duplicate_count", 0),
+                    "cursor": report.get("cursor"),
+                }, sort_keys=True), flush=True)
+            except ActivitySSEConsumerError as exc:
                 attempt += 1
+                print(json.dumps({
+                    "component": "paper_activity_sse",
+                    "status": "RECONNECTING",
+                    "error_type": type(exc).__name__,
+                    "cursor": self.inbox.cursor,
+                }, sort_keys=True), flush=True)
             if stop_event.is_set():
                 break
             delay = min(max_backoff_seconds, 2 ** min(attempt, 5))
@@ -453,10 +485,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", default=os.getenv("ACTIVITY_SSE_DB", "data/paper-activity-sse.sqlite3"))
     parser.add_argument("--bootstrap-since", default=os.getenv("ACTIVITY_SSE_BOOTSTRAP_SINCE"))
+    parser.add_argument("--healthcheck", action="store_true",
+                        help="Verify the durable inbox hash chain and cursor without contacting Alpaca.")
     args = parser.parse_args()
+    inbox = DurableActivitySSEInbox(args.db)
+    if args.healthcheck:
+        report = inbox.verify()
+        print(json.dumps({"mode": "PAPER", "health": report}, sort_keys=True))
+        return 0 if report.get("valid") else 1
     if not args.bootstrap_since:
         parser.error("--bootstrap-since or ACTIVITY_SSE_BOOTSTRAP_SINCE is required")
-    inbox = DurableActivitySSEInbox(args.db)
     consumer = AlpacaPaperActivitySSEConsumer(inbox=inbox, bootstrap_since=args.bootstrap_since)
     stop = threading.Event()
     try:

@@ -19,6 +19,7 @@ COPY rocket_trader_fx_provider.py /app/rocket_trader_fx_provider.py
 COPY rocket_trader_currency.py /app/rocket_trader_currency.py
 COPY rocket_trader_paper_reconciliation.py /app/rocket_trader_paper_reconciliation.py
 COPY rocket_trader_alpaca_activity_stager.py /app/rocket_trader_alpaca_activity_stager.py
+COPY rocket_trader_alpaca_activity_sse_consumer.py /app/rocket_trader_alpaca_activity_sse_consumer.py
 COPY rocket_trader_alpaca_cash_activity_bridge.py /app/rocket_trader_alpaca_cash_activity_bridge.py
 COPY rocket_trader_cash_activity_admin.py /app/rocket_trader_cash_activity_admin.py
 RUN mkdir -p /app/data

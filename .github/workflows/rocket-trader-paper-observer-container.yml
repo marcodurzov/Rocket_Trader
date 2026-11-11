@@ -28,6 +28,7 @@ on:
       - "rocket_trader_currency.py"
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_alpaca_activity_stager.py"
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_cash_activity_bridge.py"
       - "rocket_trader_cash_activity_admin.py"
       - ".github/workflows/rocket-trader-paper-observer-container.yml"
@@ -59,7 +60,7 @@ jobs:
       - name: Validate Compose configuration
         run: |
           printf '%s\n' 'ALPACA_API_KEY=test-paper-key' 'ALPACA_SECRET_KEY=test-paper-secret' > .env
-          docker compose -f docker-compose.paper-observer.yml config --quiet
+          ACTIVITY_SSE_BOOTSTRAP_SINCE=2026-11-11T04:55:00Z docker compose -f docker-compose.paper-observer.yml config --quiet
       - name: Build Paper observer image
         run: docker build --pull -f Dockerfile.paper-observer -t rocket-trader-paper-observer:ci .
       - name: Verify image includes runtime and accounting modules
@@ -81,5 +82,6 @@ jobs:
             /app/rocket_trader_currency.py \
             /app/rocket_trader_paper_reconciliation.py \
             /app/rocket_trader_alpaca_activity_stager.py \
+            /app/rocket_trader_alpaca_activity_sse_consumer.py \
             /app/rocket_trader_alpaca_cash_activity_bridge.py \
             /app/rocket_trader_cash_activity_admin.py
