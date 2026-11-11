@@ -32,7 +32,7 @@ VERSION = "0.4"
 DEFAULT_SYMBOLS = ("SPY", "QQQ", "IWM", "DIA", "TLT", "GLD", "EFA", "EEM")
 DEFAULT_YEARS = 10
 MIN_DAILY_BARS = 1800
-MIN_WEEKDAY_COVERAGE = 0.95
+MIN_EXCHANGE_SESSION_COVERAGE = 0.95
 MAX_GAP_DAYS = 7
 FEE_BPS_SIDE = 0.0
 HALF_SPREAD_BPS_SIDE = 2.5
@@ -172,7 +172,7 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     observed_gaps = observed.to_series().diff().dt.days.dropna()
     max_gap = int(observed_gaps.max()) if not observed_gaps.empty else 0
     coverage = bars / expected_sessions if expected_sessions else 0.0
-    eligible = coverage >= MIN_WEEKDAY_COVERAGE and max_gap <= MAX_GAP_DAYS
+    eligible = coverage >= MIN_EXCHANGE_SESSION_COVERAGE and max_gap <= MAX_GAP_DAYS
     return {
         "calendar": "XNYS",
         "expected_exchange_sessions": expected_sessions,
@@ -180,7 +180,7 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
         "missing_exchange_sessions": missing,
         "exchange_session_coverage_pct": coverage,
         "max_calendar_gap_days": max_gap,
-        "minimum_exchange_session_coverage_pct": MIN_WEEKDAY_COVERAGE,
+        "minimum_exchange_session_coverage_pct": MIN_EXCHANGE_SESSION_COVERAGE,
         "maximum_allowed_gap_days": MAX_GAP_DAYS,
         "eligible_for_strategy_evidence": eligible,
         "first_missing_exchange_session": (
@@ -312,7 +312,7 @@ def fetch_yahoo_daily_bars(
             f"{clean}: Yahoo returned only {len(normalized)} daily bars; "
             f"minimum {minimum_rows} for {years} requested years. "
             f"Returned range={first_seen.isoformat()}..{last_seen.isoformat()}; "
-            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
+            f"exchange_session_coverage={quality['exchange_session_coverage_pct']:.2%}; "
             f"max_calendar_gap_days={quality['max_calendar_gap_days']}."
         )
     if first_seen > pd.Timestamp(start_at).tz_convert("UTC") + pd.Timedelta(days=60):
@@ -401,7 +401,7 @@ def fetch_tiingo_daily_bars(
             f"{clean}: Tiingo returned only {len(normalized)} daily bars; "
             f"minimum {minimum_rows} for {years} years. "
             f"Returned range={first_seen.isoformat()}..{last_seen.isoformat()}; "
-            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
+            f"exchange_session_coverage={quality['exchange_session_coverage_pct']:.2%}; "
             f"max_calendar_gap_days={quality['max_calendar_gap_days']}."
         )
     if first_seen > pd.Timestamp(start_at).tz_convert("UTC") + pd.Timedelta(days=60):
