@@ -727,5 +727,68 @@ class CryptoPaperExecutionTests(unittest.TestCase):
             )
         self.assertEqual(self.client.submit_count, 0)
 
+    def test_recovery_worker_reconciles_journaled_orders_without_submitting(self):
+        first = self.adapter.submit(self.buy("recovery-buy-001"))
+        result = self.adapter.recover_journaled_orders()
+        self.assertEqual(result["status"], "SUCCESS")
+        self.assertTrue(result["read_only"])
+        self.assertEqual(result["orders_scanned"], 1)
+        self.assertEqual(result["orders_reconciled"], 1)
+        self.assertEqual(result["orders"][0]["recovery_status"], "RECONCILED")
+        self.assertEqual(result["orders"][0]["broker_order_id"], first["order_id"])
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_recovery_worker_keeps_missing_broker_order_unresolved(self):
+        self.adapter.submit(self.buy("recovery-missing-001"))
+        self.client.orders.pop("recovery-missing-001")
+        result = self.adapter.recover_journaled_orders()
+        self.assertEqual(result["status"], "REQUIRES_REVIEW")
+        self.assertEqual(result["orders_unresolved"], 1)
+        self.assertEqual(
+            result["orders"][0]["recovery_status"], "BROKER_ORDER_NOT_FOUND"
+        )
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_recovery_worker_records_fill_activity_reconciliation(self):
+        submitted = self.adapter.submit(self.buy("recovery-fill-001"))
+        order = self.client.orders["recovery-fill-001"]
+        order.status = "filled"
+        order.filled_qty = "0.1"
+        self.client.activities = [{
+            "id": "recovery-fill-activity-001",
+            "activity_type": "FILL",
+            "order_id": submitted["order_id"],
+            "order_status": "filled",
+            "type": "fill",
+            "symbol": "BTC/USD",
+            "side": "buy",
+            "qty": "0.1",
+            "price": "100",
+            "cum_qty": "0.1",
+            "leaves_qty": "0",
+            "transaction_time": "2026-11-11T12:00:00Z",
+        }]
+        result = self.adapter.recover_journaled_orders()
+        self.assertEqual(result["status"], "SUCCESS")
+        self.assertEqual(result["orders_reconciled"], 1)
+        self.assertEqual(
+            result["orders"][0]["activity_reconciliation_status"], "MATCHED"
+        )
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_recovery_worker_is_idempotent_across_repeated_runs(self):
+        self.adapter.submit(self.buy("recovery-idempotent-001"))
+        first = self.adapter.recover_journaled_orders()
+        event_count = len(self.adapter.order_events("recovery-idempotent-001"))
+        second = self.adapter.recover_journaled_orders()
+        self.assertEqual(first["status"], "SUCCESS")
+        self.assertEqual(second["status"], "SUCCESS")
+        self.assertEqual(
+            len(self.adapter.order_events("recovery-idempotent-001")),
+            event_count,
+        )
+        self.assertEqual(self.client.submit_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
