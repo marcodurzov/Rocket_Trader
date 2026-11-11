@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Fail-closed startup gate for the future Paper crypto execution host.
+
+The market-data observer remains observe-only. This wrapper is the required
+orchestration boundary for any future process that wants to submit crypto
+Paper intents: verify the account, recover the durable journal, then open the
+process-local submission gate. It does not create a broker client or place
+orders during startup.
+"""
+
+from __future__ import annotations
+
+import threading
+from typing import Any, Dict
+
+
+class PaperExecutionStartupError(RuntimeError):
+    """Startup recovery or execution-gate failure."""
+
+
+class PaperCryptoExecutionService:
+    """Require successful read-only recovery before accepting any new intent.
+
+    Instantiate this wrapper around the adapter configured with the same
+    persistent journal and immutable event-ledger paths used by the host.
+    Readiness is process-local and starts closed after every process restart.
+    """
+
+    def __init__(self, adapter: Any) -> None:
+        required = ("verify_account", "recover_journaled_orders", "submit")
+        if adapter is None or any(not callable(getattr(adapter, name, None)) for name in required):
+            raise PaperExecutionStartupError(
+                "A crypto Paper adapter with account verification, recovery and submit methods is required."
+            )
+        self.adapter = adapter
+        self._lock = threading.RLock()
+        self._ready = False
+        self._closed = False
+        self._startup_report: Dict[str, Any] | None = None
+
+    @staticmethod
+    def _recovery_is_complete(report: Any) -> bool:
+        if not isinstance(report, dict):
+            return False
+        if report.get("mode") != "PAPER" or report.get("read_only") is not True:
+            return False
+        if report.get("status") != "SUCCESS":
+            return False
+        counts = (
+            report.get("orders_scanned"),
+            report.get("orders_reconciled"),
+            report.get("orders_unresolved"),
+            report.get("orders_failed"),
+        )
+        if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts):
+            return False
+        scanned, reconciled, unresolved, failed = counts
+        return scanned == reconciled and unresolved == 0 and failed == 0
+
+    def start(self) -> Dict[str, Any]:
+        """Verify account and reconcile every journaled order before opening the gate."""
+        with self._lock:
+            if self._closed:
+                raise PaperExecutionStartupError("Execution service is stopped and cannot be restarted.")
+            if self._ready and self._startup_report is not None:
+                return dict(self._startup_report)
+
+            self._ready = False
+            self._startup_report = None
+            try:
+                self.adapter.verify_account()
+                recovery = self.adapter.recover_journaled_orders()
+            except Exception as exc:
+                raise PaperExecutionStartupError(
+                    "Paper startup verification/recovery failed; new order intents remain blocked."
+                ) from exc
+
+            if not self._recovery_is_complete(recovery):
+                self._startup_report = {
+                    "mode": "PAPER",
+                    "ready": False,
+                    "recovery": recovery if isinstance(recovery, dict) else None,
+                }
+                raise PaperExecutionStartupError(
+                    "Journal recovery is incomplete or malformed; new order intents remain blocked."
+                )
+
+            self._startup_report = {
+                "mode": "PAPER",
+                "ready": True,
+                "account_verified": True,
+                "recovery": recovery,
+            }
+            self._ready = True
+            return dict(self._startup_report)
+
+    def submit(self, intent: Any) -> Dict[str, Any]:
+        """Submit only after successful startup recovery.
+
+        Any adapter exception closes this process's gate. The operator must
+        restart and run recovery before another intent can be accepted.
+        """
+        with self._lock:
+            if self._closed or not self._ready:
+                raise PaperExecutionStartupError(
+                    "Paper execution startup gate is closed; recover the durable journal before submitting."
+                )
+            try:
+                result = self.adapter.submit(intent)
+                if not isinstance(result, dict) or result.get("mode") != "PAPER" or result.get("accepted") is not True:
+                    self._ready = False
+                    raise PaperExecutionStartupError(
+                        "Adapter returned an invalid or non-Paper submission result; execution gate closed."
+                    )
+                return result
+            except Exception as exc:
+                self._ready = False
+                if isinstance(exc, PaperExecutionStartupError):
+                    raise
+                raise PaperExecutionStartupError(
+                    "Adapter submission raised an error; execution gate closed until restart recovery."
+                ) from exc
+
+    def stop(self) -> None:
+        """Close the process-local gate; no broker action is performed."""
+        with self._lock:
+            self._ready = False
+            self._closed = True
+
+    def health(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "mode": "PAPER",
+                "ready": self._ready and not self._closed,
+                "closed": self._closed,
+                "recovery_status": (
+                    (self._startup_report or {}).get("recovery", {}).get("status")
+                    if isinstance((self._startup_report or {}).get("recovery"), dict)
+                    else None
+                ),
+            }
