@@ -91,3 +91,10 @@ as an artifact and never creates or modifies orders.
 The first live run (42920786498; artifact 13812205814) failed for all symbols because `repair=True` triggered `ValueError: output array is read-only`. PR #96 set `repair=False` and added a regression test. The subsequent live run (42922974687; artifact 13812508089) retrieved all eight ETFs successfully, but only 1,581 common sessions were available (2020-07-27 to 2026-11-09). Yahoo had 2,512 sessions; Alpaca IEX had 1,582. Consequently, 0/8 symbols passed the ten-year source-coverage diagnostic. SIP remains unavailable to this account (`NOT_ENTITLED`). This is a completed retrieval with a failed coverage gate, not a successful 10-year validation.
 
 On the common window, return correlations were high (0.99835–0.99975), but cumulative-return differences ranged from 1.3 bps (DIA) to 220.5 bps (SPY). Do not infer full source parity from correlation alone. Investigate corporate-action/adjustment methodology and consider a licensed full-history source. Do not splice sources or lower the coverage threshold.
+
+
+## Optional Tiingo EOD research source — implementation status
+
+The equity research runner now supports an optional Tiingo EOD adjusted-history source. It consumes Tiingo's `adjOpen`, `adjHigh`, `adjLow`, `adjClose` and `adjVolume` fields, uses the Authorization Token header, and applies the same full-requested-period, row-count, weekday-coverage and gap checks used by the other providers. The token is read only from `TIINGO_API_TOKEN`; never put it in source, logs or chat.
+
+The default source remains unchanged. Selecting TIINGO requires a valid token and sufficient plan history. A Starter account with only five years cannot pass a ten-year request; no fallback or silent partial-history acceptance occurs. The adapter has mocked contract tests only until a real token and eligible plan are configured. No subscription has been purchased.
