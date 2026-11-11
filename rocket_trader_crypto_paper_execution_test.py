@@ -688,5 +688,42 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         self.assertEqual(len(rejected), 1)
         self.assertEqual(self.client.submit_count, 1)
 
+
+    def test_external_open_sell_order_reserves_position_quantity(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        self.client.orders["external-sell"] = SimpleNamespace(
+            id="external-broker-order", client_order_id="external-sell",
+            symbol="BTC/USD", side="sell", status="new",
+            qty="0.0008", filled_qty="0", filled_avg_price=None,
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "broker-held unreserved"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-behind-external", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0003",
+            ))
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_malformed_open_broker_sell_order_blocks_new_sell(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        self.client.orders["external-malformed"] = SimpleNamespace(
+            id="external-malformed-id", client_order_id="external-malformed",
+            symbol="BTC/USD", side="sell", status="new",
+            qty=None, filled_qty="0",
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "incomplete quantity data"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-behind-malformed", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0001",
+            ))
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_event_ledger_must_not_share_mutable_journal_database(self):
+        same_database_ledger = ExecutionEventLedger(self.db)
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "separate SQLite file"):
+            AlpacaCryptoPaperExecutionAdapter(
+                db_path=self.db, client=self.client, event_ledger=same_database_ledger
+            )
+        self.assertEqual(self.client.submit_count, 0)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
