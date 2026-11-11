@@ -172,7 +172,7 @@ def self_test() -> Dict[str, Any]:
     qualitative = [
         item for item in all_refs if not item.quantitative_reference
     ]
-    assert len(all_refs) >= 5
+    assert len(all_refs) >= 20
     assert len(equity_quant) >= 3
     assert len(crypto_quant) >= 2
     assert qualitative
@@ -180,6 +180,17 @@ def self_test() -> Dict[str, Any]:
     assert registry.get("pairs_statistical_arbitrage").status == "RESEARCH_ONLY"
     assert "short" in registry.get("pairs_statistical_arbitrage").entry_exit_sizing.lower()
     assert all(item.strategy_family and item.test_protocol for item in all_refs)
+    root = Path(__file__).resolve().parent
+    ledger_schema = json.loads((root / "research" / "experiment_ledger_schema_v1.json").read_text(encoding="utf-8"))
+    experiment_matrix = json.loads((root / "research" / "strategy_experiment_matrix_v1.json").read_text(encoding="utf-8"))
+    assert ledger_schema["title"] == "Rocket Trader Immutable Experiment Ledger Record"
+    assert "data_fingerprint" in ledger_schema["required"]
+    assert len(experiment_matrix["tranches"]) >= 8
+    paper_policy = experiment_matrix["paper_guardrails"]
+    assert paper_policy["live_orders_allowed"] is False
+    assert paper_policy["default_strategy_allocation_usd"] == 0
+    assert paper_policy["account_value_usd_reference"] == 100000
+    assert paper_policy["reference_is_not_risk_budget"] is True
     assert registry.can_create_precedent_evidence(
         "time_series_momentum_12m",
         comparable_out_of_sample_events=100,
@@ -203,13 +214,14 @@ def self_test() -> Dict[str, Any]:
     ) is False
     return {
         "ok": True,
-        "version": "0.1",
+        "version": "0.2.0",
         "pipeline": "rocket_trader_reference_strategy_registry",
         "references": len(all_refs),
         "equity_quantitative_references": len(equity_quant),
         "crypto_quantitative_hypotheses": len(crypto_quant),
         "qualitative_references": len(qualitative),
         "strategy_families": len({item.strategy_family for item in all_refs}),
+        "experiment_tranches": len(experiment_matrix["tranches"]),
         "pairs_status": registry.get("pairs_statistical_arbitrage").status,
         "source_only_precedent_approval": False,
         "orders_enabled": False,
