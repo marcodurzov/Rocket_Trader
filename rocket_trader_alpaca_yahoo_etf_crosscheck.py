@@ -268,6 +268,148 @@ def _rename_pair_result(
 
 
 
+
+def fetch_yahoo_adjustment_fields(
+    symbol: str, start: datetime, end: datetime
+) -> Dict[str, pd.Series]:
+    """Fetch raw Close and dividend/split adjusted Adj Close from Yahoo."""
+    import yfinance as yf
+    frame = yf.Ticker(symbol).history(
+        start=start.date().isoformat(),
+        end=end.date().isoformat(),
+        interval="1d",
+        auto_adjust=False,
+        actions=True,
+        repair=False,
+        timeout=30,
+    )
+    if frame is None or frame.empty or "Close" not in frame.columns or "Adj Close" not in frame.columns:
+        raise CrosscheckError(f"Yahoo raw/adjusted close fields missing for {symbol}")
+    return {
+        "raw_close": _close_series(frame["Close"], "Yahoo raw"),
+        "adjusted_close": _close_series(frame["Adj Close"], "Yahoo adjusted"),
+    }
+
+
+def fetch_alpaca_raw_history(
+    client: Any,
+    symbol: str,
+    start: datetime,
+    end: datetime,
+    feed: Any,
+) -> pd.Series:
+    """Fetch unadjusted Alpaca daily closes for corporate-action factor analysis."""
+    from alpaca.data.enums import Adjustment
+    from alpaca.data.requests import StockBarsRequest
+    from alpaca.data.timeframe import TimeFrame
+    request = StockBarsRequest(
+        symbol_or_symbols=symbol,
+        timeframe=TimeFrame.Day,
+        start=start,
+        end=end,
+        limit=10000,
+        adjustment=Adjustment.RAW,
+        feed=feed,
+    )
+    response = client.get_stock_bars(request)
+    bars = response.data.get(symbol, [])
+    if not bars:
+        raise CrosscheckError(f"Alpaca {feed} returned no raw daily history for {symbol}")
+    frame = pd.DataFrame({
+        "timestamp": [bar.timestamp for bar in bars],
+        "close": [bar.close for bar in bars],
+    }).set_index("timestamp")
+    return _close_series(frame["close"], "Alpaca raw")
+
+
+def compare_adjustment_factors(
+    symbol: str,
+    yahoo_raw_close: Any,
+    yahoo_adjusted_close: Any,
+    alpaca_raw_close: Any,
+    alpaca_adjusted_close: Any,
+    *,
+    min_common_sessions: int = 1000,
+) -> Dict[str, Any]:
+    """Separate raw-price divergence from provider adjustment-factor divergence."""
+    frames = [
+        _close_series(yahoo_raw_close, "Yahoo raw").rename("yahoo_raw"),
+        _close_series(yahoo_adjusted_close, "Yahoo adjusted").rename("yahoo_adjusted"),
+        _close_series(alpaca_raw_close, "Alpaca raw").rename("alpaca_raw"),
+        _close_series(alpaca_adjusted_close, "Alpaca adjusted").rename("alpaca_adjusted"),
+    ]
+    common = pd.concat(frames, axis=1, join="inner").dropna()
+    if len(common) < min_common_sessions:
+        raise CrosscheckError(
+            f"{symbol}: only {len(common)} common raw/adjusted sessions; "
+            f"minimum is {min_common_sessions}"
+        )
+    yahoo_factor = common["yahoo_adjusted"] / common["yahoo_raw"]
+    alpaca_factor = common["alpaca_adjusted"] / common["alpaca_raw"]
+    factor_ratio = alpaca_factor / yahoo_factor
+    relative_factor_divergence_pct = (
+        factor_ratio / factor_ratio.iloc[0] - 1.0
+    ) * 100.0
+    factor_step_change_bps = relative_factor_divergence_pct.diff() * 100.0
+
+    raw_returns = pd.concat([
+        common["yahoo_raw"].pct_change().rename("yahoo"),
+        common["alpaca_raw"].pct_change().rename("alpaca"),
+    ], axis=1).dropna()
+    raw_return_diff_bps = (raw_returns["alpaca"] - raw_returns["yahoo"]) * 10000.0
+    raw_normalized_ratio = (
+        (common["alpaca_raw"] / common["alpaca_raw"].iloc[0])
+        / (common["yahoo_raw"] / common["yahoo_raw"].iloc[0]) - 1.0
+    ) * 100.0
+
+    top_steps = []
+    for session, _ in factor_step_change_bps.abs().sort_values(ascending=False).head(10).items():
+        if pd.isna(factor_step_change_bps.loc[session]):
+            continue
+        top_steps.append({
+            "session": str(session),
+            "yahoo_adjustment_factor": round(float(yahoo_factor.loc[session]), 10),
+            "alpaca_adjustment_factor": round(float(alpaca_factor.loc[session]), 10),
+            "relative_adjustment_factor_divergence_pct": round(
+                float(relative_factor_divergence_pct.loc[session]), 6
+            ),
+            "daily_relative_factor_change_bps": round(
+                float(factor_step_change_bps.loc[session]), 4
+            ),
+        })
+    top_raw = []
+    for session, _ in raw_return_diff_bps.abs().sort_values(ascending=False).head(10).items():
+        top_raw.append({
+            "session": str(session),
+            "yahoo_raw_daily_return_pct": round(float(raw_returns.loc[session, "yahoo"] * 100.0), 6),
+            "alpaca_raw_daily_return_pct": round(float(raw_returns.loc[session, "alpaca"] * 100.0), 6),
+            "alpaca_minus_yahoo_raw_return_difference_bps": round(
+                float(raw_return_diff_bps.loc[session]), 4
+            ),
+        })
+    return {
+        "symbol": symbol,
+        "common_raw_adjusted_sessions": int(len(common)),
+        "first_common_session": str(common.index[0]),
+        "last_common_session": str(common.index[-1]),
+        "max_abs_relative_adjustment_factor_divergence_pct": round(
+            float(relative_factor_divergence_pct.abs().max()), 6
+        ),
+        "max_abs_raw_normalized_close_difference_pct": round(
+            float(raw_normalized_ratio.abs().max()), 6
+        ),
+        "mean_abs_raw_daily_return_difference_bps": round(
+            float(raw_return_diff_bps.abs().mean()), 4
+        ),
+        "p95_abs_raw_daily_return_difference_bps": round(
+            float(raw_return_diff_bps.abs().quantile(0.95)), 4
+        ),
+        "largest_adjustment_factor_step_changes": top_steps,
+        "largest_raw_return_divergences": top_raw,
+    }
+
+
+
 def run_audit(
     *,
     api_key: str,
@@ -280,6 +422,8 @@ def run_audit(
     alpaca_loader=fetch_alpaca_history,
     tiingo_loader=fetch_tiingo_history,
     tiingo_token: Optional[str] = None,
+    yahoo_adjustment_loader=fetch_yahoo_adjustment_fields,
+    alpaca_raw_loader=fetch_alpaca_raw_history,
 ) -> Dict[str, Any]:
     if years < 1 or years > 20:
         raise CrosscheckError("years must be between 1 and 20")
@@ -309,7 +453,17 @@ def run_audit(
         try:
             yahoo = yahoo_loader(symbol, start, current)
             alpaca = alpaca_loader(client, symbol, start, current, feed)
-            results.append(compare_close_series(symbol, yahoo, alpaca))
+            result = compare_close_series(symbol, yahoo, alpaca)
+            yahoo_fields = yahoo_adjustment_loader(symbol, start, current)
+            alpaca_raw = alpaca_raw_loader(client, symbol, start, current, feed)
+            result["adjustment_factor_diagnostics"] = compare_adjustment_factors(
+                symbol,
+                yahoo_fields["raw_close"],
+                yahoo_fields["adjusted_close"],
+                alpaca_raw,
+                alpaca,
+            )
+            results.append(result)
             if token:
                 try:
                     tiingo = tiingo_loader(symbol, start, current, token)
