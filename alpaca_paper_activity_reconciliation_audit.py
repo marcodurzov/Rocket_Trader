@@ -206,12 +206,40 @@ def main() -> int:
         return 0 if report["status"] == "SUCCESS" else 1
 
     except Exception as exc:
-        # Do not echo SDK exception strings: they can contain request metadata.
+        # Our own validation/reconciliation messages are deliberately safe to
+        # display. Never print raw SDK/HTTP exception text, which may contain
+        # request details. Preserve only the cause class and HTTP status.
         report["error_type"] = type(exc).__name__
+        if isinstance(exc, (ValueError, RuntimeError)):
+            report["error_message"] = str(exc)
+        cause = exc.__cause__
+        cause_chain = []
+        while cause is not None and len(cause_chain) < 4:
+            item = {"type": type(cause).__name__}
+            status = getattr(cause, "status_code", None)
+            response = getattr(cause, "response", None)
+            if status is None and response is not None:
+                status = getattr(response, "status_code", None)
+            if isinstance(status, int):
+                item["http_status"] = status
+            cause_chain.append(item)
+            cause = cause.__cause__
+        if cause_chain:
+            report["cause_chain"] = cause_chain
         report["status"] = "FAILED"
         report["completed_at"] = datetime.now(timezone.utc).isoformat()
         _write_report(report)
-        print(f"Paper activity audit failed: {type(exc).__name__}", file=sys.stderr)
+        detail = report.get("error_message", type(exc).__name__)
+        cause_detail = ""
+        if cause_chain:
+            cause_detail = " | cause: " + " -> ".join(
+                item["type"] + (
+                    f" (HTTP {item['http_status']})"
+                    if "http_status" in item else ""
+                )
+                for item in cause_chain
+            )
+        print(f"Paper activity audit failed: {detail}{cause_detail}", file=sys.stderr)
         return 1
 
 
