@@ -16,7 +16,7 @@ It is a research/monitoring layer, not an execution engine. It receives no Alpac
 - Stress: transparent heuristic combining volatility percentile, positive cross-asset correlation and 60-bar peak-to-current drawdown.
 - Data quality: freshness and cross-symbol timestamp alignment.
 
-The observer requires at least 60 bars per symbol, rejects future/stale bars and rejects cross-symbol timestamp skew above three minutes. The selector independently fails closed below its data-quality threshold.
+The observer requires at least 60 common aligned bars per symbol universe, at least 95% timestamp overlap for every symbol, rejects future/stale bars, rejects cross-symbol timestamp skew above three minutes, and fails closed when a gap in the common aligned series exceeds three minutes. Returns and correlations are calculated only after joining each asset on exact normalized UTC timestamps; they are never paired by array position. The selector independently fails closed below its data-quality threshold.
 
 These are initial descriptive features. They are not claimed to predict returns, and their thresholds have not yet been calibrated or validated out of sample. Minute bars are not a substitute for tradeable bid/ask quotes or execution-cost measurements.
 
@@ -40,3 +40,18 @@ Raw news remains disconnected from allocation. A separate human-reviewed event s
 2. Run the feature pipeline over archived point-in-time data and test regime stability/hysteresis.
 3. Test whether regimes improve net risk-adjusted results versus a fixed baseline after realistic spreads, fees, slippage and multiple-testing correction.
 4. Only register strategies that pass the complete research approval process. Until then the observer must remain cash-only.
+
+
+## Timestamp-alignment correction — 2026-11-10
+
+A code audit found that the previous observer calculated cross-asset correlation by taking the last N return values from each symbol and pairing them by array position. If one symbol had missing minute bars, the paired returns could refer to different timestamps even when the latest timestamps were close. This could distort correlation, breadth/stress inputs and regime classification.
+
+The observer now:
+- normalizes bar timestamps to UTC instants;
+- intersects exact timestamps across every symbol before computing returns;
+- requires at least 60 common bars and at least 95% aligned coverage for each symbol;
+- rejects a common-series gap greater than 180 seconds;
+- reports per-symbol aligned coverage, common bar count and maximum gap;
+- remains fail-closed to cash on insufficient alignment or stale/unaligned data.
+
+Regression tests cover a single missing bar (which is aligned correctly), material cross-symbol missing data (rejected), and a shared multi-minute gap (rejected). This validates alignment logic offline; it does not yet validate regime predictive power or live host operation.

@@ -46,6 +46,53 @@ class RegimeObserverTests(unittest.TestCase):
         self.assertGreater(state.trend_strength, 0)
         self.assertEqual(state.breadth, 1.0)
 
+    def test_features_align_small_missing_bar_by_timestamp(self):
+        self.add_bars()
+        missing = (self.now - timedelta(minutes=30)).isoformat()
+        with sqlite3.connect(self.market_db) as db:
+            db.execute(
+                "DELETE FROM market_bars WHERE asset_class='EQUITY' AND symbol='QQQ' AND timestamp=?",
+                (missing,),
+            )
+        state, diagnostics = MarketFeatureBuilder(self.market_db).build(
+            "EQUITY", ("SPY", "QQQ", "IWM"), now=self.now
+        )
+        self.assertIsNotNone(state)
+        self.assertEqual(diagnostics["status"], "FEATURES_READY")
+        self.assertEqual(diagnostics["common_aligned_bars"], 89)
+        self.assertAlmostEqual(diagnostics["aligned_coverage_by_symbol"]["SPY"], 89 / 90)
+
+    def test_material_cross_symbol_gaps_fail_closed(self):
+        self.add_bars()
+        with sqlite3.connect(self.market_db) as db:
+            db.execute(
+                "DELETE FROM market_bars WHERE asset_class='EQUITY' AND symbol='QQQ' "
+                "AND timestamp IN (SELECT timestamp FROM market_bars WHERE asset_class='EQUITY' "
+                "AND symbol='QQQ' ORDER BY timestamp LIMIT 10)"
+            )
+        state, diagnostics = MarketFeatureBuilder(self.market_db).build(
+            "EQUITY", ("SPY", "QQQ", "IWM"), now=self.now
+        )
+        self.assertIsNone(state)
+        self.assertEqual(diagnostics["status"], "INSUFFICIENT_ALIGNED_DATA")
+        self.assertEqual(diagnostics["common_aligned_bars"], 80)
+        self.assertLess(diagnostics["aligned_coverage_by_symbol"]["SPY"], 0.95)
+
+    def test_shared_market_data_gap_fails_closed(self):
+        self.add_bars()
+        with sqlite3.connect(self.market_db) as db:
+            db.execute(
+                "DELETE FROM market_bars WHERE asset_class='EQUITY' "
+                "AND timestamp IN (SELECT timestamp FROM market_bars WHERE asset_class='EQUITY' "
+                "AND symbol='SPY' ORDER BY timestamp LIMIT 5 OFFSET 30)"
+            )
+        state, diagnostics = MarketFeatureBuilder(self.market_db).build(
+            "EQUITY", ("SPY", "QQQ", "IWM"), now=self.now
+        )
+        self.assertIsNone(state)
+        self.assertEqual(diagnostics["status"], "ALIGNED_SERIES_GAP")
+        self.assertGreater(diagnostics["maximum_aligned_gap_seconds"], 180)
+
     def test_insufficient_bars_fail_closed(self):
         self.add_bars(count=20)
         state, diagnostics = MarketFeatureBuilder(self.market_db).build(
