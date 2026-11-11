@@ -739,3 +739,17 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - **Next verification:** manually dispatch the read-only Paper activity audit again using the same BTC/USD order window and fee window. Expect the two earlier target CFEE and two earlier unclassified CFEE records to appear as out-of-window, not as in-window candidates. Do not infer attribution of the remaining BTC and USD CFEE records.
 - No new order, cancellation, replacement, or account configuration mutation occurred. LIVE remains prohibited.
 - Progress remains **55%** (engineering/evidence maturity, not profitability).
+
+
+---
+
+## 2026-11-11 — Fail-closed Paper execution startup gate (PR #163)
+
+- PR #163 merged as `a12e69fe1f7fe18f0ed21f99cb4c347de26850fa`.
+- Added `PaperCryptoExecutionService`, which keeps process-local submission readiness closed until account cash-only preflight and read-only reconciliation of every journaled order succeed.
+- The storage factory refuses missing files, checks the existing journal schema, event-ledger schema and append-only triggers, and verifies that each journaled order has immutable preparation/discovery evidence before adapter construction. It requires Paper mode and creates the adapter without an injected broker client so the adapter's `TradingClient(..., paper=True)` path is used.
+- Any malformed/unresolved recovery, account-policy mismatch, stop, or adapter submission exception closes the gate. The host must run a fresh successful recovery pass before accepting another intent.
+- Offline tests cover the gate, durable-state requirements, Paper-only preflight, unresolved/malformed recovery, error closure and idempotent startup. PR CI `43038167066` passed 65 tests; post-merge CI `43038263626` pending at documentation time.
+- No broker orders were submitted by PR #163. The module is not deployed or integrated into the observe-only Compose stack; no strategy-driven execution is enabled.
+- Next: use this wrapper in a separately deployed persistent Paper execution host only after the user deploys/configures the durable journal and event ledger. Validate restart recovery on that host. Keep the next manual read-only CFEE-window audit outstanding.
+- Progress remains **55%** (engineering/evidence maturity, not profitability).
