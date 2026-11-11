@@ -133,3 +133,10 @@ The output still does not attribute a mismatch to a specific corporate action. P
 For each largest adjustment-factor step, the report now includes the previous common session, both providers' adjustment factors on the previous session, their factor ratio, and the same fields on the event session. This makes it possible to compare the exact observed factor step with a fund's declared ex-date distribution divided by the previous raw close.
 
 The ratio is still normalized to the first common session for the cumulative divergence metric. Before/after factor fields are the unnormalized provider factors and ratio for those exact sessions. They are diagnostic evidence only; corporate-action attribution still requires checking the issuer's official event record and source raw bars.
+
+
+## Event-level cash distribution cross-check
+
+Yahoo raw/adjusted history now also retains its `Dividends` and `Stock Splits` action fields. For each largest adjustment-factor step, the report includes the prior raw close from both providers, the Yahoo cash distribution and split ratio recorded on the event session, and a first-order implied cash-distribution adjustment in basis points (`cash distribution / prior Yahoo raw close × 10,000`).
+
+This lets the audit compare the observed provider factor step with the issuer's declared cash distribution scale. The calculation is a diagnostic approximation, not an adjustment formula to apply to prices. It does not replace official issuer action records or explain provider-specific methodology, taxes, return-of-capital, capital gains, special distributions, or correction timing. No automatic adjustment is applied.
