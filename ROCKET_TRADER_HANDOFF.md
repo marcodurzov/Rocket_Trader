@@ -631,3 +631,8 @@ No new strategy is profitable or approved. The research review does not validate
 8. Continue Paper deployment/accounting/cost collection and operational fault testing.
 
 **Progress remains 46%.** The research blueprint is now documented; research implementation and empirical validation remain substantial work.
+
+
+### 2026-11-10 — Reddit practitioner evidence added
+- Added dated r/algotrading threads to the canonical research document: regime/HMM uncertainty (Nov 6), backtest-to-live latency and order handling (Apr 22), regime-specific switching and filter overfit (Apr 10), live strategy decay after regime mismatch (Apr 1), and overfitting/cost discussions (Jan 5).
+- These are anecdotal self-reports only. They are used to generate testable hypotheses, not establish profitability or validate claimed account returns.
