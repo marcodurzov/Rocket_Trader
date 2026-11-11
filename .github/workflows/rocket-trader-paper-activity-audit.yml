@@ -1,0 +1,106 @@
+name: Rocket Trader - Read-only Alpaca Paper Activity Audit
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "alpaca_paper_activity_reconciliation_audit.py"
+      - ".github/workflows/rocket-trader-paper-activity-audit.yml"
+      - "rocket_trader_alpaca_activity_reconciliation.py"
+      - "rocket_trader_execution_event_ledger.py"
+  push:
+    branches:
+      - main
+    paths:
+      - "alpaca_paper_activity_reconciliation_audit.py"
+      - ".github/workflows/rocket-trader-paper-activity-audit.yml"
+      - "rocket_trader_alpaca_activity_reconciliation.py"
+      - "rocket_trader_execution_event_ledger.py"
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "Paper crypto pair"
+        required: true
+        default: "BTC/USD"
+        type: string
+      orders_after:
+        description: "Order query start (ISO-8601 with timezone)"
+        required: true
+        default: "2026-11-11T04:55:00Z"
+        type: string
+      orders_until:
+        description: "Order query end (ISO-8601 with timezone)"
+        required: true
+        default: "2026-11-11T05:05:00Z"
+        type: string
+      fees_after:
+        description: "CFEE query start (include delayed posting window)"
+        required: true
+        default: "2026-11-11T04:55:00Z"
+        type: string
+      fees_until:
+        description: "CFEE query end (ISO-8601 with timezone)"
+        required: true
+        default: "2026-11-13T00:00:00Z"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  static-check:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Alpaca SDK
+        run: pip install "alpaca-py>=0.43,<1.0"
+      - name: Compile and run offline activity tests
+        run: |
+          python -m py_compile alpaca_paper_activity_reconciliation_audit.py
+          python -m unittest -v rocket_trader_alpaca_activity_reconciliation_test.py
+
+  paper-activity-audit:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+      ALPACA_LIVE_ENABLED: "false"
+      AUDIT_SYMBOL: ${{ inputs.symbol }}
+      AUDIT_ORDERS_AFTER: ${{ inputs.orders_after }}
+      AUDIT_ORDERS_UNTIL: ${{ inputs.orders_until }}
+      AUDIT_FEES_AFTER: ${{ inputs.fees_after }}
+      AUDIT_FEES_UNTIL: ${{ inputs.fees_until }}
+      ROCKET_TRADER_ACTIVITY_REPORT: ${{ runner.temp }}/paper-activity-report.json
+      ROCKET_TRADER_ACTIVITY_AUDIT_DB: ${{ runner.temp }}/paper-activity-evidence.sqlite3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Alpaca SDK
+        run: pip install "alpaca-py>=0.43,<1.0"
+      - name: Read-only Paper order, fill and fee activity reconciliation
+        run: python alpaca_paper_activity_reconciliation_audit.py
+      - name: Preserve read-only audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocket-trader-paper-activity-audit
+          path: |
+            ${{ runner.temp }}/paper-activity-report.json
+            ${{ runner.temp }}/paper-activity-evidence.sqlite3
+          if-no-files-found: ignore
+          retention-days: 14
