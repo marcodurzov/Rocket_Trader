@@ -887,7 +887,7 @@ def run_audit(
             results.append(result)
             if token:
                 try:
-                    tiingo = tiingo_loader(symbol, start, current, token)
+                    tiingo = tiingo_loader(symbol, start, data_end, token)
                     tiingo_results.append({
                         "symbol": symbol,
                         "tiingo_vs_yahoo": _rename_pair_result(
