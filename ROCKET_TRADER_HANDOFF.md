@@ -357,7 +357,7 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Research used close-observed signals and next-session-open execution, with chronological 60% train / 20% validation / 20% final holdout. Base cost assumption remains 5 bps per side (2.5 half-spread + 2.5 slippage, zero commission), a placeholder and **not empirical**.
 - Final holdout family: 73 hypotheses, Holm-Bonferroni alpha 0.05, 5,000 centered moving-block bootstrap replicates per hypothesis. **Pre-screen passes: 0/73. Family-wise significant: 0/73.** No candidate qualifies; candidate promotion false; Paper approval false; orders enabled false; orders submitted 0.
 - Result is a successful 10-year Yahoo data retrieval and research execution, but a negative strategy-selection result. Do not misstate it as a validated profitable strategy or a successful cross-vendor 10-year comparison.
-- The earlier Alpaca IEX comparison still only covered 2020-07-27 onward (about 6.3 years) and SIP remained `NOT_ENTITLED`. The previous common-window daily-return correlations were high, but cumulative-return differences reached 220.5 bps for SPY. Yahoo-only coverage does not resolve that vendor adjustment divergence.
+- The earlier Alpaca IEX comparison still only covered 2020-07-27 onward (about 6.3 years); the separate entitlement probe showed recent/live SIP was `NOT_ENTITLED`. The previous common-window daily-return correlations were high, but cumulative-return differences reached 220.5 bps for SPY. Historical SIP availability is a separate Basic-plan path and still needs verification with the Paper credentials.
 - Workflow `42954130244` also passed the post-merge Paper runtime/accounting suite (166 tests). This remains CI evidence, not evidence from a persistent user-host Paper account.
 - Artifact SHA256 ZIP digest: `6929f6156d5c55665023fb0bcb007a311962c0c70e5837328a8d72e8656f9d0e`.
 
@@ -1129,7 +1129,7 @@ Next actions:
 ### Alpaca free tier and Live eligibility notes
 
 - Alpaca Paper Trading is documented as free and available globally for Paper-only accounts.
-- Alpaca's Basic market-data plan is $0 and provides IEX real-time US equity data; the documented free limits include 30 equity symbols for trade/quote WebSocket subscriptions and 200 historical API calls/minute. SIP/all-exchange equity data requires the paid Algo Trader Plus plan. Keep IEX as the zero-budget default and explicitly mark the resulting coverage limitation in strategy validation.
+- Alpaca Basic is $0. It provides IEX for recent/live equity data, but also permits historical SIP queries when the request end is at least 15 minutes old. The free plan's historical timeframe is listed since 2016, with a 15-minute recency restriction. Keep SIP for historical research and IEX for recent/live data; do not buy Algo Trader Plus.
 - Alpaca states international Live brokerage is jurisdiction-dependent and directs users to contact support to confirm supported countries. Do not assume that a successful global Paper-only account guarantees Live brokerage eligibility. Before any future Live activation, verify account-holder tax residence and current eligibility directly with Alpaca, plus all applicable Mexican and US tax/regulatory obligations. No Live transition is authorized now.
 
 ### Infrastructure decision
@@ -1168,7 +1168,7 @@ Next actions:
 
 - Keep Alpaca Basic IEX as the zero-cost Paper execution/data connection, but do not use its observed sparse history as the sole source for long-horizon ETF backtests.
 - Evaluate free historical sources (Yahoo and other genuinely free, legally usable sources) for complete adjusted daily bars; cross-validate dates, actions, splits, dividends and survivorship/adjustment conventions. Use issuer records as the reference for declared distributions.
-- SIP/all-exchange data is not authorized because it requires a paid plan. Tiingo paid plan remains unauthorized. Do not activate or consume any paid provider without explicit approval.
+- Recent/live SIP streaming and SIP data inside the latest 15 minutes require the paid Algo Trader Plus plan and remain unauthorized. Historical SIP ending at least 15 minutes ago is available on Basic at $0. Tiingo paid plan remains unauthorized. Do not activate or consume any paid provider without explicit approval.
 - Before any candidate can pass, the data gate must require adequate coverage from the actual primary backtest source and a second independent reference; missing sessions must be measured by date and reason, not hidden by inner joins.
 - The continuous Activity SSE service remains undeployed. No persistent host has been identified; continue with GitHub Actions for bounded tests/research and do not represent it as a 24/7 runtime.
 
