@@ -13,6 +13,8 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     _close_series,
     compare_close_series,
     fetch_yahoo_history,
+    fetch_yahoo_adjustment_fields,
+    compare_adjustment_factors,
     fetch_tiingo_history,
     _rename_pair_result,
 )
@@ -109,6 +111,47 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertEqual(len(result), 3)
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["auto_adjust"])
+        self.assertTrue(calls["actions"])
+
+
+    def test_adjustment_factor_diagnostics_separate_raw_prices_from_adjustments(self):
+        raw = self.yahoo.copy()
+        yahoo_factor = pd.Series([0.90] * 8, index=self.dates)
+        alpaca_factor = pd.Series([0.91] * 4 + [0.90] * 4, index=self.dates)
+        yahoo_adjusted = raw * yahoo_factor
+        alpaca_adjusted = raw * alpaca_factor
+        result = compare_adjustment_factors(
+            "QQQ", raw, yahoo_adjusted, raw, alpaca_adjusted,
+            min_common_sessions=5,
+        )
+        self.assertAlmostEqual(result["max_abs_raw_normalized_close_difference_pct"], 0.0)
+        self.assertAlmostEqual(result["mean_abs_raw_daily_return_difference_bps"], 0.0)
+        self.assertGreater(result["max_abs_relative_adjustment_factor_divergence_pct"], 0.0)
+        self.assertEqual(
+            result["largest_adjustment_factor_step_changes"][0]["session"],
+            str(self.dates[4].date()),
+        )
+
+    def test_yahoo_adjustment_fields_fetch_raw_and_adjusted_close_separately(self):
+        calls = {}
+        class FakeTicker:
+            def history(self, **kwargs):
+                calls.update(kwargs)
+                return pd.DataFrame(
+                    {"Close": [100.0, 101.0, 102.0], "Adj Close": [99.0, 100.0, 101.0]},
+                    index=pd.date_range("2024-01-02", periods=3, freq="B", tz="UTC"),
+                )
+        fake_yfinance = SimpleNamespace(Ticker=lambda symbol: FakeTicker())
+        with patch.dict(sys.modules, {"yfinance": fake_yfinance}):
+            result = fetch_yahoo_adjustment_fields(
+                "SPY",
+                pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime(),
+                pd.Timestamp("2024-01-10", tz="UTC").to_pydatetime(),
+            )
+        self.assertEqual(result["raw_close"].iloc[0], 100.0)
+        self.assertEqual(result["adjusted_close"].iloc[0], 99.0)
+        self.assertFalse(calls["auto_adjust"])
+        self.assertFalse(calls["repair"])
         self.assertTrue(calls["actions"])
 
     def test_tiingo_history_uses_adjusted_close_and_token_header(self):
