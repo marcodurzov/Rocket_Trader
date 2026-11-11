@@ -499,6 +499,42 @@ def compare_adjustment_factors(
 
 
 
+
+def tiingo_audit_status(
+    token: Optional[str],
+    results: Iterable[Dict[str, Any]],
+    errors: Iterable[Dict[str, Any]],
+    expected_symbols: int,
+) -> Dict[str, Any]:
+    """Represent an optional Tiingo check as NOT_REQUESTED, PASSED or FAILED.
+
+    An unconfigured optional provider is unknown/not requested, never a pass.
+    """
+    if not str(token or "").strip():
+        return {
+            "requested": False,
+            "status": "NOT_REQUESTED",
+            "all_diagnostic_gates_pass": None,
+        }
+    result_list = list(results)
+    error_list = list(errors)
+    passed = (
+        len(result_list) == expected_symbols
+        and not error_list
+        and all(
+            item.get("tiingo_vs_yahoo", {}).get("diagnostic_pass") is True
+            and item.get("tiingo_vs_alpaca", {}).get("diagnostic_pass") is True
+            for item in result_list
+        )
+    )
+    return {
+        "requested": True,
+        "status": "PASSED" if passed else "FAILED",
+        "all_diagnostic_gates_pass": bool(passed),
+    }
+
+
+
 def run_audit(
     *,
     api_key: str,
@@ -574,19 +610,19 @@ def run_audit(
         except Exception as exc:
             errors.append({"symbol": symbol, "error_type": type(exc).__name__, "error": str(exc)})
 
-    tiingo_all_pass = (
-        not token or (
-            len(tiingo_results) == len(symbol_list)
-            and not tiingo_errors
-            and all(
-                item["tiingo_vs_yahoo"]["diagnostic_pass"]
-                and item["tiingo_vs_alpaca"]["diagnostic_pass"]
-                for item in tiingo_results
-            )
-        )
+    tiingo_status = tiingo_audit_status(
+        token, tiingo_results, tiingo_errors, len(symbol_list)
+    )
+    base_diagnostics_pass = (
+        bool(results) and not errors
+        and all(x["diagnostic_pass"] for x in results)
     )
     return {
-        "ok": bool(results) and not errors and (not token or (len(tiingo_results) == len(symbol_list) and not tiingo_errors)),
+        "ok": bool(results) and not errors and (
+            not token or (
+                len(tiingo_results) == len(symbol_list) and not tiingo_errors
+            )
+        ),
         "pipeline": "rocket_trader_alpaca_yahoo_etf_crosscheck_v0_1",
         "mode": "DATA_AUDIT_ONLY",
         "period_start": start.isoformat(),
@@ -599,14 +635,18 @@ def run_audit(
         "price_series": "daily adjusted close",
         "results": results,
         "errors": errors,
-        "tiingo_comparison_requested": bool(token),
+        "tiingo_comparison_requested": tiingo_status["requested"],
+        "tiingo_comparison_status": tiingo_status["status"],
         "tiingo_results": tiingo_results,
         "tiingo_errors": tiingo_errors,
         "tiingo_symbols_compared": len(tiingo_results),
-        "tiingo_all_diagnostic_gates_pass": tiingo_all_pass,
+        "tiingo_all_diagnostic_gates_pass": tiingo_status["all_diagnostic_gates_pass"],
         "symbols_diagnostic_pass": sum(bool(x["diagnostic_pass"]) for x in results),
         "symbols_compared": len(results),
-        "all_diagnostic_gates_pass": bool(results) and not errors and all(x["diagnostic_pass"] for x in results) and tiingo_all_pass,
+        "all_diagnostic_gates_pass": bool(base_diagnostics_pass) and (
+            not tiingo_status["requested"]
+            or tiingo_status["all_diagnostic_gates_pass"] is True
+        ),
         "research_cost_assumptions_validated": False,
         "research_cost_note": (
             "This price-history comparison does not validate historical bid/ask spread, "
