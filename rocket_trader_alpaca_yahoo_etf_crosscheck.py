@@ -761,6 +761,11 @@ def run_audit(
     if not api_key or not secret_key:
         raise CrosscheckError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
     feed_name = require_zero_budget_feed(feed_name)
+    token = resolve_tiingo_token(include_tiingo, tiingo_token)
+    if token and years > 5:
+        raise CrosscheckError(
+            "The zero-cost Tiingo Starter tier provides 5 years of history; use --years 5 or less."
+        )
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() is None:
         raise CrosscheckError("now must be timezone-aware")
@@ -788,11 +793,6 @@ def run_audit(
     errors = []
     tiingo_results = []
     tiingo_errors = []
-    token = resolve_tiingo_token(include_tiingo, tiingo_token)
-    if token and years > 5:
-        raise CrosscheckError(
-            "The zero-cost Tiingo Starter tier provides 5 years of history; use --years 5 or less."
-        )
     for symbol in symbol_list:
         try:
             yahoo = yahoo_loader(symbol, start, current)
