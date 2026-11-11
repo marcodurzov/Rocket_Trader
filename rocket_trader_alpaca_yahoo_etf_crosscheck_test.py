@@ -173,17 +173,21 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         calls = []
         payloads = [
             {
-                "cash_dividends": [{
-                    "id": "ca-1", "symbol": "QQQ", "ex_date": "2022-09-19",
-                    "rate": "0.51856", "special": False, "process_date": "2022-09-19",
-                }],
+                "corporate_actions": {
+                    "cash_dividends": [{
+                        "id": "ca-1", "symbol": "QQQ", "ex_date": "2022-09-19",
+                        "rate": "0.51856", "special": False, "process_date": "2022-09-19",
+                    }],
+                },
                 "next_page_token": "page-2",
             },
             {
-                "cash_dividends": [{
-                    "id": "ca-2", "symbol": "TLT", "ex_date": "2026-11-02",
-                    "rate": "0.343177", "special": False, "process_date": "2026-11-02",
-                }],
+                "corporate_actions": {
+                    "cash_dividends": [{
+                        "id": "ca-2", "symbol": "TLT", "ex_date": "2026-11-02",
+                        "rate": "0.343177", "special": False, "process_date": "2026-11-02",
+                    }],
+                },
                 "next_page_token": None,
             },
         ]
@@ -208,6 +212,26 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertIn("page_token=page-2", calls[1].full_url)
         self.assertEqual(calls[0].get_header("Apca-api-key-id"), "key")
         self.assertEqual(calls[0].get_header("Apca-api-secret-key"), "secret")
+
+    def test_alpaca_corporate_actions_rejects_missing_response_envelope(self):
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self):
+                return json.dumps({
+                    "cash_dividends": [{
+                        "symbol": "TLT", "ex_date": "2026-11-02", "rate": "0.343177"
+                    }],
+                    "next_page_token": None,
+                }).encode("utf-8")
+        start = pd.Timestamp("2026-01-01", tz="UTC").to_pydatetime()
+        end = pd.Timestamp("2026-11-10", tz="UTC").to_pydatetime()
+        with self.assertRaisesRegex(CrosscheckError, "corporate_actions object"):
+            fetch_alpaca_corporate_actions(
+                ["TLT"], start, end, "key", "secret",
+                opener=lambda request, timeout: FakeResponse(),
+            )
 
     def test_yahoo_adjustment_fields_fetch_raw_and_adjusted_close_separately(self):
         calls = {}
