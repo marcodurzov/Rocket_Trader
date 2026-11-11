@@ -90,6 +90,7 @@ def summarize_events(
     crypto_events: List[Dict[str, Any]] = []
     fee_counts: Counter[str] = Counter()
     previous_id_count = 0
+    previous_ids: List[str] = []
     correction_count = 0
     bust_count = 0
     duplicate_ref_count = 0
@@ -137,6 +138,7 @@ def summarize_events(
                 bust_count += 1
         if event.get("previous_id"):
             previous_id_count += 1
+            previous_ids.append(str(event["previous_id"]))
 
         symbol = details.get("symbol")
         if symbol is None and isinstance(event.get("asset"), dict):
@@ -159,6 +161,7 @@ def summarize_events(
                 "executed_at": event.get("executed_at"),
             })
 
+    orphan_previous_id_count = sum(1 for previous_id in previous_ids if previous_id not in seen_refs)
     dropped_comments = [
         comment for comment in comments
         if "dropped" in comment.lower() or "reading too slowly" in comment.lower()
@@ -169,7 +172,7 @@ def summarize_events(
 
     if http_status != 200:
         status = "UNAVAILABLE" if http_status in {401, 403, 404, 405} else "HTTP_ERROR"
-    elif dropped_comments or server_error_comments or invalid_frames or invalid_events:
+    elif dropped_comments or server_error_comments or invalid_frames or invalid_events or ordering_anomalies:
         status = "INCOMPLETE"
     elif not events:
         status = "NO_EVENTS"
@@ -197,6 +200,7 @@ def summarize_events(
         "trade_execution_type_counts": dict(sorted(execution_types.items())),
         "fee_activity_counts": dict(sorted(fee_counts.items())),
         "previous_id_event_count": previous_id_count,
+        "orphan_previous_id_count": orphan_previous_id_count,
         "trade_correction_event_count": correction_count,
         "trade_bust_event_count": bust_count,
         "crypto_trade_event_count": len(crypto_events),
