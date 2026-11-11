@@ -650,3 +650,17 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - QQQ adjustment-factor max divergence 0.327819%; 2022-09-19 Yahoo action feed shows $0.519 dividend and relative factor step 17.68 bps (~17.94 bps implied by distribution/prior raw close). Exact provider mechanism unproven.
 - TLT adjustment-factor max divergence 0.422290%; official iShares reports $0.343177 ex-distribution 2026-11-02. Prior Yahoo raw close $81.84 implies ~41.93 bps; audit shows Yahoo cash action 0 and no factor step, while Alpaca relative factor step is 41.7148 bps. Consistent with Yahoo event adjustment not yet reflected in that capture; must re-query.
 - Conclusion: mixed provider issues; raw-price differences dominate SPY, adjustment-factor mismatches matter for QQQ/TLT. Neither IEX nor Yahoo alone is certified as institutional-grade truth. Tiingo not live-tested. No subscriptions/spend approved.
+
+
+---
+
+## 2026-11-10 — Historical trading research and adaptive architecture baseline
+- Added canonical document: `TRADING_RESEARCH_LANDSCAPE_AND_ADAPTIVE_ARCHITECTURE.md`.
+- Corrected project-history statement: the complete historical/practitioner/academic/open-source/community survey had not previously been done. Earlier work tested selected ML/technical methods and strategy families only.
+- Document covers history through 2026-11-10, strategy taxonomy, regime detection, meta-allocation, online adaptation, news/social/geopolitical evidence, risk, historical failures, successful trader/institution benchmarking, GitHub ecosystem, books/forums, research gates, source map and working rules.
+- Research conclusion: architecture should be regime-aware and multi-strategy, with cash/abstention, robust sizing, hysteresis, drift monitoring, challenger testing and strict bounded experimentation. No single model should self-promote or trade from raw LLM/news text.
+- Preserved prior negative results: Oct ML/SPY/QQQ experiment, ETF v0.5 (0/97), crypto v0.4 (0/25; SOL data 77.1%), and v0.4 ten-year ETF report (0/73 significant; 0 pre-screen).
+- v0.4 live run 42954130155 artifact 13826686266: 8 ETFs, 2,511 Yahoo bars each, 73 tests; Holm significant 0, pre-screen 0, no promotion/Paper/orders. Top-1 cross-sectional excess looked positive but bootstrap p=0.3985, Holm p=1.0, q05 excess -31.56pp. Cost assumption 5 bps/side is not measured.
+- Research is curated, not an exhaustive internet crawl; preliminary and practitioner evidence is labeled. Public claims are not treated as independently audited performance.
+- No new strategy approval, no paid data subscription, no live deployment or orders. Progress remains 46%.
+- Next: hypothesis registry; source adjustment audit; wider point-in-time OOS tests; regime model comparison; adaptive selector validation; news/social incremental tests; Paper cost/accounting and fault validation.
