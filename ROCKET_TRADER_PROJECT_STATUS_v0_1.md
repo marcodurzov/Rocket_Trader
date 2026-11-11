@@ -461,3 +461,16 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - No allocation/order capability added. Observer remains observe-only and cash-only.
 - Predictive value of regime features remains unvalidated; historical point-in-time stability and regime-conditioned performance research are still open.
 - The canonical historical experiment ledger is in `ROCKET_TRADER_HANDOFF.md` section 10.
+
+
+---
+
+## 2026-11-11 — PR #103 broker fill activity reconciliation
+- PR #103 merged: https://github.com/marcodurzov/Rocket_Trader/pull/103
+- Merge SHA: `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`.
+- The runtime now compares staged REST `FILL` activities with the fee/FX-aware ledger inbox using the documented execution UUID identity and checks quantity, price, symbol, side, order ID and timestamp.
+- An absent, mismatched, PENDING or FAILED inbox row keeps account-activity health in ERROR; no automatic ledger posting or fill reconstruction was added.
+- CI: 8 dedicated reconciliation tests and 32 runtime tests passed; all 166 tests in runtime/accounting workflow passed. Compose/Docker build and post-merge image publication passed.
+- Official Alpaca schema mapping documented in `PAPER_OBSERVER_RUNTIME.md` and `ROCKET_TRADER_HANDOFF.md`.
+- Actual Paper account/host validation remains pending; no strategy approval or LIVE authorization.
+- Handoff main SHA updated to current main `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`.
