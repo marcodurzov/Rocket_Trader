@@ -61,6 +61,13 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
+def _activity_fingerprint(event: Dict[str, Any]) -> str:
+    """Hash stable activity content, excluding the replay/publication event_id."""
+    stable = dict(event)
+    stable.pop("event_id", None)
+    return hashlib.sha256(_canonical(stable).encode("utf-8")).hexdigest()
+
+
 def _event_hash(sequence: int, ref_id: str, event_id: str, payload_hash: str,
                 previous_hash: str) -> str:
     material = _canonical({
@@ -197,7 +204,7 @@ class DurableActivitySSEInbox:
             raise ActivitySSEConsumerError("Activity details must be a JSON object when present.")
         _reject_credentials(event)
         payload_json = _canonical(event)
-        payload_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+        payload_hash = _activity_fingerprint(event)
         previous_id = event.get("previous_id")
         if previous_id is not None and (not isinstance(previous_id, str) or not previous_id.strip()):
             raise ActivitySSEConsumerError("previous_id must be null or a non-empty string.")
@@ -321,7 +328,7 @@ class DurableActivitySSEInbox:
             if row["event_hash"] != expected:
                 return {"valid": False, "reason": "event_hash_mismatch"}
             payload = json.loads(row["payload_json"])
-            if hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest() != row["payload_hash"]:
+            if _activity_fingerprint(payload) != row["payload_hash"]:
                 return {"valid": False, "reason": "payload_hash_mismatch"}
             previous_hash = row["event_hash"]
             expected_sequence += 1
@@ -386,8 +393,10 @@ class AlpacaPaperActivitySSEConsumer:
         self.read_timeout = max(15, int(read_timeout))
 
     def connect_once(self) -> Dict[str, Any]:
-        import requests
-        getter = self.request_get or requests.get
+        getter = self.request_get
+        if getter is None:
+            import requests
+            getter = requests.get
         cursor = self.inbox.cursor
         params = {"since_id": cursor} if cursor else {"since": self.bootstrap_since}
         response = None
