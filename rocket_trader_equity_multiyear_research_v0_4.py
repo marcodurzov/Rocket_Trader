@@ -148,7 +148,7 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     start = pd.Timestamp(dates.iloc[0]).normalize()
     end = pd.Timestamp(dates.iloc[-1]).normalize()
     try:
-        calendar = xcals.get_calendar("XNYS")
+        calendar = xcals.get_calendar("XNYS", start=start, end=end)
         sessions = calendar.sessions_in_range(start, end)
     except Exception as exc:
         raise EquityResearchError(
