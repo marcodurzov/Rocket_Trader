@@ -299,6 +299,8 @@ class AlpacaAccountActivityReader:
         unclassified_records = []
         other_symbol_count = 0
         incomplete_count = 0
+        out_of_window_count = 0
+        window_unverified_count = 0
         for activity in activities:
             activity_type = str(activity.get("activity_type", "")).upper()
             if activity_type != "CFEE":
@@ -335,15 +337,33 @@ class AlpacaAccountActivityReader:
             )
             created_at = activity.get("created_at")
             activity_date = activity.get("date")
-            occurred_at = None
-            timestamp_status = "MISSING_OR_INVALID_TIMESTAMP"
-            for candidate in (created_at, activity_date):
+            created_at_utc = None
+            try:
+                created_at_utc = _timestamp(created_at, "crypto_fee_created_at")
+            except AlpacaActivityReconciliationError:
+                pass
+
+            occurred_at = created_at_utc
+            timestamp_status = "VALID" if created_at_utc else "MISSING_OR_INVALID_TIMESTAMP"
+            if occurred_at is None:
                 try:
-                    occurred_at = _timestamp(candidate, "crypto_fee_created_at")
+                    occurred_at = _timestamp(activity_date, "crypto_fee_activity_date")
                     timestamp_status = "VALID"
-                    break
                 except AlpacaActivityReconciliationError:
-                    continue
+                    pass
+
+            # Alpaca documents after/until as created_at filters. Enforce the
+            # requested interval locally as well: account-wide backfills or
+            # provider inconsistencies must not contaminate cost evidence.
+            if created_at_utc is None:
+                window_status = "UNVERIFIED_CREATED_AT"
+                window_unverified_count += 1
+            elif after_utc < created_at_utc < until_utc:
+                window_status = "IN_WINDOW"
+            else:
+                window_status = "OUT_OF_WINDOW"
+                out_of_window_count += 1
+
             record_is_incomplete = (
                 amount is None or currency is None or timestamp_status != "VALID"
             )
@@ -367,13 +387,19 @@ class AlpacaAccountActivityReader:
                 "activity_date": activity_date,
                 "record_status": record_status,
                 "timestamp_status": timestamp_status,
+                "window_status": window_status,
                 "allocation_status": "UNALLOCATED",
             }
-            event_type = (
-                "CRYPTO_FEE_ACTIVITY_UNCLASSIFIED"
-                if activity_symbol is None
-                else "CRYPTO_FEE_ACTIVITY_UNALLOCATED"
-            )
+            if window_status == "OUT_OF_WINDOW":
+                event_type = "CRYPTO_FEE_ACTIVITY_OUT_OF_WINDOW"
+            elif window_status == "UNVERIFIED_CREATED_AT":
+                event_type = "CRYPTO_FEE_ACTIVITY_WINDOW_UNVERIFIED"
+            else:
+                event_type = (
+                    "CRYPTO_FEE_ACTIVITY_UNCLASSIFIED"
+                    if activity_symbol is None
+                    else "CRYPTO_FEE_ACTIVITY_UNALLOCATED"
+                )
             self.event_ledger.append_event(
                 event_id=_event_id("fee-", activity["id"]),
                 aggregate_id="account-crypto-fees",
@@ -382,6 +408,10 @@ class AlpacaAccountActivityReader:
                 occurred_at=occurred_at,
             )
 
+            # Only records whose broker creation timestamp is proven to be
+            # inside the requested interval can enter interval-specific counts.
+            if window_status != "IN_WINDOW":
+                continue
             if classification == "TARGET_SYMBOL":
                 fee_records.append(payload)
             elif classification == "OTHER_SYMBOL":
@@ -397,6 +427,8 @@ class AlpacaAccountActivityReader:
             "other_symbol_activity_count": other_symbol_count,
             "unclassified_activity_count": len(unclassified_records),
             "incomplete_activity_count": incomplete_count,
+            "out_of_window_activity_count": out_of_window_count,
+            "window_unverified_activity_count": window_unverified_count,
             "allocation_status": "UNALLOCATED",
             "fee_activities": fee_records,
             "unclassified_fee_activities": unclassified_records,

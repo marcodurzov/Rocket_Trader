@@ -192,6 +192,47 @@ class AlpacaActivityReconciliationTests(unittest.TestCase):
                 page_size=1,
             )
 
+    def test_cfee_results_are_locally_filtered_by_created_at_window(self):
+        fees = [
+            {
+                "id": "fee-old-btc", "activity_type": "CFEE", "symbol": "BTC/USD",
+                "net_amount": "0", "currency": "USD", "qty": "-0.0000001",
+                "created_at": "2026-11-10T19:43:25.429073Z",
+            },
+            {
+                "id": "fee-current-btc", "activity_type": "CFEE", "symbol": "BTC/USD",
+                "net_amount": "0", "currency": "USD", "qty": "-0.0000002",
+                "created_at": "2026-11-11T04:57:49.080580Z",
+            },
+            {
+                "id": "fee-old-unclassified", "activity_type": "CFEE", "symbol": None,
+                "net_amount": "-0.03", "currency": "USD",
+                "created_at": "2026-11-10T19:40:51.934749Z",
+            },
+            {
+                "id": "fee-no-created-at", "activity_type": "CFEE", "symbol": "BTC/USD",
+                "net_amount": "0", "currency": "USD",
+                "date": "2026-11-11T04:57:49Z",
+            },
+        ]
+        result = self.reader({None: fees}).collect_crypto_fee_candidates(
+            symbol="BTC/USD",
+            after="2026-11-11T04:55:00Z",
+            until="2026-11-13T00:00:00Z",
+        )
+        self.assertEqual(result["fee_activity_count"], 1)
+        self.assertEqual(result["unclassified_activity_count"], 0)
+        self.assertEqual(result["out_of_window_activity_count"], 2)
+        self.assertEqual(result["window_unverified_activity_count"], 1)
+        self.assertEqual(
+            result["fee_activities"][0]["activity_id"], "fee-current-btc"
+        )
+        events = self.ledger.list_events(aggregate_id="account-crypto-fees")
+        event_types = {event["event_type"] for event in events}
+        self.assertIn("CRYPTO_FEE_ACTIVITY_OUT_OF_WINDOW", event_types)
+        self.assertIn("CRYPTO_FEE_ACTIVITY_WINDOW_UNVERIFIED", event_types)
+        self.assertTrue(self.ledger.verify_chain()["valid"])
+
     def test_fee_time_window_is_mandatory_and_timezone_aware(self):
         reader = self.reader({None: []})
         with self.assertRaisesRegex(AlpacaActivityReconciliationError, "timezone"):
@@ -278,9 +319,12 @@ class AlpacaActivityReconciliationTests(unittest.TestCase):
         result = self.reader({None: [fee]}).collect_crypto_fee_candidates(
             symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
         )
-        self.assertEqual(result["fee_activity_count"], 1)
+        self.assertEqual(result["fee_activity_count"], 0)
         self.assertEqual(result["incomplete_activity_count"], 1)
-        self.assertEqual(result["fee_activities"][0]["record_status"], "INCOMPLETE_FIELDS")
+        self.assertEqual(result["window_unverified_activity_count"], 1)
+        events = self.ledger.list_events(aggregate_id="account-crypto-fees")
+        self.assertEqual(events[0]["event_type"], "CRYPTO_FEE_ACTIVITY_WINDOW_UNVERIFIED")
+        self.assertEqual(events[0]["payload"]["record_status"], "INCOMPLETE_FIELDS")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

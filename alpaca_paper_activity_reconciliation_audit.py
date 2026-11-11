@@ -66,6 +66,8 @@ def _write_report(report: Dict[str, Any]) -> None:
             f"- Unclassified fee activities: {report.get('unclassified_fee_activity_count', 0)}",
             f"- Other-symbol fee activities: {report.get('other_symbol_fee_activity_count', 0)}",
             f"- Incomplete fee activities: {report.get('incomplete_fee_activity_count', 0)}",
+            f"- Out-of-window fee activities: {report.get('out_of_window_fee_activity_count', 0)}",
+            f"- Fee activities with unverified creation time: {report.get('window_unverified_fee_activity_count', 0)}",
             "",
             "Fee records, when present, are account-level candidates and are not assigned to an order without documented linkage.",
             "",
@@ -197,6 +199,10 @@ def main() -> int:
         report["other_symbol_fee_activity_count"] = fee_result["other_symbol_activity_count"]
         report["unclassified_fee_activity_count"] = fee_result["unclassified_activity_count"]
         report["incomplete_fee_activity_count"] = fee_result["incomplete_activity_count"]
+        report["out_of_window_fee_activity_count"] = fee_result["out_of_window_activity_count"]
+        report["window_unverified_fee_activity_count"] = fee_result["window_unverified_activity_count"]
+        report["fee_window_after"] = fee_result["after"]
+        report["fee_window_until"] = fee_result["until"]
         report["unclassified_fee_activities"] = fee_result["unclassified_fee_activities"]
         if fee_result["fee_activity_count"]:
             report["fee_evidence_status"] = "UNALLOCATED_CANDIDATES"
