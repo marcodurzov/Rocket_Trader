@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `6ac4caa90de52ad1d1faefedbe301997b2360480`  
+**Latest audited code baseline SHA:** `60059a41379b274ae16a8b20426bbcf96178ae7`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -439,3 +439,35 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Runtime suite `42955454994` passed all modules. CI does not establish actual Paper host operation.
 
 **Immediate next action:** extend the audit to capture the raw/unadjusted close, adjusted close and per-session adjustment factor around each flagged date; add a separate corporate-action/event comparison when provider APIs expose records. Do not normalize away discrepancies or change research source until reconciled.
+
+
+### PR #115 — raw-price vs adjustment-factor reconciliation
+- Merge commit: `60059a41379b274ae16a8b20426bbcf96178ae7`.
+- Adds Yahoo raw `Close` + adjusted `Adj Close` fetch (`auto_adjust=False`, `actions=True`, `repair=False`), Alpaca raw `Adjustment.RAW` fetch, and compares them with the existing adjusted series.
+- Computes per-provider adjustment factors (adjusted/raw), normalized relative factor divergence, largest factor-step dates, raw-price return differences and normalized raw-price path divergence.
+- This is designed to separate raw underlying price mismatches from corporate-action adjustment differences. It does not assign a cause or auto-correct data.
+- PR CI run `42955793577`: compile and all 12 cross-check tests passed; live audit skipped on pull_request by design.
+- Post-merge audit run `42955879451` completed successfully; artifact `13825994525`. The run included raw/adjusted fields for all 8 ETFs. Runtime/accounting run `42955879365` also completed successfully.
+- No Tiingo token, subscription, strategy approval, Paper approval or orders changed.
+
+**Next steps**
+1. Verify post-merge live audit; if no automatic run was triggered, dispatch the existing audit workflow only if a supported dispatch mechanism is available, otherwise use the next scheduled run. Do not claim live raw/adjusted parity before it runs.
+2. Inspect the new adjustment-factor step dates for QQQ 2024-12-23/24 and SPY 2025-04-09/10; compare to official distribution/ex-date records. The QQQ 2024-12-23 $0.83466 distribution is a possible lead but too small by itself to explain the observed ~1% opposite-signed daily return differences.
+3. Keep provider histories separate and do not loosen the 95% coverage gate.
+4. Continue strategy edge, empirical cost and persistent Paper deployment work only after the data lineage blocker is understood.
+
+**Progress remains 46%.** This adds an attribution diagnostic, not a resolution or strategy edge.
+
+
+### PR #115 — post-merge raw/adjusted factor findings
+- Live audit `42955879451` succeeded; artifact `13825994525`; 12 cross-check tests passed. Runtime/accounting run `42955879365` passed.
+- Yahoo raw/adjusted and Alpaca RAW/ALL series intersected for 1,582 sessions (SPY 1,583) on the IEX common period.
+- Maximum normalized relative adjustment-factor divergence by ETF: DIA 0.0025%, EEM 0.0223%, EFA 0.0124%, GLD 0%, IWM 0.0065%, QQQ 0.3278%, SPY 0.0045%, TLT 0.4223%.
+- QQQ's largest factor step was 2022-09-19: +17.6852 bps. QQQ's documented ex-dividend distribution that day was $0.51856/share: https://stockanalysis.com/etf/qqq/dividend/ and https://app.tiingo.com/qqq/dividends.
+- TLT's largest factor step was 2026-11-02: +41.7148 bps. iShares official distribution table lists an ex-date and income distribution of $0.343177/share that day: https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf.
+- The close magnitude/date alignment is strong evidence that dividend-adjustment handling explains at least these two factor steps. It does **not** yet identify which vendor's factor is correct or prove the whole cumulative-return discrepancy is explained. The report currently normalizes factor ratio to first common session; it does not show before/after raw factor values side-by-side.
+- Raw price series still differ: max normalized raw close divergence ranges from 0.2633% TLT to 0.9620% QQQ; p95 absolute raw daily return differences 4.6855–9.9434 bps. This is separate from the adjustment-factor issue and deserves investigation.
+- The large QQQ 2024-12-23/24 and SPY 2025-04-09/10 return outliers are not automatically explained by the 2022 QQQ or 2026 TLT factor events. Keep these as separate raw/session anomalies until their raw close fields are checked.
+- Tiingo token remains absent. No Tiingo request; no vendor subscription; no strategy/Paper approval or orders.
+
+**Next diagnostic improvement:** include previous-session and current-session provider adjustment factors around each largest factor step, so the audit makes the before/after factor change explicit. Then compare it against the official ex-date cash amount divided by previous raw close. Do not attribute provider fault until this calculation and raw bars are checked.
