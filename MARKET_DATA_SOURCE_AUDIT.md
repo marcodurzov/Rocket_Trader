@@ -3,7 +3,7 @@
 ## Why this exists
 
 The 10-year ETF research runs currently use Yahoo Finance daily history
-(`auto_adjust=True`, `actions=True`, `repair=True`). That is useful for
+(`auto_adjust=True`, `actions=True`, `repair=False`). That is useful for
 research, but it is not an independent validation against the market-data
 provider configured in Rocket Trader.
 
@@ -13,7 +13,7 @@ symbols on common daily sessions:
 
 `DIA EEM EFA GLD IWM QQQ SPY TLT`
 
-- Yahoo: auto-adjusted daily close, actions and repair enabled.
+- Yahoo: auto-adjusted daily close, actions enabled, `repair=False` (the repair path caused a reproducible read-only-array error in the first live audit).
 - Alpaca: daily close with `Adjustment.ALL`, using the explicitly selected
   `IEX` or `SIP` feed.
 - The comparison reports source coverage, daily-return correlation, mean/p95/
@@ -84,3 +84,10 @@ GitHub Actions -> **Rocket Trader - Alpaca vs Yahoo ETF History Audit** ->
 Run workflow. The default is ten years and IEX. SIP can be selected only if the
 Alpaca account is entitled to that feed. The workflow uploads the JSON report
 as an artifact and never creates or modifies orders.
+
+
+## Live audit update — 2026-11-10
+
+The first live run (42920786498; artifact 13812205814) failed for all symbols because `repair=True` triggered `ValueError: output array is read-only`. PR #96 set `repair=False` and added a regression test. The subsequent live run (42922974687; artifact 13812508089) retrieved all eight ETFs successfully, but only 1,581 common sessions were available (2020-07-27 to 2026-11-09). Yahoo had 2,512 sessions; Alpaca IEX had 1,582. Consequently, 0/8 symbols passed the ten-year source-coverage diagnostic. SIP remains unavailable to this account (`NOT_ENTITLED`). This is a completed retrieval with a failed coverage gate, not a successful 10-year validation.
+
+On the common window, return correlations were high (0.99835–0.99975), but cumulative-return differences ranged from 1.3 bps (DIA) to 220.5 bps (SPY). Do not infer full source parity from correlation alone. Investigate corporate-action/adjustment methodology and consider a licensed full-history source. Do not splice sources or lower the coverage threshold.

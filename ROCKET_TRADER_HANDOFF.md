@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-10  
+**Last updated:** 2026-11-10 (historical continuity ledger expanded)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `d001fc3f3661b1cae39de535c52b235975f164ae`  
+**Latest main SHA at this handoff update:** `2073c0ddf51986b47d576a2d6f22831a3bae64dd`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -15,7 +15,7 @@ The user can simply say:
 Do not ask the user to repeat the project's objective, prior decisions or working rules if they are in this document or the linked authoritative documents. Always inspect the live repository state before assuming this handoff is still current.
 
 Read in this order:
-1. This file — continuity, working rules and next actions.
+1. This file — continuity, working rules, historical decisions/results and next actions.
 2. `ROCKET_TRADER_BASELINE_DECISIONS_v0_2.md` — authoritative user decisions, capital policy and scope.
 3. `ROCKET_TRADER_PROJECT_STATUS_v0_1.md` — detailed implementation, evidence, results and blockers.
 4. `ROCKET_TRADER_INVESTMENT_RESEARCH_FRAMEWORK_v0_1.md` — research and benchmark standards.
@@ -147,3 +147,71 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 Current estimate: **46%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 46% profitable, nor does it mean a 46% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
+
+## 10. Historical decision and experiment ledger — do not repeat without new evidence
+
+This section preserves material paths already explored, including failures and superseded results. Before launching a new experiment, check whether its hypothesis, data window, timing model and parameter family have already been tested. A repeated run is justified only by a documented change in data, methodology, market regime, code defect correction or a genuinely new pre-registered hypothesis.
+
+### 10.1 Research-method transfer from Jefe Maestro / MDV PS
+- Reused: time-ordered validation, temporal features, ensembles only when incremental OOS value is proven, data fingerprints, bootstrap/permutation, global multiple-testing correction, attribution and continuity.
+- Explicitly rejected: using lottery draw rows, lottery number frequencies/co-occurrences, draw gaps, lottery entropy assumptions, SMOTE treatment or physical-draw hypotheses as financial features. Financial markets require independent financial definitions and data.
+- Historical MDV PS FIX08 evaluated 4,632 hypotheses; 188 raw p-values were below 0.05, but **zero** survived global Holm-Bonferroni correction. This is a methodological caution, not evidence about markets.
+- Earlier Rocket Engine audit identified and corrected/blocked: misplaced `novelty_score`; missing purge for forward-label horizon; OOS alignment by tail length instead of original row positions; historical `ret_5` mislabeled as forward expected return; feature similarity incorrectly called precedent; keyword NewsEngine score without validated NLP; classifier-only walk-forward output falsely resembling executable backtest. Treat `UNKNOWN`/zero-confidence news and `passed=False` classifier diagnostics as intentional safety behavior until a validated replacement exists.
+
+### 10.2 Historical strategy research — corrected timing results govern
+- **Superseded close-to-close results:** earlier equity v0.2 and crypto v0.1 could include an overnight close-to-open gap that was unavailable to a signal generated at the prior close. These results are invalid for promotion. Do not quote them as current strategy evidence.
+- **Corrected execution clock:** completed close signal -> next bar open entry -> open-to-next-open return; costs charged at position changes; final interval handled without inventing a future price; prior position preserved at walk-forward boundaries. Regression test includes a 100% overnight gap and confirms only the subsequent 10% open-to-open return is credited.
+- **Corrected ETF v0.3:** 8 ETFs, 49 hypotheses, 0 Holm-significant, 0 pre-screen passes. Cross-sectional top-1 momentum holdout +41.0% vs +31.2% equal-weight buy-and-hold, but excess 5th percentile -30.1%, raw bootstrap p=0.3921, Holm-adjusted p=1.0. Not an edge; single-asset trend/momentum generally underperformed same-asset buy-and-hold.
+- **Corrected crypto v0.2:** BTC/ETH eligible; SOL excluded for 77.1% coverage and a 416-day gap. 13 hypotheses, 0 Holm-significant, 0 pre-screen passes. Cross-sectional top-1 momentum holdout -29.5%, raw p=0.4267, Holm p=1.0. No candidate.
+- **Mean-reversion tranche ETF v0.4:** 73 total hypotheses, 0 Holm-significant, 0 pre-screen passes. TLT Bollinger(20,2) holdout +8.83%, +8.95 percentage points vs TLT buy-and-hold, but only 10 entries and Holm p=1.0. RSI(2)/SMA200 and five-day downside z-score mostly underperformed. No candidate.
+- **Mean-reversion tranche crypto v0.3:** 19 hypotheses, 0 Holm-significant, 0 pre-screen passes. BTC RSI(2) holdout +4.57% on only 4 entries, Holm p=1.0; Bollinger/z-score negative in BTC/ETH. SOL excluded. No candidate.
+- Research families and results are recorded in `RESEARCH_EXECUTION_TIMING_CORRECTION_2026-11-10.md` and `RESEARCH_HYPOTHESIS_PROGRAM.md`. Next research must be pre-registered; do not rerun the same indicators/parameters on the same holdout and call it new evidence.
+
+### 10.3 Market data attempts and what was learned
+- Alpaca IEX daily history is not SIP/NBBO. It is the configured lower-coverage feed. SIP request previously returned `NOT_ENTITLED`; do not keep retrying SIP unless entitlement changes.
+- The initial 10-year Yahoo/Alpaca comparison workflow (run `42920786498`, artifact `13812205814`) failed for all eight ETFs because Yahoo `repair=True` raised `ValueError: output array is read-only`. Logs exposed a mismatch between docs and executed code.
+- PR #96 changed the actual provider call to `repair=False` and added a regression test. PR CI run `42922818287` passed all 6 offline tests.
+- Post-merge audit run `42922974687`, artifact `13812508089`, successfully retrieved all eight symbols with no provider errors. However, Yahoo returned 2,512 sessions while Alpaca IEX returned 1,582; overlap was 1,581 sessions (2020-07-27 to 2026-11-09). Yahoo common-session coverage was 62.94%, IEX 99.94%, and **0/8** passed the full 10-year coverage gate.
+- On the overlap, daily return correlations were 0.99835–0.99975 and p95 absolute daily-return differences 4.69–9.97 bps. Cumulative differences ranged from 1.3 bps DIA to 220.5 bps SPY; investigate adjustment methodology/corporate actions before declaring source parity.
+- Meaning: the Yahoo repair crash is fixed, but the ten-year cross-source validation is still not passed. Do not splice Yahoo and IEX histories or relax the 95% coverage gate. Evaluate a licensed full-history source or entitlement change on economic grounds. Keep source provenance separate.
+
+### 10.4 Paper execution and accounting experiments
+- Two BTC/USD Paper round trips were performed strictly as capped execution/accounting smoke tests (USD 10 notional cap each), not strategy tests. Both ended with zero residual BTC. First order initially returned `pending_new` then reconciled as filled; hardened second cycle waits for terminal state, cancels if needed, reconciles actual net inventory and sells only what the broker confirms.
+- Paper account had simulator seed cash USD 100,000, multiplier 1, no margin multiplier, shorting disabled, options level 0. This is not user capital and does not count toward MXN 1,000 strategy seed or MXN 100,000 earned milestone.
+- Read-only post-test check showed USD 99,999.86 cash/equity and no positions. The USD 0.14 balance decline is an observed net change, **not** proven fee-only attribution.
+- Four FILL activities were found, plus JNLC cash journal USD 100,000. JNLC/CSD/CSW must remain pending capital reconciliation, not auto-classified as user deposits or profit.
+- Crypto fee posting is delayed end-of-day. Same-day missing CFEE/FEE is not zero fee. Match fees to exact execution IDs; do not close realized P&L while fees remain unresolved.
+- Prior components PR #48–#55 established market freshness, worker failure health, sub-cent fee precision, durable idempotent fill inbox, TRD activity normalization, exact fee resolver, timestamped FX and retryable FIFO ledger bridge. Corrections/busts remain quarantined for manual review; unlinked regulatory fees remain unresolved/manual.
+- Paper execution test evidence: `PAPER_EXECUTION_TEST_REPORT_2026-11-10.md`. These mechanical tests do not prove profitable signals or representative live execution.
+
+### 10.5 Architecture and operational lessons
+- PRs #48–#60 established runtime/fill-accounting foundations, Docker CI/image publishing, and first Holm-Bonferroni corrections for ETF/crypto research.
+- PR #69 introduced conservative cash journal handling; unknown capital activities must not silently become user capital.
+- PRs #77–#95 added staged cash activities/manual confirmation, read-only broker reconciliation, regime selector/observer, official macro news, event overlay, quote-to-fill telemetry, observer runbook, heartbeat separation, health readiness semantics, and main-push live ETF audit.
+- Quote telemetry must never refresh bar-stream heartbeat; independent freshness matters.
+- A healthy process does not mean market data is ready. Health reports liveness separately from `market_data_ready`, `safe_cash` and exposure.
+- Raw news never directly allocates capital. Official/Alpaca/GDELT feeds are observers; critical assessments require source provenance and human review. There is no validated social sentiment model yet.
+- Container image publication and green CI do not equal deployment. No persistent user-host Paper deployment has been verified.
+
+### 10.6 Open hypotheses / decisions not yet proven
+- Whether a simple long-only regime-aware blend of trend, breakout, relative strength and/or mean reversion can add robust OOS net value over cash, buy-and-hold and simple fixed-schedule controls.
+- Whether event/news assessments add incremental, point-in-time predictive value after latency, source quality and transaction costs.
+- Whether any successful-trader public evidence can be represented as time-available, verifiable data; otherwise use only qualitative process principles and no numerical trader benchmark.
+- Whether the 5 bps/side ETF and 40 bps/side crypto cost assumptions survive empirical Paper measurements. They remain unverified.
+- Whether a full-history licensed data source is worth its cost compared with the expected research value.
+- Whether novel signals can add value under a capped shadow/experimental budget; novelty alone is not evidence.
+
+### 10.7 Change-log discipline — mandatory for every future change
+For each meaningful change, append a dated entry to this Handoff (and synchronize project status when relevant) containing:
+1. PR/commit and exact files/components changed.
+2. Problem or hypothesis that motivated the work.
+3. Prior attempts or related historical runs, and why this attempt is not redundant.
+4. Tests/checks actually run and exact outcomes.
+5. Live-data/Paper evidence separately from offline CI.
+6. Positive results, negative results, errors and known limitations.
+7. Decision: accepted, rejected, deferred or needs more evidence.
+8. What was learned and what must not be repeated.
+9. Next actions, dependencies and explicit stop conditions.
+10. Progress percentage with rationale; documentation-only work does not increase it.
+
+Never overwrite the historical truth. Correct stale summaries by explicitly noting the correction and retaining the original failure/result in this ledger. The Handoff is append-oriented; keep prior evidence and mark superseded conclusions rather than deleting them.
