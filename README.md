@@ -41,3 +41,4 @@ See `ROCKET_TRADER_PROJECT_STATUS_v0_1.md` for merged work, research results, la
 - Start every new development conversation with [`ROCKET_TRADER_HANDOFF.md`](ROCKET_TRADER_HANDOFF.md).
 - Adaptive strategy rotation and event/news/social evidence requirements: [`ADAPTIVE_STRATEGY_AND_EVENT_EVIDENCE_REQUIREMENTS.md`](ADAPTIVE_STRATEGY_AND_EVENT_EVIDENCE_REQUIREMENTS.md).
 - Systematic hypothesis testing: [`RESEARCH_HYPOTHESIS_PROGRAM.md`](RESEARCH_HYPOTHESIS_PROGRAM.md).
+- Expanded strategy registry (24 sourced references), experiment ledger schema and staged hypothesis matrix: `research/reference_strategy_registry_v0_1.json`, `research/experiment_ledger_schema_v1.json`, `research/strategy_experiment_matrix_v1.json`.
