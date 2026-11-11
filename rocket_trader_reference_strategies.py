@@ -33,6 +33,15 @@ class StrategyReference:
     status: str
     rule_hypothesis: str
     limitations: Sequence[str]
+    strategy_family: str
+    market_regimes: Sequence[str]
+    holding_horizon: str
+    signal_inputs: Sequence[str]
+    entry_exit_sizing: str
+    execution_assumptions: str
+    failure_modes: Sequence[str]
+    evidence_grade: str
+    test_protocol: str
 
 
 class ReferenceStrategyRegistry:
@@ -63,7 +72,10 @@ class ReferenceStrategyRegistry:
             required = (
                 "id", "name", "reference_type", "source_url",
                 "markets_to_test", "quantitative_reference", "status",
-                "rule_hypothesis", "limitations",
+                "rule_hypothesis", "limitations", "strategy_family",
+                "market_regimes", "holding_horizon", "signal_inputs",
+                "entry_exit_sizing", "execution_assumptions", "failure_modes",
+                "evidence_grade", "test_protocol",
             )
             missing = [key for key in required if key not in item]
             if missing:
@@ -95,6 +107,15 @@ class ReferenceStrategyRegistry:
                     status=str(item["status"]),
                     rule_hypothesis=str(item["rule_hypothesis"]),
                     limitations=tuple(str(x) for x in item["limitations"]),
+                    strategy_family=str(item["strategy_family"]),
+                    market_regimes=tuple(item["market_regimes"]),
+                    holding_horizon=str(item["holding_horizon"]),
+                    signal_inputs=tuple(item["signal_inputs"]),
+                    entry_exit_sizing=str(item["entry_exit_sizing"]),
+                    execution_assumptions=str(item["execution_assumptions"]),
+                    failure_modes=tuple(item["failure_modes"]),
+                    evidence_grade=str(item["evidence_grade"]),
+                    test_protocol=str(item["test_protocol"]),
                 )
             )
         return parsed
@@ -155,6 +176,10 @@ def self_test() -> Dict[str, Any]:
     assert len(equity_quant) >= 3
     assert len(crypto_quant) >= 2
     assert qualitative
+    assert all(item.status != "PAPER_APPROVED" for item in all_refs)
+    assert registry.get("pairs_statistical_arbitrage").status == "RESEARCH_ONLY"
+    assert "short" in registry.get("pairs_statistical_arbitrage").entry_exit_sizing.lower()
+    assert all(item.strategy_family and item.test_protocol for item in all_refs)
     assert registry.can_create_precedent_evidence(
         "time_series_momentum_12m",
         comparable_out_of_sample_events=100,
@@ -184,6 +209,8 @@ def self_test() -> Dict[str, Any]:
         "equity_quantitative_references": len(equity_quant),
         "crypto_quantitative_hypotheses": len(crypto_quant),
         "qualitative_references": len(qualitative),
+        "strategy_families": len({item.strategy_family for item in all_refs}),
+        "pairs_status": registry.get("pairs_statistical_arbitrage").status,
         "source_only_precedent_approval": False,
         "orders_enabled": False,
         "orders_submitted": 0,
