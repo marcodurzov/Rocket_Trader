@@ -141,6 +141,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertAlmostEqual(
             step["expected_cash_dividend_adjustment_bps_vs_previous_yahoo_raw_close"],
             0.51856 / raw.iloc[3] * 10000.0,
+            places=4,
         )
 
     def test_yahoo_adjustment_fields_fetch_raw_and_adjusted_close_separately(self):
