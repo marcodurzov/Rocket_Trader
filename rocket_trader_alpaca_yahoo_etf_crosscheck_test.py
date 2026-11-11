@@ -331,10 +331,17 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             resolve_tiingo_token(True, None)
         self.assertEqual(resolve_tiingo_token(True, "starter-token"), "starter-token")
 
-    def test_zero_budget_feed_allows_iex_and_blocks_sip(self):
+    def test_zero_budget_feed_allows_historical_sip_but_blocks_recent_sip(self):
         self.assertEqual(require_zero_budget_feed("iex"), "IEX")
-        with self.assertRaisesRegex(CrosscheckError, "zero-budget policy"):
-            require_zero_budget_feed("SIP")
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        self.assertEqual(
+            require_zero_budget_feed("SIP", end_time=now - pd.Timedelta(minutes=16), now=now),
+            "SIP",
+        )
+        with self.assertRaisesRegex(CrosscheckError, "at least 15 minutes ago"):
+            require_zero_budget_feed("SIP", end_time=now - pd.Timedelta(minutes=14), now=now)
+        with self.assertRaisesRegex(CrosscheckError, "explicit timezone-aware"):
+            require_zero_budget_feed("SIP", now=now)
 
     def test_tiingo_history_uses_adjusted_close_and_token_header(self):
         calls = {}
