@@ -140,3 +140,21 @@ The ratio is still normalized to the first common session for the cumulative div
 Yahoo raw/adjusted history now also retains its `Dividends` and `Stock Splits` action fields. For each largest adjustment-factor step, the report includes the prior raw close from both providers, the Yahoo cash distribution and split ratio recorded on the event session, and a first-order implied cash-distribution adjustment in basis points (`cash distribution / prior Yahoo raw close × 10,000`).
 
 This lets the audit compare the observed provider factor step with the issuer's declared cash distribution scale. The calculation is a diagnostic approximation, not an adjustment formula to apply to prices. It does not replace official issuer action records or explain provider-specific methodology, taxes, return-of-capital, capital gains, special distributions, or correction timing. No automatic adjustment is applied.
+
+
+## Alpaca issuer corporate-action reconciliation
+
+The audit now queries Alpaca's official market-data Corporate Actions endpoint for the same ETF universe and period (with a 60-day process-date padding, because the endpoint filters/sorts by `process_date`, not solely by `ex_date`). It preserves event type, symbol, ex-date, cash rate, capital-gain rates, split fields, process date, payable date and other relevant metadata.
+
+For each largest adjustment-factor step, the report now shows Alpaca corporate actions on the event date and previous session, the sum of Alpaca cash dividends on the event date, and the difference versus Yahoo's `Dividends` field. This can distinguish:
+- an issuer cash distribution present in Alpaca's corporate-action feed but absent from Yahoo's action field;
+- an event present in both feeds but with different amounts;
+- an event present in Yahoo but absent from Alpaca's corporate-action feed;
+- a factor-step discrepancy without a matching cash dividend (which may instead involve capital gains, splits, spin-offs, timing, or bad price data).
+
+The official endpoint is `GET https://data.alpaca.markets/v1/corporate-actions`. Alpaca warns that corporate-action records can be delayed and does not guarantee when records are created; absence from this API is not proof that no issuer event exists. Issuer records remain the authority for declared distributions. This endpoint is read-only and does not change account positions or submit orders.
+
+References:
+- https://docs.alpaca.markets/us/reference/corporateactions-1
+- https://alpaca.markets/sdks/python/api_reference/data/corporate_actions/historical.html
+- https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf
