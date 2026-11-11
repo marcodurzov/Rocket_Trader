@@ -1100,7 +1100,7 @@ Next actions:
 ### Verified repository and cost facts
 
 - Repository visibility is **public**. This matters because GitHub documents standard GitHub-hosted Actions runners as free and unlimited for public repositories; larger runners are excluded from that free guarantee.
-- GitHub documents public GitHub Packages as free. The public GHCR image can therefore remain the preferred zero-cost image registry while the package remains public. Re-check terms if repository/package visibility changes.
+- GitHub documents Container Registry image storage and bandwidth as currently free. The publish workflow pushes to GHCR, but package visibility was not independently verified in this audit; check that setting before relying on anonymous pulls. Re-check terms if repository/package visibility changes.
 - The existing workflows use standard `ubuntu-latest` runners; no larger runner label was found in the reviewed workflow inventory.
 - The repository currently contains 58 workflow files. Ten contain scheduled triggers:
   - ETF Alpaca/Yahoo cross-check: weekly Sunday.
