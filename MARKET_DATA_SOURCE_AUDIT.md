@@ -98,3 +98,12 @@ On the common window, return correlations were high (0.99835–0.99975), but cum
 The equity research runner now supports an optional Tiingo EOD adjusted-history source. It consumes Tiingo's `adjOpen`, `adjHigh`, `adjLow`, `adjClose` and `adjVolume` fields, uses the Authorization Token header, and applies the same full-requested-period, row-count, weekday-coverage and gap checks used by the other providers. The token is read only from `TIINGO_API_TOKEN`; never put it in source, logs or chat.
 
 The default source remains unchanged. Selecting TIINGO requires a valid token and sufficient plan history. A Starter account with only five years cannot pass a ten-year request; no fallback or silent partial-history acceptance occurs. The adapter has mocked contract tests only until a real token and eligible plan are configured. No subscription has been purchased.
+
+
+## Optional three-source parity audit (Yahoo / Alpaca / Tiingo)
+
+The Alpaca-vs-Yahoo cross-check now accepts an optional `TIINGO_API_TOKEN` GitHub Actions secret. When configured, it fetches Tiingo adjusted daily closes for the same requested dates and adds two independent comparisons per ETF: Tiingo vs Yahoo, and Tiingo vs Alpaca. It reports source session counts, common-session coverage, daily-return correlation, absolute return differences, cumulative-return divergence and diagnostic gates under explicit provider names.
+
+If the token is absent, Tiingo is explicitly marked as not requested and the original Yahoo/Alpaca audit runs unchanged. If a token is present but Tiingo data is missing, malformed, too short, or not sufficiently overlapping, the Tiingo comparison is recorded as an error or a failed coverage gate; the report does not silently pass or splice histories. The current Alpaca IEX history begins in 2020 for this account, so a full 10-year Tiingo-vs-IEX overlap is expected to fail the 95% per-source coverage gate until Alpaca entitlement/history changes. That is intentional: it prevents the system from calling a partial common period a ten-year three-provider validation.
+
+No Tiingo token or subscription is configured by this change. No provider is treated as ground truth merely because its data are adjusted; corporate-action and adjustment methodology still need review.
