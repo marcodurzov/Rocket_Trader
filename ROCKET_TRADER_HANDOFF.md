@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#155 merged; safe Paper audit diagnostics and explicit journal recovery added)  
+**Last updated:** 2026-11-11 (PRs #141–#157 merged; one-shot Paper execution journal recovery runner added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `829e17343b7073e77ad1fd16ebc2611be2d88641` (PR #155 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `adab3f2bc29e71be788fa47335f73e0cce9830fc` (PR #157 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **54%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -969,3 +969,17 @@ Next actions:
 - Important boundary: this is an explicit adapter method, **not yet invoked automatically at process startup or by a persistent scheduled worker**. It is not an autonomous execution service and no real Paper order was placed by this PR.
 
 **Progress estimate:** 54% (engineering/evidence maturity only). Explicit recovery logic is implemented and offline-tested; automatic startup scheduling, durable activity watermarks, correction/bust handling, fee attribution, empirical costs, strategy edge and sustained Paper validation remain open.
+
+
+### PR #157 — one-shot read-only Paper execution recovery runner
+- Merged to main: `adab3f2bc29e71be788fa47335f73e0cce9830fc`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/157
+- Added `alpaca_paper_crypto_execution_recovery_worker.py` as a one-shot host-side runner for the durable execution journal.
+- Requires both the existing mutable order journal and existing immutable event-ledger SQLite files before constructing the adapter. This prevents a missing/incorrect path from silently creating an empty journal and reporting false recovery success.
+- Requires explicit Paper environment, rejects LIVE and non-PAPER mode, verifies the account cash-only policy, and calls the PR #155 read-only recovery pass.
+- Writes a bounded JSON report when configured. Exit 0 means every journaled order was reconciled; exit 2 means unresolved records; exit 1 means preflight/state/worker failure. Raw SDK exception text and credentials are not printed.
+- Added offline tests for Paper-only client construction, refusal of LIVE, missing journal/event-ledger files, and nonzero exit on unresolved recovery. Extended crypto execution CI and documented host-side use in `PAPER_OBSERVER_DEPLOYMENT.md`.
+- PR CI run `43032980158`: success. Post-merge main run `43033056053` was pending when this note was drafted; update after conclusion.
+- Boundary: this is a one-shot runner, **not yet a persistent loop, scheduled worker, or automatic startup gate**. It must use the same durable DB files as the eventual execution service. No such service has been deployed by this workflow.
+
+**Progress estimate:** 54% (engineering/evidence maturity only). A restart recovery path is now callable and offline-tested, but automatic service integration and live Paper validation remain open.
