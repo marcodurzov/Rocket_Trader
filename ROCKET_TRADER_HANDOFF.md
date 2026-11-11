@@ -478,6 +478,18 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Each largest adjustment-factor step now includes the previous common session, Yahoo and Alpaca factors before the event, their before-event ratio, and current-session factors/ratio. This allows a direct comparison with distribution cash amount divided by previous raw close.
 - Regression CI run `42956145698`: compile and all 12 cross-check tests passed; live data step skipped on pull_request by design.
 - No source preference, correction, history splicing, strategy approval or order change.
-- Post-merge live audit has not yet appeared in the workflow list for this merge SHA; inspect before recording the exact before/after factor values.
+- Post-merge live audit `42956264138` completed successfully; artifact `13827440846`. It confirms the exact before/after factors below.
 
 **Progress remains 46%.** This makes the adjustment mismatch more auditable, but until the before/after live report is reviewed it is not a confirmed vendor attribution.
+
+
+### PR #119 — post-merge before/after adjustment factor results
+- Live audit `42956264138` succeeded; artifact `13827440846`; all 12 cross-check tests passed. Tiingo was not requested (no token configured).
+- **QQQ ex-date 2022-09-19:** previous session 2022-09-16. Yahoo factor 0.9748652963; Alpaca factor 0.9731318510; Alpaca/Yahoo ratio 0.9982218617. On 2022-09-19, Yahoo factor 0.9766172744; Alpaca factor 0.9766019584; ratio 0.9999843173. Observed relative factor step +17.6820 bps. The issuer distribution was $0.51856/share on that ex-date; the step magnitude is close to the distribution/price scale.
+- **TLT ex-date 2026-11-02:** previous session 2026-10-30. Yahoo factor 1.0000000000; Alpaca factor 0.9958460599; ratio 0.9958460599. On 2026-11-02, both factors 1.0000000000; ratio 1.0000000000. Observed relative factor step +41.7148 bps. iShares' official distribution was $0.343177/share on that ex-date; the magnitude is consistent with a cash distribution at roughly the ETF's prevailing price.
+- In both cases, Alpaca's adjusted/raw factor is lower than Yahoo's on the prior session, then the factors converge on the ex-date. This is strong evidence that the two providers apply the dividend adjustment differently for those events. It does not by itself establish which source is correct or whether the difference is due to source revision timing, provider methodology, or an adjustment defect.
+- QQQ's cumulative 10-year divergence and TLT's divergence may partly reflect this event handling, but other raw-price and adjustment-factor differences remain. Do not generalize the two event matches to all ETFs.
+- The QQQ 2024-12-23/24 and SPY 2025-04-09/10 raw-return outliers remain separate: the factor event audit did not attribute them to these specific distributions.
+- The audit's full-period coverage gate remains 0/8 because Alpaca IEX only overlaps 62.95% of Yahoo's 10-year period. No full 10-year vendor parity yet.
+
+**Next action:** reconcile these two events against the official distribution amount and each provider's raw close on the prior session, then investigate the other top adjustment-factor and raw-return dates. Prefer primary issuer records and the vendor's corporate-action API, not just a third vendor's adjusted close.
