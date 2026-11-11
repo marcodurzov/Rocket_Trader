@@ -172,7 +172,7 @@ def summarize_events(
 
     if http_status != 200:
         status = "UNAVAILABLE" if http_status in {401, 403, 404, 405} else "HTTP_ERROR"
-    elif dropped_comments or server_error_comments or invalid_frames or invalid_events or ordering_anomalies:
+    elif dropped_comments or server_error_comments or invalid_frames or invalid_events or ordering_anomalies or orphan_previous_id_count:
         status = "INCOMPLETE"
     elif not events:
         status = "NO_EVENTS"
