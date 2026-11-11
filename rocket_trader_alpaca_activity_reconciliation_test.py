@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Offline tests for Alpaca account activity and crypto fee reconciliation."""
+
+import os
+import tempfile
+import unittest
+
+from rocket_trader_execution_event_ledger import ExecutionEventLedger
+from rocket_trader_alpaca_activity_reconciliation import (
+    AlpacaAccountActivityReader,
+    AlpacaActivityReconciliationError,
+)
+
+
+class FakeActivityClient:
+    def __init__(self, pages=None):
+        self.pages = pages or {}
+        self.calls = []
+
+    def get(self, path, params):
+        self.calls.append((path, dict(params)))
+        if path != "/account/activities":
+            raise AssertionError("unexpected endpoint")
+        token = params.get("page_token")
+        return self.pages.get(token, self.pages.get(None, []))
+
+
+class AlpacaActivityReconciliationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ledger = ExecutionEventLedger(os.path.join(self.tmp.name, "events.sqlite3"))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def reader(self, pages):
+        return AlpacaAccountActivityReader(FakeActivityClient(pages), self.ledger)
+
+    def fill(self, activity_id, qty, price, cum_qty, *, symbol="BTC/USD", side="buy", order_id="broker-order-1"):
+        return {
+            "id": activity_id,
+            "activity_type": "FILL",
+            "order_id": order_id,
+            "order_status": "filled",
+            "type": "fill",
+            "symbol": symbol,
+            "side": side,
+            "qty": str(qty),
+            "price": str(price),
+            "cum_qty": str(cum_qty),
+            "leaves_qty": "0",
+            "transaction_time": "2026-11-11T12:00:00Z",
+        }
+
+    def test_reconciles_individual_fills_and_persists_immutable_events(self):
+        activities = [
+            self.fill("fill-1", "0.00004", "50000", "0.00004"),
+            self.fill("fill-2", "0.00006", "50100", "0.00010"),
+        ]
+        result = self.reader({None: activities}).reconcile_order_fills(
+            client_order_id="rt-order-1", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+        )
+        self.assertEqual(result["reconciliation_status"], "MATCHED")
+        self.assertEqual(result["activity_filled_qty"], "0.00010")
+        self.assertEqual(result["fill_count"], 2)
+        events = self.ledger.list_events(aggregate_id="rt-order-1")
+        self.assertEqual(len(events), 2)
+        self.assertTrue(self.ledger.verify_chain()["valid"])
+
+    def test_duplicate_fill_ingestion_is_idempotent(self):
+        reader = self.reader({None: [self.fill("fill-duplicate", "0.00010", "50000", "0.00010")]})
+        for _ in range(2):
+            result = reader.reconcile_order_fills(
+                client_order_id="rt-order-1", broker_order_id="broker-order-1",
+                expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+            )
+            self.assertEqual(result["reconciliation_status"], "MATCHED")
+        self.assertEqual(len(self.ledger.list_events(aggregate_id="rt-order-1")), 1)
+
+    def test_incomplete_activity_history_is_not_reported_as_full_match(self):
+        reader = self.reader({None: [self.fill("fill-part", "0.00004", "50000", "0.00004")]})
+        result = reader.reconcile_order_fills(
+            client_order_id="rt-order-1", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+        )
+        self.assertEqual(result["reconciliation_status"], "INCOMPLETE_ACTIVITY_HISTORY")
+        self.assertFalse(result["quantity_match"])
+
+    def test_overstated_fill_activities_are_flagged(self):
+        reader = self.reader({None: [self.fill("fill-over", "0.00020", "50000", "0.00020")]})
+        result = reader.reconcile_order_fills(
+            client_order_id="rt-order-1", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+        )
+        self.assertEqual(result["reconciliation_status"], "ACTIVITY_OVERSTATES_ORDER_SNAPSHOT")
+
+    def test_cumulative_fill_sequence_mismatch_is_flagged(self):
+        activities = [
+            self.fill("fill-a", "0.00004", "50000", "0.00004"),
+            self.fill("fill-b", "0.00006", "50100", "0.00009"),
+        ]
+        result = self.reader({None: activities}).reconcile_order_fills(
+            client_order_id="rt-order-1", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+        )
+        self.assertEqual(result["reconciliation_status"], "CUMULATIVE_FILL_SEQUENCE_MISMATCH")
+        self.assertTrue(result["quantity_match"])
+        self.assertFalse(result["cumulative_consistent"])
+
+    def test_rejects_fill_for_wrong_order_symbol_or_side(self):
+        wrong_order = self.fill("wrong-order", "0.0001", "50000", "0.0001", order_id="other-order")
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "order_id"):
+            self.reader({None: [wrong_order]}).reconcile_order_fills(
+                client_order_id="rt-order-1", broker_order_id="broker-order-1",
+                expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.0001",
+            )
+        wrong_symbol = self.fill("wrong-symbol", "0.0001", "50000", "0.0001", symbol="ETH/USD")
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "symbol or side"):
+            self.reader({None: [wrong_symbol]}).reconcile_order_fills(
+                client_order_id="rt-order-1", broker_order_id="broker-order-1",
+                expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.0001",
+            )
+
+    def test_crypto_fee_records_are_kept_unallocated_with_original_currency(self):
+        fee = {
+            "id": "fee-1", "activity_type": "CFEE", "symbol": "BTC/USD",
+            "net_amount": "-0.000000334", "currency": "BTC", "qty": "0.0001",
+            "group_id": None, "created_at": "2026-11-12T00:00:00Z",
+            "date": "2026-11-11T00:00:00Z",
+        }
+        result = self.reader({None: [fee]}).collect_crypto_fee_candidates(
+            symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
+        )
+        self.assertEqual(result["fee_activity_count"], 1)
+        self.assertEqual(result["fee_activities"][0]["currency"], "BTC")
+        self.assertEqual(result["fee_activities"][0]["allocation_status"], "UNALLOCATED")
+        events = self.ledger.list_events(aggregate_id="account-crypto-fees")
+        self.assertEqual(events[0]["event_type"], "CRYPTO_FEE_ACTIVITY_UNALLOCATED")
+
+    def test_fee_activity_without_amount_or_currency_is_not_assumed_zero(self):
+        fee = {
+            "id": "fee-incomplete", "activity_type": "CFEE", "symbol": "BTC/USD",
+            "net_amount": None, "currency": "BTC", "created_at": "2026-11-12T00:00:00Z",
+        }
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "net_amount"):
+            self.reader({None: [fee]}).collect_crypto_fee_candidates(
+                symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
+            )
+
+    def test_pagination_uses_activity_id_cursor_and_preserves_all_fills(self):
+        page_one = [self.fill("page-1", "0.00004", "50000", "0.00004")]
+        page_two = [self.fill("page-2", "0.00006", "50100", "0.00010")]
+        client = FakeActivityClient({None: page_one, "page-1": page_two})
+        reader = AlpacaAccountActivityReader(client, self.ledger)
+        result = reader.reconcile_order_fills(
+            client_order_id="rt-order-1", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+            page_size=1,
+        )
+        self.assertEqual(result["fill_count"], 2)
+        self.assertEqual(client.calls[1][1]["page_token"], "page-1")
+
+    def test_repeated_pagination_cursor_fails_closed(self):
+        first = self.fill("same-cursor", "0.00004", "50000", "0.00004")
+        second = self.fill("same-cursor", "0.00006", "50100", "0.00010")
+        client = FakeActivityClient({None: [first], "same-cursor": [second]})
+        reader = AlpacaAccountActivityReader(client, self.ledger, max_pages=3)
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "cursor repeated"):
+            reader.reconcile_order_fills(
+                client_order_id="rt-order-1", broker_order_id="broker-order-1",
+                expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+                page_size=1,
+            )
+
+    def test_max_page_limit_does_not_return_a_silent_partial_result(self):
+        pages = {
+            None: [self.fill("max-1", "0.00004", "50000", "0.00004")],
+            "max-1": [self.fill("max-2", "0.00006", "50100", "0.00010")],
+        }
+        reader = self.reader(pages)
+        reader.max_pages = 1
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "page limit reached"):
+            reader.reconcile_order_fills(
+                client_order_id="rt-order-1", broker_order_id="broker-order-1",
+                expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.00010",
+                page_size=1,
+            )
+
+    def test_fee_time_window_is_mandatory_and_timezone_aware(self):
+        reader = self.reader({None: []})
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "timezone"):
+            reader.collect_crypto_fee_candidates(
+                symbol="BTC/USD", after="2026-11-11T00:00:00",
+                until="2026-11-12T00:00:00Z",
+            )
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "earlier"):
+            reader.collect_crypto_fee_candidates(
+                symbol="BTC/USD", after="2026-11-12T00:00:00Z",
+                until="2026-11-11T00:00:00Z",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
