@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PR #139 merged; 24-family research registry, experiment ledger and gated Paper smoke)  
+**Last updated:** 2026-11-11 (PRs #141–#143 and #145 merged; adapter now writes and verifies append-only order evidence)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `55aaac2804be6a00bf9d5c983dd49fe8438f6588` (PR #139 merged; runtime strategy code baseline unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
-**Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Latest main HEAD before this Handoff refresh:** `d8ff9e49e3e360567ae14acdacf617eedc7c6e11` (PR #145 merged; runtime strategy code baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Current progress estimate:** **50%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **46%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 46% profitable, nor does it mean a 46% probability of success.
+Current estimate: **50%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 50% profitable, nor does it mean a 50% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
@@ -808,7 +808,7 @@ Paper authorization clarified:
 - User explicitly authorized Alpaca **Paper** testing and reports approximately USD 100,000 simulated account equity.
 - That figure is not an approved risk budget. The experiment matrix records proposed pre-review caps only: USD 100 per order, USD 500 gross exposure, USD 25 daily loss, maximum 3 open positions, with zero default strategy allocation. These are not account settings and have not been applied.
 - The crypto Paper smoke workflow was changed from branch-push-triggered order submission to a manual `workflow_dispatch` with a required boolean `allow_paper_orders` defaulting to false. Read-only connection, cash-only/no-short preflight and asset-permission checks run first. Only when manually set true does it run the fixed USD 10 BTC/USD buy-and-close smoke test.
-- **The manual Paper workflow has not been dispatched from this environment. No Paper orders are claimed as submitted by this work.** The GitHub connector available here can read workflows/runs but cannot dispatch a workflow or access Alpaca credentials. User credentials must remain in GitHub Actions secrets; never paste them into chat.
+- **Superseded by the verified 2026-11-11 Paper lifecycle evidence below:** the user manually dispatched workflow run `42962519055`; it completed successfully with a capped USD 10 BTC/USD buy and broker-confirmed close. See the appended execution record. The workflow remains manual and gated; the connector still cannot dispatch it or access credentials.
 - Current Paper smoke uses a temporary idempotency journal, appropriate only for a single bounded smoke run; it is not a substitute for the persistent runtime journal. It must not be used as a strategy-performance test.
 
 Pairs trading:
@@ -823,3 +823,64 @@ Next actions:
 4. Only then run the explicit capped USD 10 Paper smoke test if preflight passes and no conflicting BTC position exists. Record broker order IDs, fills, fees, residual position and reconciliation.
 5. Build offline strategy hypotheses in pre-registered tranches. Keep Paper for operational validation after an offline pre-screen, not for searching parameters or manufacturing statistical significance.
 6. Re-run full runtime and subsystem tests on the post-merge main SHA; the PR registry workflow success is not evidence that the whole runtime passed.
+
+
+## 2026-11-11 — Execution evidence ledger and crypto lifecycle verification
+
+### PR #141 — append-only execution event ledger
+- Merged to main: `e486431aa849721ef43e5abd6f40e5ec5fbffc49`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/141
+- Added `rocket_trader_execution_event_ledger.py`: broker-agnostic SQLite event store, append-only UPDATE/DELETE guards, canonical finite JSON, timezone-aware timestamps, stable event IDs, SHA-256 hash chaining and chain verification.
+- Rejects credential-like fields in payloads. It has no broker/network/order-submission capability.
+- PR CI run `43012855089`: success; 11 offline tests passed. Post-merge main run `43012979815`: success.
+- Important boundary: module is **not yet integrated into the Alpaca adapter/runtime**. SQLite durability depends on deployment to persistent storage. Hash chaining detects tampering but is not a signed/external immutable audit anchor.
+
+### PR #142 — idempotency correction
+- Merged to main: `5d8c78f51fc3066d7f413847c76cc2100449b5b3`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/142
+- Fixed retries with omitted `occurred_at`: duplicate event IDs now reuse the original generated timestamp rather than conflicting because a retry has a later ingestion time.
+- Added concurrent eight-thread duplicate append coverage.
+- PR CI run `43013163224`: success; the expanded ledger suite passed. Post-merge main run `43013213633`: success.
+
+### PR #143 — crypto order lifecycle edge-case tests
+- Merged to main: `d9332710721b2e7655cdd8199bf43a5952e5b723`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/143
+- Added five offline adapter tests covering restart reconciliation without duplicate submission, unfamiliar broker status preservation, partial fill quantity after cancellation, fill/cancel race resolution, and fail-closed unknown submission across adapter restart.
+- CI run `43013254788`: success; 25 offline crypto Paper execution tests passed.
+- This is test coverage of existing behavior, not proof of real-broker partial-fill or restart recovery. No Paper/Live orders were sent by these PRs.
+
+### Verified Alpaca Paper smoke — user-dispatched workflow
+- Workflow run `42962519055` completed successfully; preflight job `130332150112` and execution job `130332285751`.
+- Account preflight reported ACTIVE, PAPER, USD, cash/equity USD 99,999.86, multiplier 1, shorting disabled, trading not blocked, and no account configuration changes.
+- One capped BTC/USD buy of USD 10 was broker-reported filled: gross filled quantity `0.000133206 BTC`; broker net position quantity `0.000132872 BTC`.
+- One sell was broker-reported filled for `0.000132872 BTC`; final residual `0 BTC`.
+- `paper_buy_orders_submitted=1`, `paper_sell_orders_submitted=1`, `live_orders_submitted=0`.
+- The `0.000000334 BTC` difference between gross filled and net position is observed, but its exact fee/rounding decomposition was not established. Do not call it a confirmed commission.
+- This proves one bounded buy/fill/sell/fill lifecycle only. It does not prove representative execution costs, strategy edge, persistent runtime journaling, broker activity recovery or profitability.
+
+### Current engineering status and next steps
+- Progress estimate moves from 48% to **49%** for the merged event-ledger capability and verified offline lifecycle coverage. This is engineering/evidence maturity only.
+- PR #145 has now integrated the append-only event ledger into the Paper crypto adapter. The adapter writes deterministic `ORDER_PREPARED`, `BROKER_ORDER_DISCOVERED` and `ORDER_STATE_OBSERVED` events; verifies the hash chain on startup; and fails closed if the ledger is unavailable or corrupt. A write-ahead event is recorded before any broker submission. The mutable order journal is persisted before broker-state events; if the latter write fails after broker acceptance, retry reconciles the broker order instead of resubmitting.
+- Alpaca's current public documentation distinguishes order snapshots from account activity evidence: trade activities can contain individual fill records, while crypto fee activity is a separate activity type; the newer Activity SSE includes execution details such as commission. Do not infer fees from gross/net quantity deltas alone. Source documentation: https://docs.alpaca.markets/us/docs/activity-sse and https://docs.alpaca.markets/us/docs/account-activities.
+- Before implementing fee recovery, verify the exact supported Paper API endpoint and SDK access path, pagination, activity identifiers, fee currency/amount and delayed-posting behavior. Missing activity or fee evidence must remain UNKNOWN, not zero.
+- Next sequence: (1) integrate the append-only event ledger with the adapter using write-ahead/unknown-state semantics; (2) add broker activity/fee reconciliation and idempotent fill ingestion; (3) add partial-exit remainder recovery with strict ownership checks; (4) prove restart recovery on a deterministic fake broker; (5) only then consider a separate, explicitly gated Paper operational test. Keep order cap USD 10 and Live disabled.
+
+
+### PR #145 — append-only order evidence integrated into Paper crypto adapter
+- Merged to main: `d8ff9e49e3e360567ae14acdacf617eedc7c6e11`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/145
+- Adapter now creates a separate event database by default at `<order-journal-path>.events.sqlite3`; override with constructor `event_ledger_path` or `ROCKET_TRADER_EXECUTION_EVENT_LEDGER_DB`.
+- Startup verifies the full event hash chain and blocks adapter initialization if the ledger is corrupt or unavailable.
+- Before a new order, writes deterministic `ORDER_PREPARED` evidence. If that write fails, no mutable journal row is inserted and no broker order is submitted.
+- After broker responses, persists mutable order state then appends deterministic `ORDER_STATE_OBSERVED` events. A failure in the latter step leaves the mutable journal as the no-resubmit guard; a retry must query the broker and reconcile rather than place a second order.
+- `order_events(client_order_id)` exposes the local immutable event history.
+- PR CI run `43013593248`: success; 30 offline adapter tests passed. Post-merge run `43013673531` was queued/in progress when this note was written; update after conclusion.
+- No Paper/Live orders or account changes were made by this PR.
+- Limits: this records order intent and broker order snapshots, not individual account-activity fills/crypto fees/corrections. It does not yet implement automatic partial-exit remainder recovery. Both SQLite files must reside on persistent storage. Hash chaining is not a signed external audit anchor.
+
+**Next implementation sequence**
+1. Build an authoritative Paper activity/fill reader using a verified supported API path; preserve activity IDs, order IDs, execution IDs, event timestamps, per-fill quantity/price, commission/crypto-fee amount and currency, corrections/busts, and pagination cursors.
+2. Ingest each fill/fee as its own idempotent append-only event. Do not estimate fees from gross/net quantity differences; delayed or missing fee records remain UNKNOWN until reconciled.
+3. Reconstruct cumulative order execution from individual fills and reconcile against broker order snapshots and current positions.
+4. Implement safe partial-exit remainder recovery with broker-owned quantity checks, open-order reservations and fill/cancel race handling.
+5. Test process restart at every state boundary with deterministic broker fakes before any further Paper smoke.
