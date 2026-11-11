@@ -1,0 +1,364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rocket-trader.local/schemas/experiment-ledger-v1.json",
+  "title": "Rocket Trader Immutable Experiment Ledger Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "experiment_id",
+    "created_at_utc",
+    "hypothesis_id",
+    "strategy_id",
+    "status",
+    "code_sha",
+    "data_fingerprint",
+    "market",
+    "universe_definition",
+    "signal_timing",
+    "split_plan",
+    "cost_model",
+    "benchmark_set",
+    "pre_registered_metrics",
+    "multiple_testing_family",
+    "result",
+    "decision",
+    "execution_mode"
+  ],
+  "properties": {
+    "experiment_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hypothesis_id": {
+      "type": "string"
+    },
+    "strategy_id": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PRE_REGISTERED",
+        "RUNNING",
+        "COMPLETED",
+        "FAILED",
+        "SUPERSEDED",
+        "ABANDONED"
+      ]
+    },
+    "code_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "data_fingerprint": {
+      "type": "object",
+      "required": [
+        "provider",
+        "dataset_id",
+        "sha256",
+        "retrieved_at_utc",
+        "point_in_time_policy"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "dataset_id": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "retrieved_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "point_in_time_policy": {
+          "type": "string"
+        },
+        "coverage_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "coverage_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "market": {
+      "enum": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ]
+    },
+    "universe_definition": {
+      "type": "string",
+      "minLength": 10
+    },
+    "signal_timing": {
+      "type": "object",
+      "required": [
+        "signal_cutoff",
+        "earliest_execution",
+        "return_measurement"
+      ],
+      "properties": {
+        "signal_cutoff": {
+          "type": "string"
+        },
+        "earliest_execution": {
+          "type": "string"
+        },
+        "return_measurement": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "split_plan": {
+      "type": "object",
+      "required": [
+        "train",
+        "validation",
+        "final_holdout",
+        "prospective"
+      ],
+      "properties": {
+        "train": {
+          "type": "string"
+        },
+        "validation": {
+          "type": "string"
+        },
+        "final_holdout": {
+          "type": "string"
+        },
+        "prospective": {
+          "type": "string"
+        },
+        "walk_forward": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cost_model": {
+      "type": "object",
+      "required": [
+        "fees",
+        "spread",
+        "slippage",
+        "market_impact",
+        "borrow",
+        "stress_scenarios"
+      ],
+      "properties": {
+        "fees": {
+          "type": "string"
+        },
+        "spread": {
+          "type": "string"
+        },
+        "slippage": {
+          "type": "string"
+        },
+        "market_impact": {
+          "type": "string"
+        },
+        "borrow": {
+          "type": "string"
+        },
+        "stress_scenarios": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "benchmark_set": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "string"
+      }
+    },
+    "pre_registered_metrics": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "string"
+      }
+    },
+    "multiple_testing_family": {
+      "type": "string"
+    },
+    "seed": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "net_return",
+        "excess_return",
+        "max_drawdown",
+        "trade_count",
+        "confidence_interval",
+        "raw_p_value",
+        "adjusted_p_value",
+        "cost_sensitivity"
+      ],
+      "properties": {
+        "net_return": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "excess_return": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "max_drawdown": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "trade_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confidence_interval": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "raw_p_value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "adjusted_p_value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cost_sensitivity": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "decision": {
+      "enum": [
+        "REJECT",
+        "RESEARCH_ONLY",
+        "SHADOW_ONLY",
+        "PAPER_CANDIDATE",
+        "PAPER_APPROVED",
+        "PROMOTED"
+      ]
+    },
+    "execution_mode": {
+      "enum": [
+        "OFFLINE",
+        "SHADOW",
+        "PAPER"
+      ]
+    },
+    "paper_run": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "account_mode": {
+          "const": "PAPER"
+        },
+        "broker_order_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "filled_notional_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fees_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "slippage_bps": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reconciliation_status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "PENDING",
+            "NOT_APPLICABLE"
+          ]
+        }
+      },
+      "required": [
+        "account_mode",
+        "broker_order_ids",
+        "filled_notional_usd",
+        "fees_usd",
+        "slippage_bps",
+        "reconciliation_status"
+      ],
+      "additionalProperties": false
+    },
+    "failure_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lessons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
