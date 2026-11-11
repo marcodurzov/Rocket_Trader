@@ -28,6 +28,42 @@ services:
       retries: 3
       start_period: 45s
 
+  rocket-trader-alpaca-activity-sse:
+    build:
+      context: .
+      dockerfile: Dockerfile.paper-observer
+    container_name: rocket-trader-alpaca-activity-sse
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ALPACA_PAPER: "true"
+      ALPACA_LIVE_ENABLED: "false"
+      ROCKET_TRADER_EXECUTION_MODE: PAPER
+      ACTIVITY_SSE_DB: /app/data/rocket_trader_activity_sse.sqlite3
+      ACTIVITY_SSE_BOOTSTRAP_SINCE: ${ACTIVITY_SSE_BOOTSTRAP_SINCE:?Set ACTIVITY_SSE_BOOTSTRAP_SINCE in .env}
+    command:
+      - python
+      - /app/rocket_trader_alpaca_activity_sse_consumer.py
+      - --db
+      - /app/data/rocket_trader_activity_sse.sqlite3
+      - --bootstrap-since
+      - ${ACTIVITY_SSE_BOOTSTRAP_SINCE:?Set ACTIVITY_SSE_BOOTSTRAP_SINCE in .env}
+    volumes:
+      - rocket_trader_data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - /app/rocket_trader_alpaca_activity_sse_consumer.py
+        - --db
+        - /app/data/rocket_trader_activity_sse.sqlite3
+        - --healthcheck
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+
   rocket-trader-regime-observer:
     build:
       context: .
