@@ -10,8 +10,6 @@ on:
       - "rocket_trader_crypto_paper_execution_test.py"
       - "rocket_trader_paper_crypto_execution_service.py"
       - "rocket_trader_paper_crypto_execution_service_test.py"
-      - "rocket_trader_paper_crypto_execution_service.py"
-      - "rocket_trader_paper_crypto_execution_service_test.py"
       - "rocket_trader_core.py"
       - "alpaca_paper_crypto_execution_recovery_worker.py"
       - "alpaca_paper_crypto_execution_recovery_worker_test.py"
