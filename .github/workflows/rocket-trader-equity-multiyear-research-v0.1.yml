@@ -22,13 +22,12 @@ on:
         default: '5'
         type: string
       feed:
-        description: IEX is default; SIP requires the corresponding market-data entitlement
+        description: Free IEX feed only; paid SIP is disabled by the zero-budget policy
         required: false
         default: 'IEX'
         type: choice
         options:
           - IEX
-          - SIP
   schedule:
     - cron: '0 17 * * 0'
 
