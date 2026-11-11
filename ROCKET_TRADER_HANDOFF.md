@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#159 merged; real Paper FILL activity matched and account-wide CFEE handling corrected)  
+**Last updated:** 2026-11-11 (PRs #141–#161 merged; real Paper FILL reconciliation verified; CFEE time-window filtering hardened)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `60ff6607780f66fb830a0629fd5cb7047c46e7ea` (PR #159 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `62a0ac24b52c9057020e6728ca30be5eaebcdc74` (PR #161 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **55%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -998,3 +998,16 @@ Next actions:
 - No Live access, order submission, cancellation, replacement or account mutation occurred.
 
 **Progress estimate:** 55% (engineering/evidence maturity only). Real Alpaca order FILL evidence is now confirmed for both smoke orders and the CFEE failure root cause is corrected in code; actual post-fix CFEE evidence and profitability remain unvalidated.
+
+
+### PR #161 — enforce CFEE creation-time window locally
+- Merged to main: `62a0ac24b52c9057020e6728ca30be5eaebcdc74`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/161
+- Manual post-PR #159 Paper audit run `43036761702`, job `130577497509`, succeeded. Account preflight remained `ACTIVE_USD_CASH_ONLY_NO_SHORT`; both BTC/USD smoke orders reconciled exactly against FILL activities (BUY 0.000133206 BTC; SELL 0.000132872 BTC).
+- The report returned six CFEE activities. Three were classed as BTC/USD (two created on 2026-11-10 before the configured fee-window start of 2026-11-11 04:55 UTC; one at 2026-11-11 04:57:49 UTC). Three had no classifiable symbol (two before the window; one at 2026-11-11 04:57:52 UTC). All were complete, but unallocated; none contained documented order linkage. Thus the raw report's three BTC/USD CFEE candidates included two out-of-window records.
+- PR #161 adds a local strict creation-time check using Alpaca `created_at`, while preserving out-of-window and unverified-timestamp records in the immutable event ledger with distinct event types. Such records no longer enter interval-specific candidate counts. Audit JSON/summary expose out-of-window and unverified counts and exact window bounds.
+- Regression tests cover out-of-window target-symbol and unclassified fees, an in-window fee, and records without verifiable `created_at`. PR CI runs `43037441267` (activity tests) and `43037441187` (audit static/offline tests) succeeded. Post-merge runs `43037526916` and `43037526946` are recorded below once final conclusions are confirmed; Paper audit itself is skipped on PR/push CI.
+- The in-window BTC-denominated CFEE quantity and in-window USD -0.03 CFEE remain unallocated. No order-level fee attribution or exact net cost is established.
+- No order was submitted/canceled/replaced; account settings were not changed; LIVE remains disabled.
+
+**Progress estimate:** 55% (engineering/evidence maturity only). The real FILL path is verified and CFEE time-window integrity is hardened, but the fix still needs a fresh read-only Paper run, durable automatic recovery/cursors, corrections, empirically measured costs, deployment and strategy OOS edge remain open.
