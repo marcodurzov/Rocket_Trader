@@ -418,8 +418,13 @@ def fetch_alpaca_corporate_actions(
             ) from exc
         if not isinstance(payload, dict):
             raise CrosscheckError("Alpaca corporate actions response was not an object")
+        action_payload = payload.get("corporate_actions")
+        if not isinstance(action_payload, dict):
+            raise CrosscheckError(
+                "Alpaca corporate actions response is missing the corporate_actions object"
+            )
         for key, kind in key_types.items():
-            rows = payload.get(key, [])
+            rows = action_payload.get(key, [])
             if rows is None:
                 continue
             if not isinstance(rows, list):
