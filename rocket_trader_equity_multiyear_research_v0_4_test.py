@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Offline regression tests for next-open equity research v0.3."""
 
+import json
 import unittest
 from datetime import timedelta
 
@@ -18,6 +19,8 @@ from rocket_trader_equity_multiyear_research_v0_4 import (
     strategy_positions,
     fetch_daily_bars,
     fetch_yahoo_daily_bars,
+    fetch_tiingo_daily_bars,
+    source_metadata,
     normalize_frame,
     strategy_positions,
 )
@@ -171,6 +174,71 @@ class EquityResearchV04Tests(unittest.TestCase):
         self.assertIs(ticker.calls[0]["actions"], True)
         self.assertIs(ticker.calls[0]["repair"], False)
         self.assertEqual(ticker.calls[0]["end"], end.date().isoformat())
+
+    def test_tiingo_fetch_uses_adjusted_ohlcv_and_requires_full_history(self):
+        raw = synthetic_frame()
+        payload = []
+        for row in raw.to_dict(orient="records"):
+            payload.append({
+                "date": row["timestamp"].isoformat(),
+                "adjOpen": row["open"], "adjHigh": row["high"],
+                "adjLow": row["low"], "adjClose": row["close"],
+                "adjVolume": row["volume"],
+            })
+        class FakeResponse:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self):
+                return json.dumps(payload).encode("utf-8")
+        captured = {}
+        def fake_opener(request, timeout):
+            captured["url"] = request.full_url
+            captured["authorization"] = request.get_header("Authorization")
+            captured["timeout"] = timeout
+            return FakeResponse()
+        end = raw["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
+        result = fetch_tiingo_daily_bars(
+            "SPY", years=10, api_token="test-token", opener=fake_opener, end=end
+        )
+        self.assertGreaterEqual(len(result), 1800)
+        self.assertEqual(result.iloc[0]["timestamp"], raw.iloc[0]["timestamp"])
+        self.assertEqual(captured["authorization"], "Token test-token")
+        self.assertEqual(captured["timeout"], 30)
+        self.assertIn("startDate=", captured["url"])
+        self.assertIn("endDate=", captured["url"])
+
+    def test_tiingo_requires_token_and_fails_on_short_history(self):
+        with self.assertRaisesRegex(Exception, "TIINGO_API_TOKEN is required"):
+            fetch_tiingo_daily_bars("SPY", years=10, api_token="")
+        raw = synthetic_frame(start="2021-11-09", periods=1250)
+        payload = [{
+            "date": row["timestamp"].isoformat(),
+            "adjOpen": row["open"], "adjHigh": row["high"],
+            "adjLow": row["low"], "adjClose": row["close"],
+            "adjVolume": row["volume"],
+        } for row in raw.to_dict(orient="records")]
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return json.dumps(payload).encode("utf-8")
+        end = raw["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
+        with self.assertRaisesRegex(Exception, "Tiingo returned only"):
+            fetch_tiingo_daily_bars(
+                "SPY", years=10, api_token="test-token",
+                opener=lambda request, timeout: FakeResponse(), end=end,
+            )
+
+    def test_source_metadata_matches_actual_yahoo_repair_setting(self):
+        yahoo = source_metadata("YAHOO")
+        self.assertIn("repair=False", yahoo["data_source"])
+        self.assertIn("repair=False", yahoo["price_adjustment"])
+        tiingo = source_metadata("TIINGO")
+        self.assertIn("Tiingo EOD", tiingo["data_source"])
+        self.assertIn("CRSP", tiingo["price_adjustment"])
 
     def test_yahoo_short_history_fails_closed(self):
         raw = synthetic_frame(start="2021-11-09", periods=1250)
