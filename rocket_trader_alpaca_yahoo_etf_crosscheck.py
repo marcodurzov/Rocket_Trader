@@ -727,14 +727,37 @@ def compare_adjustment_factors(
 
 
 
-def require_zero_budget_feed(feed_name: str) -> str:
-    """Only permit the free IEX feed until a paid SIP plan is explicitly approved."""
+def historical_request_end(now: Optional[datetime] = None) -> datetime:
+    """Return UTC midnight for the last date safely older than Alpaca's 15-minute SIP cutoff."""
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise CrosscheckError("current time must be timezone-aware")
+    cutoff = current.astimezone(timezone.utc) - timedelta(minutes=16)
+    return datetime.combine(cutoff.date(), datetime.min.time(), tzinfo=timezone.utc)
+
+
+def require_zero_budget_feed(
+    feed_name: str,
+    *,
+    end_time: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    """Allow free IEX, or free historical SIP only when its requested end is >15m old."""
     normalized = str(feed_name or "").strip().upper()
-    if normalized != "IEX":
-        raise CrosscheckError(
-            "SIP is disabled by Rocket Trader's zero-budget policy; only free IEX is enabled."
-        )
-    return normalized
+    if normalized == "IEX":
+        return normalized
+    if normalized == "SIP":
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise CrosscheckError("current time must be timezone-aware")
+        if end_time is None or end_time.tzinfo is None or end_time.utcoffset() is None:
+            raise CrosscheckError("SIP requires an explicit timezone-aware historical end time")
+        if end_time.astimezone(timezone.utc) > current.astimezone(timezone.utc) - timedelta(minutes=15):
+            raise CrosscheckError(
+                "Free Alpaca Basic permits SIP only for historical requests ending at least 15 minutes ago; use IEX for recent data."
+            )
+        return normalized
+    raise CrosscheckError("feed must be IEX or SIP")
 
 
 def resolve_tiingo_token(
@@ -792,7 +815,7 @@ def run_audit(
     secret_key: str,
     symbols: Iterable[str] = DEFAULT_SYMBOLS,
     years: int = 10,
-    feed_name: str = "IEX",
+    feed_name: str = "SIP",
     now: Optional[datetime] = None,
     yahoo_loader=fetch_yahoo_history,
     alpaca_loader=fetch_alpaca_history,
@@ -807,7 +830,6 @@ def run_audit(
         raise CrosscheckError("years must be between 1 and 20")
     if not api_key or not secret_key:
         raise CrosscheckError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
-    feed_name = require_zero_budget_feed(feed_name)
     token = resolve_tiingo_token(include_tiingo, tiingo_token)
     if token and years > 5:
         raise CrosscheckError(
@@ -817,11 +839,13 @@ def run_audit(
     if current.tzinfo is None or current.utcoffset() is None:
         raise CrosscheckError("now must be timezone-aware")
     current = current.astimezone(timezone.utc)
-    start = current - timedelta(days=365.25 * years)
+    data_end = historical_request_end(current)
+    feed_name = require_zero_budget_feed(feed_name, end_time=data_end, now=current)
+    start = data_end - timedelta(days=365.25 * years)
 
     from alpaca.data.enums import DataFeed
     from alpaca.data.historical import StockHistoricalDataClient
-    feed_map = {"IEX": DataFeed.IEX}
+    feed_map = {"IEX": DataFeed.IEX, "SIP": DataFeed.SIP}
     feed = feed_map[feed_name]
     client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
 
@@ -842,11 +866,11 @@ def run_audit(
     tiingo_errors = []
     for symbol in symbol_list:
         try:
-            yahoo = yahoo_loader(symbol, start, current)
-            alpaca = alpaca_loader(client, symbol, start, current, feed)
+            yahoo = yahoo_loader(symbol, start, data_end)
+            alpaca = alpaca_loader(client, symbol, start, data_end, feed)
             result = compare_close_series(symbol, yahoo, alpaca)
-            yahoo_fields = yahoo_adjustment_loader(symbol, start, current)
-            alpaca_raw = alpaca_raw_loader(client, symbol, start, current, feed)
+            yahoo_fields = yahoo_adjustment_loader(symbol, start, data_end)
+            alpaca_raw = alpaca_raw_loader(client, symbol, start, data_end, feed)
             result["adjustment_factor_diagnostics"] = compare_adjustment_factors(
                 symbol,
                 yahoo_fields["raw_close"],
@@ -896,7 +920,8 @@ def run_audit(
         "pipeline": "rocket_trader_alpaca_yahoo_etf_crosscheck_v0_1",
         "mode": "DATA_AUDIT_ONLY",
         "period_start": start.isoformat(),
-        "period_end": current.isoformat(),
+        "period_end": data_end.isoformat(),
+        "sip_historical_cutoff_enforced": feed_name == "SIP",
         "years_requested": years,
         "symbols_requested": symbol_list,
         "feed": feed_name.upper(),
@@ -939,7 +964,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
     parser.add_argument("--years", type=int, default=10)
-    parser.add_argument("--feed", choices=("IEX",), default="IEX")
+    parser.add_argument("--feed", choices=("IEX", "SIP"), default="SIP")
     parser.add_argument(
         "--include-tiingo", action="store_true",
         help="Explicitly opt in to Tiingo; requires a free Starter token and a maximum 5-year window."
