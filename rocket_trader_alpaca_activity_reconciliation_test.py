@@ -24,7 +24,7 @@ class FakeActivityClient:
         if path != "/account/activities":
             raise AssertionError("unexpected endpoint")
         token = params.get("page_token")
-        return self.pages.get(token, self.pages.get(None, []))
+        return self.pages.get(token, [])
 
 
 class AlpacaActivityReconciliationTests(unittest.TestCase):
