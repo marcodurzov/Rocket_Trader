@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `0812a0c4f9cf6bf10aa6e356bebc3fdb9657d889`  
+**Latest audited code baseline SHA:** `f408204044fcff449bd615301a0bf2503a4d1db0`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -538,3 +538,28 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - The 95% full-period source coverage gate remains 0/8 due IEX's ~6.3-year available history vs 10 years requested. No source series was spliced. Candidate promotion, Paper approval and orders remain false.
 
 **Next research action:** compare each provider's factor against the issuer's cash amount and prior raw close; inspect QQQ for possible duplicate adjustment and TLT for the missing Yahoo event. Then inspect the remaining top raw-price outlier dates separately.
+
+
+### PR #120 — ten-year IEX vs Yahoo audit documented
+- Merge commit: `d84b9f303896927896801580d7a7b43d797899b7`.
+- Recorded the real IEX 10-year coverage failure: 1,582–1,583 IEX sessions vs 2,513 Yahoo sessions, only ~62.95% coverage, 0/8 ETF diagnostic passes. The run had no data-request errors; the limitation is the IEX feed entitlement/history window, not a workflow failure.
+- No Tiingo data was included in that audit.
+
+### PR #123 — authoritative XNYS exchange-session data-quality gate
+- Merge commit / main SHA: `f408204044fcff449bd615301a0bf2503a4d1db0`.
+- Replaced the incorrect weekday denominator (which counted market holidays) with actual XNYS trading-session labels from `exchange-calendars`.
+- Quality report now records `expected_exchange_sessions`, `missing_exchange_sessions`, `exchange_session_coverage_pct`, first missing session and max gap measured from observed bars. Existing 95% coverage and 7-calendar-day max-gap gates are unchanged.
+- Regression tests cover July 4, 2024 (not an expected session) and missing July 2, 2024 (must fail coverage). Additional fixes found during CI: exchange_calendars requires timezone-naive session labels; calendar bounds must extend beyond input dates; provider error paths must use new metric names. These failed CI attempts were corrected, not ignored.
+- PR workflow `42957308114` passed: self-test + 21 regression tests. Main post-merge v0.4 workflow `42957425769` passed all stages (self-test, regression tests, 10-year research, report verification, artifact upload); main runtime workflow `42957425751` passed. Legacy research workflows v0.2 `42957425803` and v0.3 `42957425736` also passed.
+- New v0.4 artifact: `13828111119`, SHA-256 `073fd24b92ad89ab55f456eb15c0a0d82876b93275aa338d4bd863f2cb526140`. It reports 2,511 XNYS sessions and 2,511 Yahoo bars for each of the eight ETFs: 100% exchange-session coverage, 0 missing sessions, max observed gap 4 calendar days. This supersedes the earlier approximate 96.32% weekday coverage figure; that earlier figure was a denominator artefact, not missing market data.
+- Strategy result did not change: 73 hypotheses, Holm significant 0, pre-screen passes 0, candidate promotion false, Paper approval false, orders disabled, 0 submitted.
+- Important distinction: Yahoo now has complete observed exchange-session coverage for this 10-year sample; Alpaca IEX still covers only ~63% of that decade and fails 0/8 cross-provider coverage gates. Tiingo has not yet been live-tested. The 100% Yahoo coverage result does not resolve independent provider corroboration, adjustment discrepancies or licensing.
+- The 5 bps/side cost assumption remains hypothetical; no execution cost validation.
+
+**Continuation queue**
+1. Investigate large common-period Yahoo/IEX divergence dates (especially SPY +218.89 bps and QQQ +89.98 bps cumulative differences, plus max single-day outliers). Determine whether corporate actions, adjustment methods, bad prints or provider data corrections explain them.
+2. Add Tiingo live parity only after an eligible account/token is securely configured; report common-session coverage, adjustments, and discrepancies independently. No paid subscription without explicit approval.
+3. Preserve source provenance and never splice/average vendor price histories.
+4. Re-run strategy research only with point-in-time data, multiple walk-forward folds and independent holdout; current 0/73 remains a valid negative result.
+5. Close remaining accounting fee/FX/corporate-action reconciliation, collect representative Paper execution costs after persistent user-host deployment.
+6. Selector remains observe-only/cash-safe. No approved strategy; LIVE disabled.

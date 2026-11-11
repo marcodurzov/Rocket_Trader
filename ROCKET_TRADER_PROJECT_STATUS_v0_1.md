@@ -626,3 +626,16 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - TLT 2026-11-02: Yahoo action feed reports $0.00; previous raw close $81.84; Alpaca/Yahoo factor ratio 0.9958460599 -> 1.0000000000 (+41.7148 bps). iShares official issuer record lists $0.343177 distribution that date, equivalent to ~41.93 bps of prior price. Strong evidence Yahoo action/adjustment history misses or differs on this event.
 - 0/8 full-period coverage gate still passes; no Tiingo data, no source splicing, no strategy/Paper approvals or orders.
 - Progress remains 46%.
+
+
+---
+
+## 2026-11-11 — PR #123 XNYS calendar correction and post-merge validation
+- PR #123 merged as `f408204044fcff449bd615301a0bf2503a4d1db0`.
+- Replaced weekday counting with the actual XNYS session calendar. Quality report uses expected/missing exchange sessions and exchange-session coverage; existing 95% and 7-day thresholds unchanged.
+- Tests explicitly prove July 4, 2024 is not an expected session and missing July 2 is detected. PR CI passed self-test + 21 regression tests.
+- Main v0.4 workflow `42957425769` passed full ten-year research and uploaded artifact `13828111119`; main runtime workflow `42957425751` passed. Legacy research workflows v0.2 `42957425803` and v0.3 `42957425736` also passed.
+- Actual v0.4 Yahoo data: 8 ETFs, 2,511 XNYS sessions each, 2,511 observed bars, 100% coverage, zero missing sessions, max gap 4 days. Earlier approximate weekday coverage 96.32% is superseded and was caused by counting market holidays.
+- Research result unchanged: 73 hypotheses, Holm significant 0, pre-screen 0, no strategy promotion, no Paper approval, no orders.
+- Alpaca IEX 10-year coverage still only ~63%, 0/8 cross-provider coverage passes. Tiingo not live-tested.
+- Next: investigate IEX/Yahoo adjustment outliers; live Tiingo parity only if eligible token/plan is separately configured; no source splicing; preserve all negative strategy results.
