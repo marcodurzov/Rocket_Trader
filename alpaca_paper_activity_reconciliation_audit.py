@@ -106,6 +106,28 @@ def main() -> int:
             raise ValueError("Each audit time window must have after earlier than until.")
 
         client = TradingClient(api_key, api_secret, paper=True)
+        account = client.get_account()
+        account_status = _text(getattr(account, "status", "UNKNOWN")).upper()
+        account_currency = _text(getattr(account, "currency", "UNKNOWN")).upper()
+        crypto_status = _text(getattr(account, "crypto_status", "UNKNOWN")).upper()
+        if (
+            account_status != "ACTIVE"
+            or account_currency != "USD"
+            or crypto_status != "ACTIVE"
+            or bool(getattr(account, "trading_blocked", False))
+            or _text(getattr(account, "multiplier", "UNKNOWN")) != "1"
+            or bool(getattr(account, "shorting_enabled", True))
+        ):
+            raise RuntimeError("Paper account does not satisfy the verified cash-only trading policy.")
+        account_config = client.get_account_configurations()
+        if (
+            _text(getattr(account_config, "max_margin_multiplier", "UNKNOWN")) != "1"
+            or not bool(getattr(account_config, "no_shorting", False))
+            or int(getattr(account_config, "max_options_trading_level", -1)) != 0
+        ):
+            raise RuntimeError("Paper account configuration does not satisfy cash-only guardrails.")
+        report["account_preflight"] = "ACTIVE_USD_CASH_ONLY_NO_SHORT"
+
         order_filter = GetOrdersRequest(
             status=QueryOrderStatus.ALL,
             symbols=[symbol],
