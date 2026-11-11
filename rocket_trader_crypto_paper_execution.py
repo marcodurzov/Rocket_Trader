@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from rocket_trader_core import ExecutionMode, Side
+from rocket_trader_execution_event_ledger import ExecutionEventLedger
 
 
 class CryptoPaperExecutionError(RuntimeError):
@@ -92,6 +93,8 @@ class AlpacaCryptoPaperExecutionAdapter:
         api_secret: Optional[str] = None,
         db_path: Optional[str] = None,
         client: Any = None,
+        event_ledger: Any = None,
+        event_ledger_path: Optional[str] = None,
     ) -> None:
         if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() == "true":
             raise CryptoPaperExecutionError("LIVE mode is prohibited.")
@@ -106,6 +109,24 @@ class AlpacaCryptoPaperExecutionAdapter:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._initialize_db()
+        # By default, keep the immutable event chain beside the mutable order
+        # journal. Both paths must live on persistent storage in deployment.
+        ledger_path = (
+            event_ledger_path
+            or os.getenv("ROCKET_TRADER_EXECUTION_EVENT_LEDGER_DB")
+            or f"{self.db_path}.events.sqlite3"
+        )
+        self.event_ledger = event_ledger or ExecutionEventLedger(ledger_path)
+        try:
+            integrity = self.event_ledger.verify_chain()
+        except Exception as exc:
+            raise CryptoPaperExecutionError(
+                "Execution event ledger cannot be verified; crypto orders are blocked."
+            ) from exc
+        if not isinstance(integrity, dict) or not integrity.get("valid"):
+            raise CryptoPaperExecutionError(
+                "Execution event ledger integrity check failed; crypto orders are blocked."
+            )
 
         if client is None:
             key = api_key or os.getenv("ALPACA_API_KEY")
@@ -189,6 +210,30 @@ class AlpacaCryptoPaperExecutionAdapter:
             ),
         }
 
+    def _record_event(
+        self, client_order_id: str, event_type: str, payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        material = json.dumps(
+            {
+                "client_order_id": client_order_id,
+                "event_type": event_type,
+                "payload": payload,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        event_id = "rt-" + hashlib.sha256(material.encode("utf-8")).hexdigest()
+        return self.event_ledger.append_event(
+            event_id=event_id,
+            aggregate_id=client_order_id,
+            event_type=event_type,
+            payload=payload,
+        )
+
+    def order_events(self, client_order_id: str) -> list[Dict[str, Any]]:
+        """Return immutable local evidence for one client order; no broker call."""
+        return self.event_ledger.list_events(aggregate_id=client_order_id)
+
     def _persist(
         self,
         client_order_id: str,
@@ -211,6 +256,18 @@ class AlpacaCryptoPaperExecutionAdapter:
                     last_error, _utc_now(), client_order_id,
                 ),
             )
+        # Persist broker state first. If the event write fails, the mutable
+        # journal still prevents resubmission; the next reconciliation retries
+        # recording the same deterministic event ID.
+        self._record_event(
+            client_order_id,
+            "ORDER_STATE_OBSERVED",
+            {
+                "state": state,
+                "broker_snapshot": broker,
+                "error_present": last_error is not None,
+            },
+        )
 
     def verify_account(self) -> Dict[str, Any]:
         account = self.client.get_account()
@@ -358,6 +415,10 @@ class AlpacaCryptoPaperExecutionAdapter:
                             broker["filled_qty"], broker["filled_avg_price"], _utc_now(), _utc_now(),
                         ),
                     )
+                self._record_event(
+                    client_id, "BROKER_ORDER_DISCOVERED",
+                    {"order_intent": payload, "broker_snapshot": broker},
+                )
                 return {"accepted": True, "mode": "PAPER", "duplicate_prevented": True, **broker}
 
             # Check current owned quantity only for a genuinely new SELL.
@@ -370,6 +431,9 @@ class AlpacaCryptoPaperExecutionAdapter:
                         f"SELL quantity {quantity} exceeds broker-held {symbol} quantity {held}."
                     )
 
+            # Write-ahead evidence: if this fails, do not create the mutable
+            # journal row and, critically, do not send an order to the broker.
+            self._record_event(client_id, "ORDER_PREPARED", {"order_intent": payload})
             with self._connect() as conn:
                 conn.execute(
                     """

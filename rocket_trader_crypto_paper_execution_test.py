@@ -3,11 +3,13 @@
 """Offline tests for the crypto Paper adapter; no broker orders are sent."""
 
 import os
+import sqlite3
 import tempfile
 import unittest
 from types import SimpleNamespace
 
 from rocket_trader_core import ExecutionMode, Side
+from rocket_trader_execution_event_ledger import ExecutionEventLedger
 from rocket_trader_crypto_paper_execution import (
     AlpacaCryptoPaperExecutionAdapter,
     CryptoOrderIntent,
@@ -381,6 +383,102 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(CryptoPaperExecutionError, "absent at broker"):
             restarted.submit(self.buy("crypto-restart-unknown"))
         self.assertEqual(client.submit_count, 1)
+
+
+    def test_adapter_writes_prepared_and_broker_state_events(self):
+        result = self.adapter.submit(self.buy())
+        self.assertTrue(result["accepted"])
+        events = self.adapter.order_events("crypto-buy-001")
+        self.assertEqual(
+            [event["event_type"] for event in events],
+            ["ORDER_PREPARED", "ORDER_STATE_OBSERVED"],
+        )
+        self.assertTrue(self.adapter.event_ledger.verify_chain()["valid"])
+
+    def test_event_ledger_failure_before_submit_fails_closed(self):
+        class BrokenLedger:
+            def verify_chain(self):
+                return {"valid": True}
+
+            def append_event(self, **kwargs):
+                raise RuntimeError("simulated durable ledger write failure")
+
+        adapter = AlpacaCryptoPaperExecutionAdapter(
+            db_path=self.db, client=self.client, event_ledger=BrokenLedger()
+        )
+        with self.assertRaisesRegex(RuntimeError, "ledger write failure"):
+            adapter.submit(self.buy("crypto-ledger-fail-closed"))
+        self.assertEqual(self.client.submit_count, 0)
+        with sqlite3.connect(self.db) as connection:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM crypto_paper_order_journal"
+            ).fetchone()[0]
+        self.assertEqual(count, 0)
+
+    def test_event_write_failure_after_broker_acceptance_reconciles_without_resubmit(self):
+        real_ledger = ExecutionEventLedger(self.db + ".events.sqlite3")
+
+        class FailOnceLedger:
+            def __init__(self, wrapped):
+                self.wrapped = wrapped
+                self.calls = 0
+
+            def append_event(self, **kwargs):
+                self.calls += 1
+                if self.calls == 2:
+                    raise RuntimeError("simulated event write failure after broker acceptance")
+                return self.wrapped.append_event(**kwargs)
+
+            def list_events(self, **kwargs):
+                return self.wrapped.list_events(**kwargs)
+
+            def verify_chain(self):
+                return self.wrapped.verify_chain()
+
+        flaky_ledger = FailOnceLedger(real_ledger)
+        adapter = AlpacaCryptoPaperExecutionAdapter(
+            db_path=self.db, client=self.client, event_ledger=flaky_ledger
+        )
+        result = adapter.submit(self.buy("crypto-ledger-after-accept"))
+        self.assertTrue(result["accepted"])
+        self.assertTrue(result["duplicate_prevented"])
+        self.assertEqual(self.client.submit_count, 1)
+        events = adapter.order_events("crypto-ledger-after-accept")
+        self.assertEqual(
+            [event["event_type"] for event in events],
+            ["ORDER_PREPARED", "ORDER_STATE_OBSERVED"],
+        )
+        self.assertTrue(flaky_ledger.verify_chain()["valid"])
+
+
+    def test_corrupted_event_ledger_blocks_adapter_initialization(self):
+        ledger = ExecutionEventLedger(self.db + ".events.sqlite3")
+        ledger.append_event(
+            event_id="seed-event", aggregate_id="seed-order",
+            event_type="ORDER_PREPARED", payload={"symbol": "BTC/USD"},
+        )
+        with sqlite3.connect(self.db + ".events.sqlite3") as connection:
+            connection.execute("DROP TRIGGER execution_events_no_update")
+            connection.execute(
+                "UPDATE execution_events SET payload_json='{\"tampered\":true}' "
+                "WHERE event_id='seed-event'"
+            )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "integrity check failed"):
+            AlpacaCryptoPaperExecutionAdapter(
+                db_path=self.db, client=self.client, event_ledger=ledger
+            )
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_unverifiable_event_ledger_blocks_adapter_initialization(self):
+        class UnverifiableLedger:
+            def verify_chain(self):
+                raise OSError("ledger storage unavailable")
+
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "cannot be verified"):
+            AlpacaCryptoPaperExecutionAdapter(
+                db_path=self.db, client=self.client, event_ledger=UnverifiableLedger()
+            )
+        self.assertEqual(self.client.submit_count, 0)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
