@@ -803,3 +803,35 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Healthcheck covers local persistence integrity only, not API connectivity; reconnect errors are emitted to container logs.
 - **Deployment remains pending:** no server has been connected/deployed from this session. Actual durable-volume restart test is required before claiming persistent recovery works in production.
 - Progress remains **56%** (engineering/evidence maturity, not profitability).
+
+
+## 2026-11-11 — Alpaca corporate-action parity and 10-year ETF audit findings
+
+### Merged engineering changes
+
+- PR #173 merged: records user's USD 0 target, Paper-only boundary and absence of a known persistent host.
+- PR #174 merged: audits free GitHub Actions/GHCR options, schedule limits, Alpaca Basic IEX limitations and Live jurisdiction caveat.
+- PR #175 merged: ports Alpaca issuer corporate-action reconciliation onto current ETF cross-check code while preserving current Tiingo/data-quality logic. PR #127 was closed as superseded, not merged from its stale branch.
+- PR #176 merged: corrects the documented Alpaca response envelope. Corporate-action arrays are nested under top-level `corporate_actions`; parser now validates the envelope and fails closed if missing.
+- PR #177 merged: retains corporate-action IDs and prevents aggregation when multiple cash-dividend records exist for the same symbol/ex-date. It reports `MULTIPLE_RECORDS_REQUIRES_REVIEW` rather than inventing a total.
+- Offline ETF audit tests passed successively: 17 tests in PR #175, 18 in PR #176, 19 in PR #177. Post-merge observer runtime/accounting tests also passed in run `43078281988`.
+
+### Real read-only Paper data audit after PR #177
+
+- Workflow run `43078282153` completed successfully. It queried the 10-year window 2016-11-11 through 2026-11-11 for DIA, EEM, EFA, GLD, IWM, QQQ, SPY and TLT using Alpaca IEX and Yahoo adjusted daily history.
+- Alpaca Corporate Actions returned **410 records** and the response envelope was valid; no API error occurred. Tiingo comparison was `NOT_REQUESTED`; no paid data source was called.
+- **0 of 8 ETF symbols passed the overall diagnostic gates.** All eight passed minimum common sessions, daily-return correlation and the p95 return-difference threshold, but all eight failed the minimum source-coverage gate.
+- Common sessions represented approximately **62.98% of Yahoo's returned sessions** and **99.94% of Alpaca IEX's returned sessions**. In this sample, Alpaca IEX is the sparse side of the comparison. Do not treat the free IEX historical feed as a complete consolidated 10-year ETF history. This is a measured data-coverage limitation; the exact cause of each missing session still requires separate date-level analysis.
+- The audit is not a strategy test and does not validate the 5 bps/side ETF cost placeholder, fills, market impact, or profitability. `candidate_promotion_allowed=false`, `paper_approval=false`, `orders_enabled=false`, `orders_submitted=0`.
+- Useful issuer-action examples: EEM 2023-06-07 returned one cash-dividend record at USD 0.310139; TLT 2026-11-02 returned one at USD 0.343177. QQQ 2022-09-19 returned two distinct Alpaca IDs, both USD 0.51856, with different process/payable dates (2022-09-23 and 2022-10-31). The report now flags this as ambiguous and does not sum it. Resolve against the issuer's official distribution notice before using it as a reference.
+- The first run after PR #175 incorrectly returned zero actions because the parser read arrays from the wrong response level. PR #176 fixed the envelope; the corrected run returned 410 records. Do not cite the earlier zero-count result as evidence of no issuer actions.
+
+### Next data-source decision
+
+- Keep Alpaca Basic IEX as the zero-cost Paper execution/data connection, but do not use its observed sparse history as the sole source for long-horizon ETF backtests.
+- Evaluate free historical sources (Yahoo and other genuinely free, legally usable sources) for complete adjusted daily bars; cross-validate dates, actions, splits, dividends and survivorship/adjustment conventions. Use issuer records as the reference for declared distributions.
+- SIP/all-exchange data is not authorized because it requires a paid plan. Tiingo paid plan remains unauthorized. Do not activate or consume any paid provider without explicit approval.
+- Before any candidate can pass, the data gate must require adequate coverage from the actual primary backtest source and a second independent reference; missing sessions must be measured by date and reason, not hidden by inner joins.
+- The continuous Activity SSE service remains undeployed. No persistent host has been identified; continue with GitHub Actions for bounded tests/research and do not represent it as a 24/7 runtime.
+
+**Progress estimate: 57%** (engineering/evidence maturity, not profitability). The increase from 56% reflects a working, schema-validated corporate-action data path and a completed 10-year coverage audit; it does not mean any strategy passed or that trading is ready.
