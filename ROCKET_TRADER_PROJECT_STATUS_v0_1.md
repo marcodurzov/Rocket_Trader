@@ -562,3 +562,17 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Opposite-signed adjacent-session outliers could indicate timing/adjustment mapping, but not proven.
 - Cumulative divergences: SPY +218.91 bps, QQQ +89.98 bps, TLT +26.02 bps. 0/8 pass full-period coverage due IEX 6.3-year limit. No Tiingo token configured.
 - Runtime suite `42955454994` passed. Progress remains 46%.
+
+
+---
+
+## 2026-11-11 — PR #106 and ten-year equity research result
+
+- PR #106 merged; Tiingo EOD adjusted OHLCV is now an optional research source. Secret required as `TIINGO_API_TOKEN`; default source unchanged, no fallback/splicing. Mocked contract/failure-path tests passed. No live Tiingo validation and no paid subscription.
+- Yahoo metadata corrected to accurately state `repair=False`.
+- Workflow `42954130155` passed; artifact `13826686266` downloaded and inspected.
+- Eight ETFs, 2,511 daily bars each; approximate weekday coverage 96.32%, max gap 4 days. Caveat: weekdays include exchange holidays; implement an exchange-session calendar before trusting this metric.
+- 73 hypotheses; Holm-significant 0; pre-screen passes 0; no promotion, no Paper approval, no orders.
+- Top-1 cross-sectional momentum underperformed equal-weight buy-and-hold over the full sample: CAGR 7.65% vs 11.53%, Sharpe 0.48 vs 0.87, max drawdown -35.0% vs -27.0%. Holdout excess statistically inconclusive (raw bootstrap p=0.399; Holm p=1.0; 5th-percentile excess -31.56 pp).
+- Costs are assumed placeholders (5 bps/side; commission zero), not measured.
+- Next: exchange-session calendar; inspect Alpaca/Yahoo discrepancies; only then develop new pre-registered hypotheses. Preserve negative result.
