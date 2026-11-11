@@ -3,6 +3,7 @@
 """Offline tests for the crypto Paper adapter; no broker orders are sent."""
 
 import os
+import sqlite3
 import tempfile
 import unittest
 from types import SimpleNamespace
