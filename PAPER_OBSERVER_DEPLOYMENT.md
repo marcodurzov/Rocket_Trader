@@ -222,7 +222,7 @@ docker compose -f docker-compose.paper-observer.yml up -d rocket-trader-alpaca-a
 docker compose -f docker-compose.paper-observer.yml logs -f rocket-trader-alpaca-activity-sse
 ```
 
-The container health check verifies the local hash chain and cursor without contacting Alpaca. Confirm the container is healthy and inspect logs for `STREAM_ENDED_OR_RECONNECTING` / `RECONNECTING` records. Back up the shared volume before upgrading or changing the inbox schema.
+The container health check opens an already-existing inbox read-only, verifies the local hash chain, delivery hashes, cursor and append-only triggers without contacting Alpaca. If the database file is missing, the health check fails and does not create an empty replacement. Confirm the container is healthy and inspect logs for `STREAM_ENDED_OR_RECONNECTING` / `RECONNECTING` records. Back up the shared volume before upgrading or changing the inbox schema.
 
 **Not deployed by GitHub CI:** these files prepare the service configuration only. A host operator must deploy it on the actual persistent server and verify that the named volume survives container recreation. Do not use a disposable GitHub Actions runner as the persistent event consumer.
 
