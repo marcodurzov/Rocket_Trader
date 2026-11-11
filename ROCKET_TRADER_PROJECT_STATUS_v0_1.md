@@ -595,3 +595,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Each factor-step row now exposes previous-session and event-session Yahoo/Alpaca factors and ratios.
 - CI `42956145698`: all 12 cross-check tests passed; live audit skipped on PR.
 - Post-merge live audit not yet observed. No provider attribution, no orders or strategy approval. Progress 46%.
+
+
+---
+
+## 2026-11-11 — PR #119 live before/after factors
+- Post-merge audit `42956264138` succeeded; artifact `13827440846`; 12 tests passed. No Tiingo token configured.
+- QQQ: 2022-09-16 previous factor ratio Alpaca/Yahoo 0.9982218617; 2022-09-19 ex-date ratio 0.9999843173; +17.6820 bps step. Distribution $0.51856/share on ex-date.
+- TLT: 2026-10-30 previous ratio 0.9958460599; 2026-11-02 ex-date ratio 1.0000000000; +41.7148 bps step. iShares official distribution $0.343177/share.
+- In both events, Alpaca factor is lower than Yahoo before ex-date and converges on ex-date. Strong evidence of different dividend adjustment handling; not yet proof of which provider is correct.
+- 0/8 full-period source coverage passes due IEX history limitation. No strategy approval or orders. Progress remains 46%.
