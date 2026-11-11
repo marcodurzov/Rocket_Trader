@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -93,7 +94,7 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
         self.assertEqual(result, 0)
         client = FakeAuditClient.instances[-1]
         self.assertTrue(client.paper)
-        report = json.loads(open(self.report, encoding="utf-8").read())
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
         self.assertEqual(report["status"], "SUCCESS")
         self.assertEqual(report["matched_order_count"], 1)
         self.assertEqual(report["fee_evidence_status"], "NO_RECORDS_FEES_UNKNOWN")
