@@ -8,6 +8,8 @@ on:
     paths:
       - "rocket_trader_crypto_paper_execution.py"
       - "rocket_trader_crypto_paper_execution_test.py"
+      - "rocket_trader_paper_crypto_execution_service.py"
+      - "rocket_trader_paper_crypto_execution_service_test.py"
       - "rocket_trader_core.py"
       - "alpaca_paper_crypto_execution_recovery_worker.py"
       - "alpaca_paper_crypto_execution_recovery_worker_test.py"
@@ -43,7 +45,7 @@ jobs:
 
       - name: Compile
         run: |
-          python -m py_compile rocket_trader_crypto_paper_execution.py rocket_trader_crypto_paper_execution_test.py alpaca_paper_crypto_execution_recovery_worker.py alpaca_paper_crypto_execution_recovery_worker_test.py
+          python -m py_compile rocket_trader_crypto_paper_execution.py rocket_trader_crypto_paper_execution_test.py rocket_trader_paper_crypto_execution_service.py rocket_trader_paper_crypto_execution_service_test.py alpaca_paper_crypto_execution_recovery_worker.py alpaca_paper_crypto_execution_recovery_worker_test.py
 
       - name: Run offline crypto Paper safety tests
-        run: python -m unittest -v rocket_trader_crypto_paper_execution_test.py alpaca_paper_crypto_execution_recovery_worker_test.py
+        run: python -m unittest -v rocket_trader_crypto_paper_execution_test.py rocket_trader_paper_crypto_execution_service_test.py alpaca_paper_crypto_execution_recovery_worker_test.py
