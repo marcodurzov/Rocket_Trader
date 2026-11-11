@@ -606,3 +606,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - QQQ 2022-09-19: factor ratio Alpaca/Yahoo 0.9982218617 on prior session, 0.9999843173 on ex-date; +17.6820 bps. Distribution $0.51856/share.
 - TLT 2026-11-02: factor ratio 0.9958460599 on prior session, 1.0000000000 on ex-date; +41.7148 bps. iShares distribution $0.343177/share.
 - Both suggest dividend adjustment handling differences; no provider declared correct. Full 10-year coverage gate 0/8. No approvals or orders. Progress 46%.
+
+
+---
+
+## 2026-11-11 — PR #124 cash-action comparison
+- PR #124 merged: https://github.com/marcodurzov/Rocket_Trader/pull/124
+- Main SHA: `ca0450287284af014e68bd5e31d05e641b8d110d`.
+- Yahoo action fields (dividends/splits) and prior raw closes are now included around top adjustment-factor step dates; report computes approximate cash-dividend scale in bps for comparison.
+- CI `42956965526`: 12 cross-check tests passed after correcting an overly precise assertion; live data skipped on PR.
+- Post-merge live audit pending. No vendor attribution, Tiingo token, orders or approvals. Progress 46%.
