@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from rocket_trader_equity_multiyear_research_v0_3 import (
+    EquityResearchError,
     bootstrap_q05_relative,
     bootstrap_relative_pvalue,
     holm_adjust,
@@ -19,6 +20,7 @@ from rocket_trader_equity_multiyear_research_v0_3 import (
     fetch_yahoo_daily_bars,
     normalize_frame,
     strategy_positions,
+    require_zero_budget_feed,
 )
 
 
@@ -63,6 +65,11 @@ class FakeYahooTicker:
 
 
 class EquityResearchV03Tests(unittest.TestCase):
+
+    def test_zero_budget_feed_allows_iex_and_rejects_sip(self):
+        self.assertEqual(require_zero_budget_feed("iex"), "IEX")
+        with self.assertRaisesRegex(EquityResearchError, "zero-budget policy"):
+            require_zero_budget_feed("SIP")
     def test_normalize_frame_tolerates_only_float_precision_ohlc_differences(self):
         frame = pd.DataFrame({
             "timestamp": pd.date_range("2024-01-01", periods=2, tz="UTC"),

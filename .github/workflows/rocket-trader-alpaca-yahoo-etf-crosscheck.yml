@@ -29,7 +29,6 @@ on:
         type: choice
         options:
           - IEX
-          - SIP
 
 permissions:
   contents: read
@@ -57,7 +56,6 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_PAPER: "true"
-          TIINGO_API_TOKEN: ${{ secrets.TIINGO_API_TOKEN }}
         run: |
           python rocket_trader_alpaca_yahoo_etf_crosscheck.py \
             --years "${{ inputs.years || '10' }}" \

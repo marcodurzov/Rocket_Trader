@@ -197,3 +197,22 @@ References:
 **Response-envelope validation note (2026-11-11):** Alpaca's documented response groups all action-type arrays under the top-level `corporate_actions` object, with `next_page_token` beside it. The parser now validates that envelope and fails closed if it is absent or malformed. Offline pagination fixtures mirror this exact documented shape. The first post-merge run returned zero events because the initial parser incorrectly read the action arrays from the response root; that run must not be interpreted as evidence that Alpaca had no issuer actions.
 
 **Multiple-record handling:** The report now preserves corporate-action IDs and identifying metadata. If more than one Alpaca cash-dividend record exists for the same symbol/ex-date, it does not sum them or calculate a Yahoo-vs-Alpaca amount difference; it marks the total `MULTIPLE_RECORDS_REQUIRES_REVIEW` until identity/version semantics are resolved. This prevents duplicate or revised issuer records from inflating the cash distribution.
+
+## Zero-budget provider guards (2026-11-11)
+
+- The ETF cross-check now permits only Alpaca IEX. SIP is blocked in the script and removed from the workflow selector because it requires paid all-exchange data and no paid plan is authorized.
+- Tiingo is an optional comparison only. The code ignores any Tiingo token unless `--include-tiingo` is explicitly supplied, requires a token when opted in, and blocks a window longer than five years for the zero-cost Starter tier.
+- The public GitHub Actions workflow no longer injects `TIINGO_API_TOKEN` at all. This prevents accidental quota use or exposure of internal-use-only Tiingo-derived reports from public workflow runs.
+- Tiingo's published Starter tier is listed at $0/month, with 5 years of history, 500 unique symbols/month, 50 requests/hour, 1,000 requests/day, 1 GB/month and an internal-use-only license. It is a candidate for a personal 5-year cross-check only after the user creates the free account and confirms its terms. Do not create the account or add a token on the user's behalf without explicit approval. Do not publish raw Tiingo data or use it for redistribution.
+- Alpha Vantage's free 25-request/day allowance does not unlock its full historical daily-adjusted endpoint; the full adjusted daily endpoint is premium. Stooq is not selected for automated production because its current access/automation reliability and adjustment documentation are insufficient.
+
+## Equity research workflow zero-budget hardening (2026-11-11)
+
+- Applied the same free-feed guard to equity research v0.1, v0.2, v0.3 and v0.4: only Alpaca IEX is accepted by the code and CLI; SIP is rejected before any market-data request.
+- Removed SIP from all four GitHub Actions workflow selectors.
+- Removed Tiingo as a selectable primary source from public equity research v0.4 and removed the Tiingo token from that workflow's environment. The Tiingo fetcher remains covered by offline tests but is not reachable from public workflow selection.
+- The optional Tiingo comparison in the dedicated ETF cross-check remains local/programmatic only and requires explicit `--include-tiingo`; the public GitHub Actions workflow does not inject the token or opt in.
+- The $0 Tiingo Starter plan is only a potential personal 5-year cross-check; account creation and token setup remain user-controlled. No provider account was created and no Tiingo API request was made.
+
+- The weekly market-data entitlement probe has also been converted to an IEX-only health probe. It makes one IEX request, reports SIP as `DISABLED_BY_ZERO_BUDGET_POLICY` with `request_made=false`, and the self-test asserts that no SIP request is issued.
+- Repository-wide workflow scan found no other SIP or Tiingo token usage outside the four equity research workflows, the ETF cross-check workflow, and this entitlement probe. The four equity workflows and cross-check are being hardened in this change; this probe is now IEX-only.

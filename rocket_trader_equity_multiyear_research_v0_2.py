@@ -149,6 +149,16 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
+def require_zero_budget_feed(feed_name: str) -> str:
+    """Allow only free Alpaca IEX until a paid consolidated feed is approved."""
+    normalized = str(feed_name or "").strip().upper()
+    if normalized != "IEX":
+        raise EquityResearchError(
+            "SIP is disabled by Rocket Trader's zero-budget policy; only free IEX is enabled."
+        )
+    return normalized
+
+
 def fetch_daily_bars(
     symbol: str,
     *,
@@ -168,7 +178,8 @@ def fetch_daily_bars(
         if not key or not secret:
             raise EquityResearchError("Alpaca market-data credentials are missing.")
         api = StockHistoricalDataClient(key, secret)
-    feed = DataFeed.SIP if feed_name.strip().upper() == "SIP" else DataFeed.IEX
+    feed_name = require_zero_budget_feed(feed_name)
+    feed = DataFeed.IEX
     end_at = end or datetime.now(timezone.utc)
     if end_at.tzinfo is None or end_at.utcoffset() is None:
         raise ValueError("end must be timezone-aware")
@@ -606,6 +617,7 @@ def research(
     feed_name: str = "IEX",
     source: str = "ALPACA",
 ) -> Dict[str, Any]:
+    feed_name = require_zero_budget_feed(feed_name)
     clean = sorted({normalize_symbol(s) for s in symbols})
     if len(clean) < 2:
         raise EquityResearchError("Cross-sectional research requires at least two ETFs.")
@@ -745,7 +757,7 @@ def research(
             "data_quality": "Approximate weekday coverage (US holidays included in expected weekday count) >=95%, maximum calendar gap <=7 days.",
             "bootstrap": f"{BOOTSTRAP_REPS} moving-block resamples for return quantiles; {BOOTSTRAP_PVALUE_REPS} centered moving-block resamples per hypothesis for one-sided log-relative p-values.",
             "multiple_testing": "Holm-Bonferroni family-wise error control at alpha 0.05 across all eligible base-cost final-holdout strategy-vs-benchmark hypotheses. Pre-screen also requires at least 30 holdout entries and positive 5th-percentile excess.",
-            "promotion": "No strategy is promoted; SIP parity, independent replication, multiple walk-forward folds and sustained Paper validation remain required.",
+            "promotion": "No strategy is promoted; independent full-market data parity, independent replication, multiple walk-forward folds and sustained Paper validation remain required.",
         },
         "candidate_promotion_allowed": False,
         "paper_approval": False,
@@ -803,7 +815,7 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
     parser.add_argument("--years", type=int, default=DEFAULT_YEARS)
-    parser.add_argument("--feed", default="IEX", choices=["IEX", "SIP"])
+    parser.add_argument("--feed", default="IEX", choices=["IEX"])
     parser.add_argument("--source", default="ALPACA", choices=["ALPACA", "YAHOO"])
     parser.add_argument("--output", default="research_artifacts/equity_multiyear_research_v0_2.json")
     args = parser.parse_args()

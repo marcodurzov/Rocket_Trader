@@ -680,6 +680,30 @@ def compare_adjustment_factors(
 
 
 
+def require_zero_budget_feed(feed_name: str) -> str:
+    """Only permit the free IEX feed until a paid SIP plan is explicitly approved."""
+    normalized = str(feed_name or "").strip().upper()
+    if normalized != "IEX":
+        raise CrosscheckError(
+            "SIP is disabled by Rocket Trader's zero-budget policy; only free IEX is enabled."
+        )
+    return normalized
+
+
+def resolve_tiingo_token(
+    include_tiingo: bool, token: Optional[str] = None
+) -> str:
+    """Never consume Tiingo API quota unless explicitly opted in."""
+    if not include_tiingo:
+        return ""
+    resolved = str(token or os.getenv("TIINGO_API_TOKEN", "")).strip()
+    if not resolved:
+        raise CrosscheckError(
+            "Tiingo comparison was explicitly requested but TIINGO_API_TOKEN is missing."
+        )
+    return resolved
+
+
 def tiingo_audit_status(
     token: Optional[str],
     results: Iterable[Dict[str, Any]],
@@ -730,11 +754,18 @@ def run_audit(
     yahoo_adjustment_loader=fetch_yahoo_adjustment_fields,
     alpaca_raw_loader=fetch_alpaca_raw_history,
     alpaca_corporate_actions_loader=fetch_alpaca_corporate_actions,
+    include_tiingo: bool = False,
 ) -> Dict[str, Any]:
     if years < 1 or years > 20:
         raise CrosscheckError("years must be between 1 and 20")
     if not api_key or not secret_key:
         raise CrosscheckError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
+    feed_name = require_zero_budget_feed(feed_name)
+    token = resolve_tiingo_token(include_tiingo, tiingo_token)
+    if token and years > 5:
+        raise CrosscheckError(
+            "The zero-cost Tiingo Starter tier provides 5 years of history; use --years 5 or less."
+        )
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() is None:
         raise CrosscheckError("now must be timezone-aware")
@@ -743,10 +774,8 @@ def run_audit(
 
     from alpaca.data.enums import DataFeed
     from alpaca.data.historical import StockHistoricalDataClient
-    feed_map = {"IEX": DataFeed.IEX, "SIP": DataFeed.SIP}
-    if feed_name.upper() not in feed_map:
-        raise CrosscheckError("feed must be IEX or SIP")
-    feed = feed_map[feed_name.upper()]
+    feed_map = {"IEX": DataFeed.IEX}
+    feed = feed_map[feed_name]
     client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
 
     symbol_list = sorted({str(x).strip().upper() for x in symbols if str(x).strip()})
@@ -764,7 +793,6 @@ def run_audit(
     errors = []
     tiingo_results = []
     tiingo_errors = []
-    token = str(tiingo_token or os.getenv("TIINGO_API_TOKEN", "")).strip()
     for symbol in symbol_list:
         try:
             yahoo = yahoo_loader(symbol, start, current)
@@ -864,7 +892,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
     parser.add_argument("--years", type=int, default=10)
-    parser.add_argument("--feed", choices=("IEX", "SIP"), default="IEX")
+    parser.add_argument("--feed", choices=("IEX",), default="IEX")
+    parser.add_argument(
+        "--include-tiingo", action="store_true",
+        help="Explicitly opt in to Tiingo; requires a free Starter token and a maximum 5-year window."
+    )
     parser.add_argument("--output", default="artifacts/alpaca_yahoo_etf_crosscheck.json")
     args = parser.parse_args()
     if os.getenv("ALPACA_PAPER", "").strip().lower() != "true":
@@ -877,6 +909,7 @@ def main() -> int:
             symbols=args.symbols,
             years=args.years,
             feed_name=args.feed,
+            include_tiingo=args.include_tiingo,
         )
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
