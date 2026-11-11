@@ -205,3 +205,11 @@ References:
 - The public GitHub Actions workflow no longer injects `TIINGO_API_TOKEN` at all. This prevents accidental quota use or exposure of internal-use-only Tiingo-derived reports from public workflow runs.
 - Tiingo's published Starter tier is listed at $0/month, with 5 years of history, 500 unique symbols/month, 50 requests/hour, 1,000 requests/day, 1 GB/month and an internal-use-only license. It is a candidate for a personal 5-year cross-check only after the user creates the free account and confirms its terms. Do not create the account or add a token on the user's behalf without explicit approval. Do not publish raw Tiingo data or use it for redistribution.
 - Alpha Vantage's free 25-request/day allowance does not unlock its full historical daily-adjusted endpoint; the full adjusted daily endpoint is premium. Stooq is not selected for automated production because its current access/automation reliability and adjustment documentation are insufficient.
+
+## Equity research workflow zero-budget hardening (2026-11-11)
+
+- Applied the same free-feed guard to equity research v0.1, v0.2, v0.3 and v0.4: only Alpaca IEX is accepted by the code and CLI; SIP is rejected before any market-data request.
+- Removed SIP from all four GitHub Actions workflow selectors.
+- Removed Tiingo as a selectable primary source from public equity research v0.4 and removed the Tiingo token from that workflow's environment. The Tiingo fetcher remains covered by offline tests but is not reachable from public workflow selection.
+- The optional Tiingo comparison in the dedicated ETF cross-check remains local/programmatic only and requires explicit `--include-tiingo`; the public GitHub Actions workflow does not inject the token or opt in.
+- The $0 Tiingo Starter plan is only a potential personal 5-year cross-check; account creation and token setup remain user-controlled. No provider account was created and no Tiingo API request was made.
