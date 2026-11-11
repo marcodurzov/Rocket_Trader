@@ -88,6 +88,35 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(result["diagnostic_pass"])
         self.assertLess(result["yahoo_coverage_on_common"], 0.95)
 
+
+    def test_history_start_mismatch_is_not_mislabeled_as_internal_missing_bars(self):
+        extended_dates = pd.date_range("2018-01-02", periods=1500, freq="B", tz="UTC")
+        yahoo = pd.Series(range(100, 1600), index=extended_dates, dtype=float)
+        alpaca = yahoo.loc[yahoo.index >= pd.Timestamp("2020-07-27", tz="UTC")]
+        result = compare_close_series(
+            "DIA", yahoo, alpaca,
+            min_common_sessions=100,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(
+            result["history_window_assessment"],
+            "ALPACA_HISTORY_STARTS_LATER_THAN_YAHOO",
+        )
+        self.assertAlmostEqual(result["alpaca_overlap_session_completeness"], 1.0)
+        self.assertAlmostEqual(result["yahoo_overlap_session_completeness"], 1.0)
+        self.assertFalse(result["diagnostic_gates"]["minimum_requested_history_overlap"])
+        self.assertTrue(result["diagnostic_gates"]["minimum_overlap_session_completeness"])
+
+    def test_internal_missing_sessions_are_reported_separately_from_start_mismatch(self):
+        alpaca = self.yahoo.drop(self.yahoo.index[3])
+        result = compare_close_series(
+            "IWM", self.yahoo, alpaca,
+            min_common_sessions=3,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(result["history_window_assessment"], "SESSION_GAPS_WITHIN_OVERLAP")
+        self.assertFalse(result["diagnostic_gates"]["minimum_overlap_session_completeness"])
+
     def test_close_series_rejects_nonpositive_or_invalid_data(self):
         bad = self.yahoo.copy()
         bad.iloc[2] = 0
