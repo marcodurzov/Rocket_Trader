@@ -216,3 +216,38 @@ References:
 
 - The weekly market-data entitlement probe has also been converted to an IEX-only health probe. It makes one IEX request, reports SIP as `DISABLED_BY_ZERO_BUDGET_POLICY` with `request_made=false`, and the self-test asserts that no SIP request is issued.
 - Repository-wide workflow scan found no other SIP or Tiingo token usage outside the four equity research workflows, the ETF cross-check workflow, and this entitlement probe. The four equity workflows and cross-check are being hardened in this change; this probe is now IEX-only.
+
+
+## 2026-11-11 — Zero-budget provider hardening and statistical ETF research
+
+### PR #179 merged
+
+- PR #179 merged at main commit `31923c5b6d8e57e1525ad5e3d3d6500df4a74e34`.
+- The ETF cross-check now accepts only Alpaca IEX. SIP is rejected in code before a market-data request; the workflow no longer offers SIP.
+- Equity research v0.1–v0.4 now reject SIP in code and CLI. Their GitHub Actions workflows no longer offer SIP.
+- Public equity research v0.4 no longer offers Tiingo as a primary source and no longer receives `TIINGO_API_TOKEN`.
+- The public ETF cross-check workflow does not inject Tiingo credentials and does not opt in. Its optional Tiingo comparison is disabled unless a local/programmatic caller explicitly sets `include_tiingo` and supplies a token; the zero-cost Starter comparison is limited to five years. No Tiingo account was created and no Tiingo request was made.
+- The scheduled entitlement probe is now an IEX-only health probe. Its successful run `43080158991` returned IEX `AVAILABLE` (5 bars) and marked SIP `DISABLED_BY_ZERO_BUDGET_POLICY`, `request_made=false`. The self-test asserts that the broker client was called only for IEX.
+- Repository audit identified the four ETF research workflows, the ETF cross-check workflow and the entitlement probe as the relevant SIP/Tiingo workflow surfaces. Those public paths have now been hardened.
+- Post-merge workflow runs for the IEX probe, ETF cross-check and research versions 0.1–0.4 all completed successfully: `43080158991`, `43080158893`, `43080158810`, `43080158982`, `43080158898`, and `43080158764`.
+
+### Actual research outputs (read-only; no orders)
+
+- ETF cross-check run `43080158893`: 10-year window, 8 ETFs, Alpaca IEX vs Yahoo adjusted daily bars. The audit returned `ok=true` but `all_diagnostic_gates_pass=false`; all eight symbols failed minimum source coverage. Common sessions were 62.98% of Yahoo's returned sessions and 99.94% of Alpaca IEX's returned sessions. This is a material historical-coverage limitation, not a strategy result.
+- Equity research v0.1 run `43080158810`: 5-year Alpaca IEX, 8 ETFs; data quality passed for all eight. This version is exploratory and does not apply the later family-wide multiple-testing test; no candidate was promoted or Paper-approved.
+- Equity research v0.2 run `43080158982`: 10-year Yahoo adjusted daily history, 8 ETFs; data quality passed. Holm-Bonferroni family size 49, 5,000 centered moving-block bootstrap replicates per hypothesis, alpha 0.05. Family-wise significant hypotheses: 0; pre-screen passes: 0.
+- Equity research v0.3 run `43080158898`: 10-year Yahoo adjusted daily history, 8 ETFs; data quality passed. Same 49-hypothesis Holm-Bonferroni framework; family-wise significant hypotheses: 0; pre-screen passes: 0.
+- Equity research v0.4 run `43080158764`: 10-year Yahoo adjusted daily history, 8 ETFs; data quality passed. Expanded family size 73 with additional RSI(2), Bollinger and z-score mean-reversion variants; 5,000 centered moving-block bootstrap replicates per hypothesis; family-wise significant hypotheses: 0; pre-screen passes: 0.
+- The v0.2–v0.4 methodology uses chronological 60% train / 20% validation / 20% final holdout; signals from completed daily close and next-session execution assumptions; long-only, no leverage/shorts/options/futures; base cost placeholder 5 bps per side and a 2x stress case. The 5 bps assumption remains a placeholder, not broker-validated execution cost.
+- All four research artifacts explicitly report `candidate_promotion_allowed=false`, `paper_approval=false`, `orders_enabled=false`, `orders_submitted=0`. The ETF cross-check artifact reports the same no-promotion/no-order state. No order was placed by these runs.
+- The honest conclusion is that none of the tested ETF hypotheses currently qualifies for promotion. This does not prove that no profitable strategy exists; it means this tested family did not produce statistically defensible candidates under these data, costs and validation gates.
+
+### Next work
+
+1. Continue research without paid feeds: improve date-level data completeness diagnostics, identify an independently usable free adjusted-history source, and validate its adjustment methodology and terms before use.
+2. Expand strategy families only with a pre-registered hypothesis budget and multiple-testing control; avoid data-mining the same holdout repeatedly.
+3. Add independent replication and additional chronological/walk-forward regimes before any strategy can be considered for Paper observation.
+4. Keep all strategy promotion, Paper approval and order submission disabled until the data, statistical, execution-cost, risk and operational gates pass.
+5. Continue investigating a persistent host that costs USD 0 and is already available to the user. GitHub Actions is for bounded CI/research, not a 24/7 trading runtime. No host has been identified or deployed.
+
+**Progress estimate: 58%** (engineering/evidence maturity, not profitability). The increase from 57% reflects merged zero-budget safeguards and completed statistical research workflows. It does not indicate strategy success, production deployment, Paper approval or readiness for Live.
