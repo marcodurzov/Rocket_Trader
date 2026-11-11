@@ -767,7 +767,7 @@ Current safety boundary: research/backtests/shadow are allowed; Paper orders onl
 
 Branch: `feat/adaptive-research-registry-v2`.
 
-Expanded `research/reference_strategy_registry_v0_1.json` from 6 to 22 sourced strategy/reference entries (6 original + 16 new), with structured family, applicable regimes, horizon, inputs, entry/exit/sizing hypothesis, execution assumptions, failure modes, evidence grade and test protocol. Added:
+Expanded `research/reference_strategy_registry_v0_1.json` from 6 to 24 sourced strategy/reference entries (6 original + 18 new), with structured family, applicable regimes, horizon, inputs, entry/exit/sizing hypothesis, execution assumptions, failure modes, evidence grade and test protocol. Added:
 - RSI(2), Bollinger mean reversion.
 - Distance/cointegration pairs and pairs reversal/momentum decomposition.
 - Volatility-managed exposure, calendar seasonality.
