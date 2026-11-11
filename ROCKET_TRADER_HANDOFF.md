@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`  
+**Latest audited code baseline SHA:** `775186e104a485bbc07b50a5dcc807723aced240`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -303,3 +303,24 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Alpha Vantage is a secondary candidate, but its adjusted daily endpoint is premium and pricing/entitlement economics are not yet established.
 - Do not purchase or start any paid subscription automatically. The user's authorization to develop the repository does not authorize recurring vendor charges.
 - Next: implement Tiingo as an optional provider behind `TIINGO_API_TOKEN`, add mocked contract tests and a provider-parity report; live validation requires the user to add a token securely and separately approve any paid plan. Keep Yahoo and IEX histories separate; no series splicing. Re-check licensing if Rocket Trader is ever redistributed or offered as a service.
+
+
+### PR #106 — optional Tiingo EOD source and metadata correction
+- Merge commit: `775186e104a485bbc07b50a5dcc807723aced240`.
+- Added optional `TIINGO` source to the ETF research runner. It uses adjusted OHLCV fields, reads credentials only from `TIINGO_API_TOKEN`, and enforces the same minimum requested-history, weekday coverage, gap and staleness gates. No automatic fallback or source splicing.
+- Added workflow dispatch option TIINGO and secure GitHub secret mapping. Default research source remains unchanged.
+- Fixed a second source-of-truth bug: the v0.4 report metadata claimed Yahoo `repair=True` even though the actual fetch call was `repair=False`. The metadata now reports the actual setting and has a regression test.
+- PR CI run `42954001467`: offline self-test and all 19 equity research tests passed. Live provider research was skipped on pull_request as designed.
+- Post-merge push run `42954130155` triggered the standard Yahoo 10-year research (not Tiingo). At the time of this handoff update it remained in progress; inspect its final conclusion/artifact before recording a result.
+- Post-merge runtime/accounting workflow `42954130244` passed all 166 offline tests, including the new fill reconciliation suite.
+- No Tiingo token was supplied/configured, no paid subscription was purchased, and no real Tiingo API request was made. A real 10-year Tiingo validation requires an eligible plan/token configured privately by the user; the free Starter plan's stated 5-year limit cannot satisfy the 10-year gate.
+- No strategy approval, Paper approval or order enablement changed.
+
+**Next actions after PR #106**
+1. Review the post-merge Yahoo research run `42954130155`; it should reproduce the corrected provider metadata and the previous research family result without changing hypotheses.
+2. If a Tiingo token becomes available, run a 10-year Tiingo research/cross-source parity audit and compare Yahoo/Tiingo/IEX on common sessions; no vendor subscription or expense without separate user approval.
+3. Continue broker activity reconciliation monitoring after persistent Paper deployment; no host deployment evidence yet.
+4. Investigate the adjusted-return cumulative divergence between Yahoo and IEX; high daily-return correlation alone is insufficient.
+5. Keep all strategies unapproved until corrected OOS, multiple-testing, empirical costs and Paper acceptance gates pass.
+
+**Progress remains 46%.** The Tiingo adapter and metadata fix improve research source optionality and audit truth, but the adapter has only mocked tests and no live Tiingo evidence; no strategy edge or persistent Paper operation has been established.
