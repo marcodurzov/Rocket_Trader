@@ -23,6 +23,7 @@ from typing import Any, Dict, Optional
 
 from rocket_trader_core import ExecutionMode, Side
 from rocket_trader_execution_event_ledger import ExecutionEventLedger
+from rocket_trader_alpaca_activity_reconciliation import AlpacaAccountActivityReader
 
 
 class CryptoPaperExecutionError(RuntimeError):
@@ -523,13 +524,67 @@ class AlpacaCryptoPaperExecutionAdapter:
         self._persist(client_order_id, refreshed["status"], refreshed)
         return {"found": True, "mode": "PAPER", "cancel_requested": True, **refreshed}
 
-    def reconcile(self, client_order_id: str) -> Dict[str, Any]:
+    def reconcile_order_activities(self, client_order_id: str) -> Dict[str, Any]:
+        """Reconcile an order snapshot against individual broker FILL activities."""
         broker_order = self._lookup(client_order_id)
         if broker_order is None:
             return {"found": False, "client_order_id": client_order_id}
         broker = self._snapshot(broker_order)
+        if not broker.get("order_id"):
+            raise CryptoPaperExecutionError(
+                "Broker order snapshot is missing its order ID; fill reconciliation is blocked."
+            )
         self._persist(client_order_id, broker["status"], broker)
-        return {"found": True, "mode": "PAPER", **broker}
+        try:
+            activity_result = AlpacaAccountActivityReader(
+                self.client, self.event_ledger
+            ).reconcile_order_fills(
+                client_order_id=client_order_id,
+                broker_order_id=broker["order_id"],
+                expected_symbol=broker["symbol"],
+                expected_side=broker["side"],
+                expected_filled_qty=broker["filled_qty"],
+            )
+        except Exception as exc:
+            raise CryptoPaperExecutionError(
+                "Broker order snapshot retrieved, but individual fill activity reconciliation failed."
+            ) from exc
+        self._record_event(
+            client_order_id,
+            "ORDER_FILL_RECONCILIATION",
+            {
+                "broker_order_id": broker["order_id"],
+                "expected_filled_qty": activity_result["expected_filled_qty"],
+                "activity_filled_qty": activity_result["activity_filled_qty"],
+                "fill_count": activity_result["fill_count"],
+                "reconciliation_status": activity_result["reconciliation_status"],
+            },
+        )
+        return {
+            "found": True,
+            "mode": "PAPER",
+            **broker,
+            "activity_reconciliation": activity_result,
+        }
+
+    def reconcile(self, client_order_id: str) -> Dict[str, Any]:
+        """Read-only broker order + individual fill-activity reconciliation."""
+        return self.reconcile_order_activities(client_order_id)
+
+    def collect_crypto_fee_activities(
+        self, *, symbol: str, after: str, until: str, page_size: int = 100
+    ) -> Dict[str, Any]:
+        """Collect fee activities as unallocated account-level evidence."""
+        try:
+            return AlpacaAccountActivityReader(
+                self.client, self.event_ledger
+            ).collect_crypto_fee_candidates(
+                symbol=symbol, after=after, until=until, page_size=page_size
+            )
+        except Exception as exc:
+            raise CryptoPaperExecutionError(
+                "Crypto fee activity collection failed; fees remain unreconciled."
+            ) from exc
 
     def reconcile_positions(self) -> Dict[str, Any]:
         """Read-only broker snapshot; broker holdings remain authoritative."""

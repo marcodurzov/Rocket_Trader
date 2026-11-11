@@ -28,6 +28,8 @@ class FakeCryptoClient:
         self.submit_count = 0
         self.fail_after_accept = False
         self.cancel_count = 0
+        self.activities = []
+        self.activity_calls = []
 
     def get_account(self):
         return SimpleNamespace(
@@ -60,6 +62,24 @@ class FakeCryptoClient:
         if client_id not in self.orders:
             raise NotFound()
         return self.orders[client_id]
+
+    def get(self, path, params):
+        self.activity_calls.append((path, dict(params)))
+        if path != "/account/activities":
+            raise AssertionError("unexpected activity endpoint")
+        types = set(str(params.get("activity_types", "")).split(","))
+        rows = [
+            item for item in self.activities
+            if item.get("activity_type") in types
+            and (
+                params.get("order_id") is None
+                or item.get("order_id") == params.get("order_id")
+            )
+        ]
+        token = params.get("page_token")
+        if token is not None:
+            return []
+        return rows[: int(params.get("page_size", 100))]
 
     def submit_order(self, order_data):
         self.submit_count += 1
@@ -479,6 +499,69 @@ class CryptoPaperExecutionTests(unittest.TestCase):
                 db_path=self.db, client=self.client, event_ledger=UnverifiableLedger()
             )
         self.assertEqual(self.client.submit_count, 0)
+
+
+    def test_adapter_reconcile_ingests_individual_fills(self):
+        self.adapter.submit(self.buy())
+        self.client.activities = [{
+            "id": "adapter-fill-1",
+            "activity_type": "FILL",
+            "order_id": "crypto-broker-1",
+            "order_status": "filled",
+            "type": "fill",
+            "symbol": "BTC/USD",
+            "side": "buy",
+            "qty": "0.0001",
+            "price": "50000",
+            "cum_qty": "0.0001",
+            "leaves_qty": "0",
+            "transaction_time": "2026-11-11T12:00:00Z",
+        }]
+        result = self.adapter.reconcile("crypto-buy-001")
+        self.assertEqual(result["activity_reconciliation"]["reconciliation_status"], "MATCHED")
+        self.assertEqual(result["activity_reconciliation"]["fill_count"], 1)
+        events = self.adapter.order_events("crypto-buy-001")
+        self.assertIn("BROKER_FILL_ACTIVITY", [event["event_type"] for event in events])
+        self.assertIn("ORDER_FILL_RECONCILIATION", [event["event_type"] for event in events])
+
+    def test_adapter_reconcile_reports_missing_fill_activity_as_incomplete(self):
+        self.adapter.submit(self.buy())
+        result = self.adapter.reconcile("crypto-buy-001")
+        self.assertEqual(
+            result["activity_reconciliation"]["reconciliation_status"],
+            "INCOMPLETE_ACTIVITY_HISTORY",
+        )
+        self.assertFalse(result["activity_reconciliation"]["quantity_match"])
+
+    def test_adapter_collects_crypto_fees_without_assigning_to_order(self):
+        self.client.activities = [{
+            "id": "adapter-fee-1",
+            "activity_type": "CFEE",
+            "symbol": "BTC/USD",
+            "net_amount": "-0.000000334",
+            "currency": "BTC",
+            "qty": "0.0001",
+            "created_at": "2026-11-12T00:00:00Z",
+            "date": "2026-11-11T00:00:00Z",
+        }]
+        result = self.adapter.collect_crypto_fee_activities(
+            symbol="BTC/USD",
+            after="2026-11-11T00:00:00Z",
+            until="2026-11-13T00:00:00Z",
+        )
+        self.assertEqual(result["fee_activity_count"], 1)
+        self.assertEqual(result["allocation_status"], "UNALLOCATED")
+        self.assertEqual(
+            self.adapter.event_ledger.list_events(aggregate_id="account-crypto-fees")[0]["event_type"],
+            "CRYPTO_FEE_ACTIVITY_UNALLOCATED",
+        )
+
+    def test_adapter_reconcile_fails_closed_when_activity_api_is_unavailable(self):
+        self.adapter.submit(self.buy())
+        self.client.get = lambda path, params: (_ for _ in ()).throw(TimeoutError("offline"))
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "activity reconciliation failed"):
+            self.adapter.reconcile("crypto-buy-001")
+        self.assertEqual(self.client.submit_count, 1)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
