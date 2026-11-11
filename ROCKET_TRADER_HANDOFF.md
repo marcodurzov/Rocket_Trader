@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `6a2cfd760d707da9eb8a1ba1f640e8db834a9aab`  
+**Latest audited code baseline SHA:** `6ac4caa90de52ad1d1faefedbe301997b2360480`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -407,3 +407,35 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - No Tiingo source evidence, no empirical cost validation, no strategy approval, no Paper deployment evidence and no orders.
 
 **Current next best research action:** investigate per-symbol corporate-action/adjustment divergence (especially SPY, QQQ and TLT) using vendor corporate-action records and event-level normalized prices. Do not choose one provider as truth or splice price series until a documented reconciliation exists.
+
+
+### PR #113 — date-level adjustment divergence diagnostics
+- Merge commit: `6ac4caa90de52ad1d1faefedbe301997b2360480`.
+- Adds the ten largest absolute daily-return divergences per symbol with exact session date, Yahoo return, Alpaca return and signed Alpaca-minus-Yahoo bps.
+- Adds the ten largest normalized adjusted-close path divergences, anchored at the first common session.
+- Regression test simulates an adjustment step and verifies the exact session is surfaced. PR CI `42955368774`: all 10 cross-check tests passed; live audit skipped on pull_request by design.
+- These dates are diagnostic leads only. No corporate-action attribution, automatic correction, source preference or series splicing is performed.
+- Post-merge live audit `42955455037` completed successfully; artifact `13826901809`. Paper runtime suite `42955454994` also passed. The exact outlier dates are now recorded below.
+- Current best investigation focus based on prior run: SPY (+218.90 bps cumulative Alpaca-minus-Yahoo divergence), QQQ (+89.98 bps), TLT (+26.01 bps). No Tiingo token; no Tiingo data has been fetched.
+
+**Progress remains 46%.** This improves diagnostics and reproducibility; it does not resolve the source discrepancy or create strategy edge.
+
+
+### PR #113 — post-merge date-level findings
+- Live audit `42955455037` completed; artifact `13826901809`. 10 cross-check tests passed. Tiingo was not requested because no secret was configured.
+- Top daily-return outliers:
+  - QQQ: 2024-12-24 +99.4639 bps (Alpaca minus Yahoo); 2024-12-23 -96.2569 bps.
+  - SPY: 2025-04-09 -116.6651 bps; 2025-04-10 +100.7796 bps.
+  - EEM: 2024-12-24 +52.1426 bps.
+  - DIA: 2024-12-23 -71.4228 bps.
+  - EFA: 2024-12-23 -77.8464 bps.
+  - TLT: 2026-11-02 +39.8171 bps.
+  - GLD: 2021-06-21 -31.5042 bps.
+  - IWM: 2026-06-26 -70.3638 bps.
+- QQQ has a documented ex-dividend date on 2024-12-23, with a distribution of $0.83466/share (about 0.16% of the contemporaneous price): https://app.tiingo.com/qqq/dividends. This is a plausible event to inspect, but the distribution amount alone does not explain the roughly 96–99 bps opposite-signed differences across 23–24 December. Do not attribute causality yet.
+- SPY's largest discrepancies occur 2025-04-09/10; its documented 2025 Q1 ex-date was 2025-03-21 ($1.6955), not either outlier date: https://learn.snapstock.app/stocks/SPY/. That makes a simple same-day SPY dividend explanation unlikely; inspect source bars and event/corporate-action timestamps before concluding.
+- The paired sign reversal across consecutive dates for QQQ and SPY is consistent with a possible adjustment timing/mapping issue, but is not proof. Need inspect unadjusted OHLC, adjusted close, distribution factors and raw provider timestamps for the two sessions around each event.
+- Cumulative-return differences remain SPY +218.9083 bps, QQQ +89.9769 bps, TLT +26.0188 bps; 0/8 symbols pass the 95% full-period source coverage gate. Daily correlation remains high and is not sufficient for source acceptance.
+- Runtime suite `42955454994` passed all modules. CI does not establish actual Paper host operation.
+
+**Immediate next action:** extend the audit to capture the raw/unadjusted close, adjusted close and per-session adjustment factor around each flagged date; add a separate corporate-action/event comparison when provider APIs expose records. Do not normalize away discrepancies or change research source until reconciled.
