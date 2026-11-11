@@ -109,13 +109,20 @@ class DurableActivitySSEInbox:
 
     GENESIS_HASH = "0" * 64
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, *, initialize: bool = True) -> None:
         if not isinstance(db_path, str) or not db_path.strip():
             raise ActivitySSEConsumerError("A persistent SQLite path is required.")
-        self.db_path = str(db_path)
-        Path(self.db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
+        path = Path(db_path).expanduser()
+        self.db_path = str(path)
+        if initialize:
+            path.resolve().parent.mkdir(parents=True, exist_ok=True)
+        elif not path.is_file():
+            raise ActivitySSEConsumerError(
+                "Read-only healthcheck requires an existing inbox database; it will not create one."
+            )
         self._lock = threading.RLock()
-        self._initialize()
+        if initialize:
+            self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
@@ -318,6 +325,11 @@ class DurableActivitySSEInbox:
             latest_delivery_row = conn.execute(
                 "SELECT event_id FROM activity_sse_deliveries ORDER BY rowid DESC LIMIT 1"
             ).fetchone()
+            append_only_triggers = {
+                str(row["name"]) for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger'"
+                ).fetchall()
+            }
         previous_hash = self.GENESIS_HASH
         expected_sequence = 1
         for row in rows:
@@ -348,8 +360,14 @@ class DurableActivitySSEInbox:
         orphan_previous = sum(
             1 for row in rows if row["previous_id"] and row["previous_id"] not in refs
         )
+        required_triggers = {
+            "activity_sse_events_no_update", "activity_sse_events_no_delete",
+            "activity_sse_deliveries_no_update", "activity_sse_deliveries_no_delete",
+        }
+        missing_triggers = sorted(required_triggers - append_only_triggers)
         integrity_valid = (
-            delivery_mismatches == 0
+            not missing_triggers
+            and delivery_mismatches == 0
             and cursor_is_latest
             and (cursor is None or cursor in delivery_ids)
             and delivery_refs.issubset(refs)
@@ -359,6 +377,7 @@ class DurableActivitySSEInbox:
             "cursor": cursor, "cursor_has_delivery": cursor in delivery_ids if cursor else False,
             "cursor_is_latest_delivery": cursor_is_latest,
             "delivery_payload_mismatch_count": delivery_mismatches,
+            "missing_append_only_triggers": missing_triggers,
             "orphan_previous_id_count": orphan_previous,
             "unreferenced_delivery_count": len(delivery_refs - refs),
             "reason": None if integrity_valid else "delivery_or_cursor_integrity_failure",
@@ -488,11 +507,18 @@ def main() -> int:
     parser.add_argument("--healthcheck", action="store_true",
                         help="Verify the durable inbox hash chain and cursor without contacting Alpaca.")
     args = parser.parse_args()
-    inbox = DurableActivitySSEInbox(args.db)
     if args.healthcheck:
-        report = inbox.verify()
+        try:
+            inbox = DurableActivitySSEInbox(args.db, initialize=False)
+            report = inbox.verify()
+        except (ActivitySSEConsumerError, sqlite3.Error, ValueError) as exc:
+            print(json.dumps({
+                "mode": "PAPER", "health": {"valid": False, "error_type": type(exc).__name__}
+            }, sort_keys=True))
+            return 1
         print(json.dumps({"mode": "PAPER", "health": report}, sort_keys=True))
         return 0 if report.get("valid") else 1
+    inbox = DurableActivitySSEInbox(args.db)
     if not args.bootstrap_since:
         parser.error("--bootstrap-since or ACTIVITY_SSE_BOOTSTRAP_SINCE is required")
     consumer = AlpacaPaperActivitySSEConsumer(inbox=inbox, bootstrap_since=args.bootstrap_since)
