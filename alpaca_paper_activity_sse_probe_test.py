@@ -102,7 +102,7 @@ class PaperActivitySSEProbeTests(unittest.TestCase):
             until="2026-11-11T06:00:00Z",
         )
         self.assertEqual(report["orphan_previous_id_count"], 1)
-        self.assertEqual(report["status"], "CRYPTO_EVENTS_FOUND")
+        self.assertEqual(report["status"], "INCOMPLETE")
 
     def test_duplicate_ref_ids_and_non_monotonic_event_ids_are_reported(self):
         events = [
