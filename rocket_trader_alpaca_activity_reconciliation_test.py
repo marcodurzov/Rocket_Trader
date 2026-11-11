@@ -319,9 +319,12 @@ class AlpacaActivityReconciliationTests(unittest.TestCase):
         result = self.reader({None: [fee]}).collect_crypto_fee_candidates(
             symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
         )
-        self.assertEqual(result["fee_activity_count"], 1)
+        self.assertEqual(result["fee_activity_count"], 0)
         self.assertEqual(result["incomplete_activity_count"], 1)
-        self.assertEqual(result["fee_activities"][0]["record_status"], "INCOMPLETE_FIELDS")
+        self.assertEqual(result["window_unverified_activity_count"], 1)
+        events = self.ledger.list_events(aggregate_id="account-crypto-fees")
+        self.assertEqual(events[0]["event_type"], "CRYPTO_FEE_ACTIVITY_WINDOW_UNVERIFIED")
+        self.assertEqual(events[0]["payload"]["record_status"], "INCOMPLETE_FIELDS")
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
