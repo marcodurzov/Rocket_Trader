@@ -2,13 +2,18 @@
 # -*- coding: utf-8 -*-
 """Offline tests for the fail-closed Paper crypto execution startup gate."""
 
+import os
+import sqlite3
+import tempfile
 import unittest
-from unittest.mock import Mock
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 from rocket_trader_paper_crypto_execution_service import (
     PaperCryptoExecutionService,
     PaperExecutionStartupError,
 )
+import rocket_trader_crypto_paper_execution as execution_adapter
 
 
 def successful_recovery():
@@ -123,6 +128,70 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
         self.adapter.submit.assert_not_called()
         with self.assertRaises(PaperExecutionStartupError):
             self.service.start()
+
+    def test_factory_requires_existing_durable_journal_and_event_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = str(Path(tmp) / "execution.sqlite3")
+            events = str(Path(tmp) / "events.sqlite3")
+            os.environ["ALPACA_PAPER"] = "true"
+            os.environ["ALPACA_LIVE_ENABLED"] = "false"
+            try:
+                with self.assertRaisesRegex(PaperExecutionStartupError, "Existing durable"):
+                    PaperCryptoExecutionService.from_existing_storage(
+                        db_path=db, event_ledger_path=events, client=object()
+                    )
+                with sqlite3.connect(db) as conn:
+                    conn.execute(
+                        "CREATE TABLE crypto_paper_order_journal (client_order_id TEXT PRIMARY KEY)"
+                    )
+                with self.assertRaisesRegex(PaperExecutionStartupError, "Existing durable"):
+                    PaperCryptoExecutionService.from_existing_storage(
+                        db_path=db, event_ledger_path=events, client=object()
+                    )
+                Path(events).touch()
+                fake_adapter = Mock()
+                with patch.object(
+                    execution_adapter, "AlpacaCryptoPaperExecutionAdapter",
+                    return_value=fake_adapter,
+                ) as adapter_factory:
+                    service = PaperCryptoExecutionService.from_existing_storage(
+                        db_path=db, event_ledger_path=events, client=object()
+                    )
+                adapter_factory.assert_called_once()
+                self.assertIs(service.adapter, fake_adapter)
+            finally:
+                os.environ.pop("ALPACA_PAPER", None)
+                os.environ.pop("ALPACA_LIVE_ENABLED", None)
+
+    def test_factory_rejects_live_and_non_paper_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = str(Path(tmp) / "execution.sqlite3")
+            events = str(Path(tmp) / "events.sqlite3")
+            with sqlite3.connect(db) as conn:
+                conn.execute(
+                    "CREATE TABLE crypto_paper_order_journal (client_order_id TEXT PRIMARY KEY)"
+                )
+            Path(events).touch()
+            os.environ["ALPACA_PAPER"] = "true"
+            os.environ["ALPACA_LIVE_ENABLED"] = "true"
+            try:
+                with patch.object(execution_adapter, "AlpacaCryptoPaperExecutionAdapter") as factory:
+                    with self.assertRaisesRegex(PaperExecutionStartupError, "LIVE"):
+                        PaperCryptoExecutionService.from_existing_storage(
+                            db_path=db, event_ledger_path=events, client=object()
+                        )
+                    factory.assert_not_called()
+                os.environ["ALPACA_LIVE_ENABLED"] = "false"
+                os.environ["ALPACA_PAPER"] = "false"
+                with patch.object(execution_adapter, "AlpacaCryptoPaperExecutionAdapter") as factory:
+                    with self.assertRaisesRegex(PaperExecutionStartupError, "ALPACA_PAPER"):
+                        PaperCryptoExecutionService.from_existing_storage(
+                            db_path=db, event_ledger_path=events, client=object()
+                        )
+                    factory.assert_not_called()
+            finally:
+                os.environ.pop("ALPACA_PAPER", None)
+                os.environ.pop("ALPACA_LIVE_ENABLED", None)
 
     def test_start_is_idempotent_while_ready(self):
         first = self.service.start()
