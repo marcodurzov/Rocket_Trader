@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main SHA at this handoff update:** `81be6e8e1fea127641b760a469ede4f7a56cdff9`  
+**Latest main SHA at this handoff update:** `e265cc92a0eb931031151d963e1d320ced990cf7`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -124,7 +124,7 @@ The previous PR #94/#95 baseline was `a6f1b92136c041af0084bf28d7e686df0d444725`.
 - Log/report proved the executed code still passed `repair=True`, contradicting earlier documentation that claimed `repair=False`. Artifact ID **13812205814** reports zero symbols compared. Do not treat it as historical validation.
 - PR #96 merged as `d001fc3f3661b1cae39de535c52b235975f164ae`: adds this handoff, updates README/status, changes Yahoo history to `repair=False`, and adds a regression test that asserts this provider parameter.
 - PR #96 offline CI run **42922818287** succeeded: compile and all 6 tests passed. The live comparison step was correctly skipped for `pull_request` events.
-- Post-merge live comparison run **42922974687** was triggered by the push to main and was **queued** at the time of this update. Its result is pending; do not treat the fix as live-data-validated until the run completes and its artifact is inspected.
+- Post-merge live comparison run **42922974687** completed successfully as a retrieval/report job and uploaded artifact **13812508089**. All eight ETFs were retrieved, but **0/8 passed** the full ten-year coverage diagnostic: Yahoo returned 2,512 sessions, IEX 1,582, and common overlap was 1,581 sessions (2020-07-27 to 2026-11-09). Yahoo coverage relative to its own full series was 62.94%; IEX coverage was 99.94%. Correlations were 0.99835–0.99975 and p95 absolute daily return differences 4.69–9.97 bps, but cumulative return differences ranged from 1.3 bps DIA to 220.5 bps SPY. The job's success means retrieval/report generation passed, not the diagnostic gates. Candidate promotion, Paper approval and orders remain false.
 
 ## 7. Next actions — ordered
 
@@ -243,3 +243,10 @@ Never overwrite the historical truth. Correct stale summaries by explicitly noti
 6. Preserve the existing negative research results; pre-register new hypotheses and do not rerun the same family/holdout as if it were new.
 
 **Progress estimate remains 46%.** The timestamp bug fix and expanded tests materially improve data integrity, but no new strategy edge, empirical costs or deployed forward evidence has been demonstrated.
+
+
+### PR #101 — handoff synchronization after PR #100
+- Merge commit: `e265cc92a0eb931031151d963e1d320ced990cf7`.
+- Synchronized the canonical handoff and project status with the PR #100 timestamp-alignment fix and its CI evidence.
+- The main SHA in this document now reflects PR #101.
+- Documentation-only; progress remains 46%.
