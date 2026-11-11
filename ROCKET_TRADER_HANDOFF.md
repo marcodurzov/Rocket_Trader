@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PR #138 merged; adaptive strategy and event-evidence requirements reaffirmed)  
+**Last updated:** 2026-11-11 (PR #139 merged; 24-family research registry, experiment ledger and gated Paper smoke)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `bf8226b647c2caa1d80d9bf4f3e995fb6897d68e` (documentation-only follow-up; runtime code baseline unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `f22886f089be444a155f44042eff4cc4e267c591` (PR #139 merged; runtime strategy code baseline unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -786,3 +786,40 @@ Added `research/experiment_ledger_schema_v1.json` to require immutable experimen
 Added `research/strategy_experiment_matrix_v1.json` with nine ordered tranches: corrected baselines; trend/breakout; mean reversion; pairs; allocation/risk overlays; calendar/events; intraday/execution; ML; Paper operational validation. The matrix proposes conservative pre-review Paper caps (USD 100/order, USD 500 gross exposure, USD 25 daily loss, max 3 positions) as a starting safety envelope only; these are not applied to the account and require runtime implementation/verification before any Paper order.
 
 The registry validator now requires structured evidence metadata and explicitly tests that pairs remain research-only and no strategy is automatically Paper-approved. PR/CI outcomes will be recorded after validation; no test result is claimed yet.
+
+
+## 2026-11-11 — PR #139 merged: strategy registry, evidence ledger, Paper smoke gate
+
+PR #139 merged into main by squash:
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/139
+- Merge commit: `f22886f089be444a155f44042eff4cc4e267c591`
+- PR head validated: `40b6f42a914a400a1dcd15b57562836a7a836350`
+- GitHub Actions `Rocket Trader - Reference Strategy Registry Tests`: **success** on the PR head (run 42960077443); compile and registry validation steps passed.
+- Main after merge: `f22886f089be444a155f44042eff4cc4e267c591`. This PR was research metadata, tests and workflow safety; it did not implement adaptive strategy rotation or change the live runtime strategy code. Progress remains **46%** (engineering/evidence maturity, not profitability).
+
+The registry now contains **24** sourced strategy/reference entries with standardized metadata: strategy family, regimes, horizon, inputs, entry/exit/sizing, execution assumptions, failure modes, evidence grade and test protocol. Added RSI/Bollinger mean reversion, pairs/cointegration and pairs decomposition, volatility management, seasonality, earnings drift, value/quality/low-volatility, 52-week high, intraday reversal, opening-range breakout, event sentiment, risk parity, ML/meta-labeling, RL and execution-only VWAP/TWAP. This is a practical taxonomy, not a claim of exhaustive knowledge.
+
+New files:
+- `research/experiment_ledger_schema_v1.json`: immutable experiment record schema with code SHA, data fingerprint, point-in-time rules, chronological splits, costs, benchmarks, multiple-testing family, confidence intervals, p-values, decision and optional Paper fills/reconciliation.
+- `research/strategy_experiment_matrix_v1.json`: nine ordered research tranches and Paper safety envelope.
+- Registry validator now requires structured evidence metadata, tests pair-trading research-only status, checks the ledger schema/matrix and asserts no strategy is automatically Paper-approved.
+
+Paper authorization clarified:
+- User explicitly authorized Alpaca **Paper** testing and reports approximately USD 100,000 simulated account equity.
+- That figure is not an approved risk budget. The experiment matrix records proposed pre-review caps only: USD 100 per order, USD 500 gross exposure, USD 25 daily loss, maximum 3 open positions, with zero default strategy allocation. These are not account settings and have not been applied.
+- The crypto Paper smoke workflow was changed from branch-push-triggered order submission to a manual `workflow_dispatch` with a required boolean `allow_paper_orders` defaulting to false. Read-only connection, cash-only/no-short preflight and asset-permission checks run first. Only when manually set true does it run the fixed USD 10 BTC/USD buy-and-close smoke test.
+- **The manual Paper workflow has not been dispatched from this environment. No Paper orders are claimed as submitted by this work.** The GitHub connector available here can read workflows/runs but cannot dispatch a workflow or access Alpaca credentials. User credentials must remain in GitHub Actions secrets; never paste them into chat.
+- Current Paper smoke uses a temporary idempotency journal, appropriate only for a single bounded smoke run; it is not a substitute for the persistent runtime journal. It must not be used as a strategy-performance test.
+
+Pairs trading:
+- Standard pairs strategies require long and short legs. Current cash-only/no-short constraints mean pair hypotheses may be tested offline in a simulated long/short backtest only, including borrow, spread, legging and financing assumptions.
+- No pair orders can be sent to this Paper account unless a separately reviewed account-policy change is explicitly authorized. No such change is made here.
+- Do not change account settings automatically to enable shorts, margin or options.
+
+Next actions:
+1. Implement and test a dedicated pairs/cointegration research harness on synchronized, adjusted data, with rolling hedge ratios, stationarity checks, train-only pair selection, entry/exit/stop/time stop, next-open fills, borrow/fees/spread/legging costs and strict OOS splits.
+2. Validate the experiment-ledger schema and add append-only experiment run artifacts with dataset/code hashes.
+3. Run the manual read-only Alpaca Paper preflight; inspect exact account status, cash-only settings, crypto permissions and current positions before any order smoke.
+4. Only then run the explicit capped USD 10 Paper smoke test if preflight passes and no conflicting BTC position exists. Record broker order IDs, fills, fees, residual position and reconciliation.
+5. Build offline strategy hypotheses in pre-registered tranches. Keep Paper for operational validation after an offline pre-screen, not for searching parameters or manufacturing statistical significance.
+6. Re-run full runtime and subsystem tests on the post-merge main SHA; the PR registry workflow success is not evidence that the whole runtime passed.
