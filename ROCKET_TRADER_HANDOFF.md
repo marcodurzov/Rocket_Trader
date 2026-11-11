@@ -1180,7 +1180,7 @@ Next actions:
 ### PR #179 merged
 
 - PR #179 merged at main commit `31923c5b6d8e57e1525ad5e3d3d6500df4a74e34`.
-- The ETF cross-check now accepts only Alpaca IEX. SIP is rejected in code before a market-data request; the workflow no longer offers SIP.
+- PR #179 initially restricted research to IEX under the assumption that SIP required a paid plan. That restriction is superseded by the historical-SIP correction below: Alpaca Basic permits SIP for historical requests whose `end` is at least 15 minutes old.
 - Equity research v0.1–v0.4 now reject SIP in code and CLI. Their GitHub Actions workflows no longer offer SIP.
 - Public equity research v0.4 no longer offers Tiingo as a primary source and no longer receives `TIINGO_API_TOKEN`.
 - The public ETF cross-check workflow does not inject Tiingo credentials and does not opt in. Its optional Tiingo comparison is disabled unless a local/programmatic caller explicitly sets `include_tiingo` and supplies a token; the zero-cost Starter comparison is limited to five years. No Tiingo account was created and no Tiingo request was made.
@@ -1227,4 +1227,19 @@ The artifact from run `43080158893` shows:
 - Financial Modeling Prep Basic advertises $0 and 250 calls/day, with a free-use limit of five years of stock history, but its Personal Use license is narrowly non-business/non-commercial. Its Terms prohibit use on behalf of an entity, sharing/integrating data into tools accessible to third parties, and copying/downloading content without prior written approval. Do not wire FMP into Rocket Trader's public repository/workflows or cache its data unless FMP confirms in writing that this specific private personal automated-trading use and storage are permitted. Sources: https://site.financialmodelingprep.com/how-to/how-to-create-a-financial-modeling-prep-account and https://site.financialmodelingprep.com/developer/docs/terms-of-service
 - FMP is therefore not automatically accepted just because its plan is free. Price is only one gate; licensing and intended use must also pass.
 - Continue using Alpaca IEX for the authorized Paper connection and bounded current/history checks, while keeping Yahoo research data segregated and labeled. Do not silently stitch providers or treat Yahoo as an exchange-licensed execution feed.
+
+## 2026-11-11 — Correct zero-budget Alpaca market-data policy: free historical SIP
+
+A review of the current official Alpaca documentation found that the prior blanket SIP block was incorrect.
+
+- Alpaca Basic costs **USD 0/month**. The official Market Data FAQ explicitly states that historical SIP requests are allowed without a paid subscription when the request's `end` parameter is at least 15 minutes old. Recent SIP trades/quotes/bars and the SIP live stream still require Algo Trader Plus. Sources: https://docs.alpaca.markets/us/docs/market-data-faq and https://docs.alpaca.markets/us/v1.1/docs/about-market-data-api
+- Alpaca's own support representative states IEX daily bars are only available from 2020, while SIP historical bars are available from 2016. This explains the earlier observed IEX start dates and the 10-year history gap; it was not an unexplained 37% missing-bar rate. Source: https://forum.alpaca.markets/t/cannot-get-historical-bar-data-before-2020/12415
+- The correct zero-budget policy is therefore:
+  - **Historical equity research/audits:** use SIP by default, but enforce request end at least 15 minutes before current time. The implementation chooses UTC midnight for the latest date safely older than the cutoff, which also avoids including an incomplete current daily candle.
+  - **Recent/live market data:** IEX only on the free Basic plan. Do not use SIP for the latest 15 minutes or for live SIP streaming.
+  - **No paid subscription:** do not enable Algo Trader Plus or any other paid data tier without explicit user approval.
+- Updated the ETF cross-check and equity research v0.1–v0.4 to allow SIP only with a timezone-aware historical end that passes the 15-minute rule. The CLI/workflow default is now SIP for historical research; IEX remains selectable for recent/live-compatible checks. Equity research v0.2–v0.4 now defaults its source to Alpaca rather than Yahoo, with Yahoo retained as the independent comparison source.
+- The cross-check now sets its historical data end to the safe UTC date boundary before requesting Yahoo/Alpaca daily prices; corporate-action lookup retains the current timestamp and is read-only.
+- The scheduled market-data entitlement probe remains intentionally IEX-only because it is a current/live-feed health check, not a historical SIP entitlement test.
+- **Not yet proven for this Paper credential set:** a post-merge read-only SIP historical request must return bars from before 2020, ideally for SPY and the full ETF universe. The implementation must not be described as validated until that workflow succeeds. If Alpaca returns an entitlement error, preserve the logs and revert to IEX-only; do not upgrade or pay.
 
