@@ -562,3 +562,14 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Opposite-signed adjacent-session outliers could indicate timing/adjustment mapping, but not proven.
 - Cumulative divergences: SPY +218.91 bps, QQQ +89.98 bps, TLT +26.02 bps. 0/8 pass full-period coverage due IEX 6.3-year limit. No Tiingo token configured.
 - Runtime suite `42955454994` passed. Progress remains 46%.
+
+
+---
+
+## 2026-11-11 — PR #115 raw/adjusted factor reconciliation
+- PR #115 merged: https://github.com/marcodurzov/Rocket_Trader/pull/115
+- Main SHA: `60059a41379b274ae16a8b20426bbcf96178ae7`.
+- Added Yahoo raw/adjusted close and Alpaca RAW/ALL bar comparison; calculates adjustment factors, factor step changes, and separate raw-price divergence.
+- PR CI run `42955793577`: all 12 cross-check tests passed. Live data step skipped on PR.
+- No post-merge live workflow run yet surfaced for merge SHA; pending verification.
+- No attribution or data correction, no Tiingo token, no strategy approvals or orders. Progress remains 46%.
