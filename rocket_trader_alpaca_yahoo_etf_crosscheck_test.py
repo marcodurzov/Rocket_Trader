@@ -114,7 +114,8 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             min_common_sessions=3,
             min_source_coverage=0.95,
         )
-        self.assertEqual(result["history_window_assessment"], "SESSION_GAPS_WITHIN_OVERLAP")
+        self.assertEqual(result["history_window_assessment"], "COMPARABLE_HISTORY_WINDOWS")
+        self.assertEqual(result["overlap_session_assessment"], "SESSION_GAPS_WITHIN_OVERLAP")
         self.assertFalse(result["diagnostic_gates"]["minimum_overlap_session_completeness"])
 
     def test_close_series_rejects_nonpositive_or_invalid_data(self):
