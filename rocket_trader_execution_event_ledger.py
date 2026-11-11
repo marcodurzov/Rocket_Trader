@@ -13,7 +13,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Optional
 
 
 class ExecutionLedgerError(RuntimeError):
@@ -169,7 +169,10 @@ class ExecutionEventLedger:
             raise ExecutionLedgerError("payload must be a JSON object.")
         _reject_credentials(payload)
         payload_json = _canonical_json(payload)
-        timestamp = _normalize_timestamp(occurred_at)
+        # Keep an omitted timestamp distinguishable from an explicit one. This
+        # lets a retry with the same event_id/payload remain idempotent even
+        # though the first attempt generated its own ingestion timestamp.
+        timestamp = None if occurred_at is None else _normalize_timestamp(occurred_at)
 
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -180,7 +183,7 @@ class ExecutionEventLedger:
                 same_event = (
                     existing["aggregate_id"] == aggregate_id
                     and existing["event_type"] == event_type
-                    and existing["occurred_at"] == timestamp
+                    and (timestamp is None or existing["occurred_at"] == timestamp)
                     and existing["payload_json"] == payload_json
                 )
                 if not same_event:
@@ -191,6 +194,9 @@ class ExecutionEventLedger:
                 result["payload"] = json.loads(result.pop("payload_json"))
                 result["duplicate_prevented"] = True
                 return result
+
+            if timestamp is None:
+                timestamp = _normalize_timestamp(None)
 
             previous = connection.execute(
                 "SELECT sequence, event_hash FROM execution_events "
