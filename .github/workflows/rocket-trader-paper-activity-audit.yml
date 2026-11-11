@@ -82,8 +82,8 @@ jobs:
       AUDIT_ORDERS_UNTIL: ${{ inputs.orders_until }}
       AUDIT_FEES_AFTER: ${{ inputs.fees_after }}
       AUDIT_FEES_UNTIL: ${{ inputs.fees_until }}
-      ROCKET_TRADER_ACTIVITY_REPORT: ${{ runner.temp }}/paper-activity-report.json
-      ROCKET_TRADER_ACTIVITY_AUDIT_DB: ${{ runner.temp }}/paper-activity-evidence.sqlite3
+      ROCKET_TRADER_ACTIVITY_REPORT: paper-activity-report.json
+      ROCKET_TRADER_ACTIVITY_AUDIT_DB: paper-activity-evidence.sqlite3
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -101,7 +101,7 @@ jobs:
         with:
           name: rocket-trader-paper-activity-audit
           path: |
-            ${{ runner.temp }}/paper-activity-report.json
-            ${{ runner.temp }}/paper-activity-evidence.sqlite3
+            paper-activity-report.json
+            paper-activity-evidence.sqlite3
           if-no-files-found: ignore
           retention-days: 14
