@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PR #139 merged; 24-family research registry, experiment ledger and gated Paper smoke)  
+**Last updated:** 2026-11-11 (PR #139; verified Alpaca Paper BTC/USD buy-and-close smoke)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Latest main HEAD before this Handoff refresh:** `55aaac2804be6a00bf9d5c983dd49fe8438f6588` (PR #139 merged; runtime strategy code baseline unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
-**Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Current progress estimate:** **48%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **46%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 46% profitable, nor does it mean a 46% probability of success.
+Current estimate: **48%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 46% profitable, nor does it mean a 46% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
@@ -823,3 +823,33 @@ Next actions:
 4. Only then run the explicit capped USD 10 Paper smoke test if preflight passes and no conflicting BTC position exists. Record broker order IDs, fills, fees, residual position and reconciliation.
 5. Build offline strategy hypotheses in pre-registered tranches. Keep Paper for operational validation after an offline pre-screen, not for searching parameters or manufacturing statistical significance.
 6. Re-run full runtime and subsystem tests on the post-merge main SHA; the PR registry workflow success is not evidence that the whole runtime passed.
+
+
+## 2026-11-11 — Alpaca Paper BTC/USD buy-and-close smoke verified
+
+User manually dispatched workflow run **42962519055** on main SHA `00d4fbaeb301c5189d01190a9c801a2efcbfb36d` with the explicit order gate enabled. GitHub reports overall conclusion **success**. Both jobs succeeded:
+- Read-only Alpaca Paper connection and cash-only preflight (job **130332150112**).
+- USD 10 BTC/USD Paper buy and broker-confirmed close (job **130332285751**).
+
+Execution log evidence:
+- `environment=PAPER`, `symbol=BTC/USD`, `max_buy_notional_usd=10.00`.
+- Buy `filled`; gross filled quantity **0.000133206 BTC**.
+- Broker-reported net position quantity **0.000132872 BTC**.
+- Sell `filled`; sell filled quantity **0.000132872 BTC**.
+- `residual_btc_qty=0`.
+- `paper_buy_orders_submitted=1`, `paper_sell_orders_submitted=1`, `live_orders_submitted=0`.
+- Final result: `BUY_AND_NET_POSITION_EXIT_RECONCILED`.
+
+Preflight in the same run again reported account status ACTIVE, PAPER, USD, cash/equity **99,999.86**, 1x multiplier, shorting disabled, trading not blocked, and no account configuration changes. BTC/USD, ETH/USD and SOL/USD lookups were active/tradable/fractionable. The smoke run itself proves a bounded buy/fill/sell/fill and zero residual broker position for this one run; it does **not** establish representative execution-cost estimates, durable runtime journaling, missed-fill recovery, strategy edge, adaptive runtime integration, deployment, or profitability. The gross-vs-net BTC quantity difference is **0.000000334 BTC**; this log does not identify its exact fee/rounding decomposition, so do not label it a confirmed fee.
+
+This supersedes the earlier statement above that the manual Paper workflow had not been dispatched and no Paper orders had been submitted: that was true before this run and is no longer current. The earlier read-only run **42962344183** remains a separate successful preflight with no orders.
+
+**Progress estimate updated from 46% to 48%** because the first actual bounded Paper order lifecycle has now been broker-confirmed and reconciled to zero residual position. This is a modest operational-evidence milestone only; it is not strategy or profitability validation.
+
+### Next actions
+1. Persist this execution evidence in a durable append-only run artifact/experiment ledger, including workflow/job IDs, commit SHA, quantities, statuses and zero residual; capture broker order IDs, timestamps, prices and fees in a subsequent safe evidence export if the provider exposes them.
+2. Review the smoke adapter's quantity/fee handling and make the net-quantity/fee reconciliation explicit; add tests for partial fills, partial exits, timeout/unknown order state, duplicate dispatch/idempotency and residual positions.
+3. Keep the bounded USD 10 smoke workflow as an operational test only. Do not generalize it to strategy execution or raise its cap.
+4. Continue the offline pairs/cointegration harness and experiment ledger work; maintain cash-only/no-short constraints and keep pairs research-only.
+5. Complete persistent runtime journal, broker activity recovery, quote/fill cost sampling, observe-only adaptive selector integration and multi-week Paper deployment evidence.
+6. LIVE remains disabled and unauthorized.
