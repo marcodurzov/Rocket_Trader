@@ -699,3 +699,15 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Main HEAD: `829e17343b7073e77ad1fd16ebc2611be2d88641`.
 - Progress remains **54%**; no increase for a method that is not yet wired into a persistent runtime.
 - No strategy is approved, no autonomous strategy order execution is enabled, and LIVE remains prohibited.
+
+
+---
+
+## 2026-11-11 — One-shot execution recovery runner (PR #157)
+- Merged: `adab3f2bc29e71be788fa47335f73e0cce9830fc`; PR CI `43032980158` succeeded. Post-merge run `43033056053` pending at documentation time.
+- New runner `alpaca_paper_crypto_execution_recovery_worker.py` uses the existing durable execution journal and immutable event ledger, checks both files exist before adapter construction, verifies Paper cash-only policy, and invokes read-only recovery for all journaled orders.
+- It does not submit, cancel, replace or modify broker account configuration. Unresolved broker orders or fill activity cause a nonzero exit and require review.
+- Added offline runner tests and CI coverage; deployment runbook documents the explicit one-shot host command.
+- This is not yet a continuous worker or automatic startup gate. The eventual persistent execution service must call it before accepting new intents and share the same durable DB files.
+- No live Paper endpoint was called by this PR; no strategy approval or autonomous trading was enabled.
+- Progress remains **54%**.
