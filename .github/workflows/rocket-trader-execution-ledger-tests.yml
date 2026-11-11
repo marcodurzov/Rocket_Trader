@@ -1,0 +1,42 @@
+name: Rocket Trader - Execution Event Ledger Tests
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/append-only-execution-ledger-v1"
+    paths:
+      - "rocket_trader_execution_event_ledger.py"
+      - "rocket_trader_execution_event_ledger_test.py"
+      - ".github/workflows/rocket-trader-execution-ledger-tests.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_execution_event_ledger.py"
+      - "rocket_trader_execution_event_ledger_test.py"
+      - ".github/workflows/rocket-trader-execution-ledger-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execution-event-ledger-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile
+        run: |
+          python -m py_compile rocket_trader_execution_event_ledger.py rocket_trader_execution_event_ledger_test.py
+
+      - name: Run offline event ledger tests
+        run: python -m unittest -v rocket_trader_execution_event_ledger_test.py
