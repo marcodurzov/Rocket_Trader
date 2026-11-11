@@ -12,6 +12,8 @@ import argparse
 import json
 import os
 import sys
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
@@ -171,6 +173,81 @@ def fetch_alpaca_history(
     return _close_series(frame["close"], "Alpaca")
 
 
+
+def fetch_tiingo_history(
+    symbol: str,
+    start: datetime,
+    end: datetime,
+    api_token: Optional[str] = None,
+    *,
+    opener=urlopen,
+) -> pd.Series:
+    """Fetch Tiingo adjusted EOD closes; optional provider audit, never execution data."""
+    token = str(api_token or os.getenv("TIINGO_API_TOKEN", "")).strip()
+    if not token:
+        raise CrosscheckError("TIINGO_API_TOKEN is required for the Tiingo comparison")
+    if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
+        raise CrosscheckError("Tiingo audit range must be timezone-aware")
+    url = (
+        "https://api.tiingo.com/tiingo/daily/" + quote(str(symbol).upper(), safe="")
+        + "?" + urlencode({
+            "startDate": start.date().isoformat(),
+            "endDate": end.date().isoformat(),
+            "format": "json",
+        })
+    )
+    request = Request(url, headers={
+        "Authorization": f"Token {token}",
+        "Accept": "application/json",
+    })
+    try:
+        with opener(request, timeout=30) as response:
+            status = getattr(response, "status", 200)
+            if status != 200:
+                raise CrosscheckError(f"Tiingo returned HTTP {status}")
+            payload = json.loads(response.read().decode("utf-8"))
+    except CrosscheckError:
+        raise
+    except Exception as exc:
+        raise CrosscheckError(
+            f"Tiingo request failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not isinstance(payload, list) or not payload:
+        raise CrosscheckError(f"Tiingo returned no adjusted daily history for {symbol}")
+    rows = []
+    for item in payload:
+        if not isinstance(item, dict) or item.get("date") is None or item.get("adjClose") is None:
+            raise CrosscheckError(f"Tiingo returned malformed adjusted close data for {symbol}")
+        rows.append((item["date"], item["adjClose"]))
+    frame = pd.DataFrame(rows, columns=["date", "close"])
+    frame["date"] = pd.to_datetime(frame["date"], utc=True, errors="coerce")
+    if frame["date"].isna().any():
+        raise CrosscheckError(f"Tiingo returned invalid dates for {symbol}")
+    return _close_series(frame.set_index("date")["close"], "Tiingo")
+
+
+def _rename_pair_result(
+    result: Dict[str, Any], left_name: str, right_name: str
+) -> Dict[str, Any]:
+    """Give generic two-source comparison fields their actual provider names."""
+    output = dict(result)
+    output["comparison"] = f"{right_name.upper()}_VS_{left_name.upper()}"
+    for old, new in (
+        ("yahoo_sessions", f"{left_name.lower()}_sessions"),
+        ("alpaca_sessions", f"{right_name.lower()}_sessions"),
+        ("yahoo_coverage_on_common", f"{left_name.lower()}_coverage_on_common"),
+        ("alpaca_coverage_on_common", f"{right_name.lower()}_coverage_on_common"),
+        ("yahoo_cumulative_return_common_period", f"{left_name.lower()}_cumulative_return_common_period"),
+        ("alpaca_cumulative_return_common_period", f"{right_name.lower()}_cumulative_return_common_period"),
+    ):
+        output[new] = output.pop(old)
+    output["right_minus_left_cumulative_return_difference_bps"] = output.pop(
+        "cumulative_return_difference_bps"
+    )
+    return output
+
+
+
 def run_audit(
     *,
     api_key: str,
@@ -181,6 +258,8 @@ def run_audit(
     now: Optional[datetime] = None,
     yahoo_loader=fetch_yahoo_history,
     alpaca_loader=fetch_alpaca_history,
+    tiingo_loader=fetch_tiingo_history,
+    tiingo_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     if years < 1 or years > 20:
         raise CrosscheckError("years must be between 1 and 20")
@@ -203,16 +282,46 @@ def run_audit(
     symbol_list = sorted({str(x).strip().upper() for x in symbols if str(x).strip()})
     results = []
     errors = []
+    tiingo_results = []
+    tiingo_errors = []
+    token = str(tiingo_token or os.getenv("TIINGO_API_TOKEN", "")).strip()
     for symbol in symbol_list:
         try:
             yahoo = yahoo_loader(symbol, start, current)
             alpaca = alpaca_loader(client, symbol, start, current, feed)
             results.append(compare_close_series(symbol, yahoo, alpaca))
+            if token:
+                try:
+                    tiingo = tiingo_loader(symbol, start, current, token)
+                    tiingo_results.append({
+                        "symbol": symbol,
+                        "tiingo_vs_yahoo": _rename_pair_result(
+                            compare_close_series(symbol, yahoo, tiingo), "YAHOO", "TIINGO"
+                        ),
+                        "tiingo_vs_alpaca": _rename_pair_result(
+                            compare_close_series(symbol, alpaca, tiingo), "ALPACA", "TIINGO"
+                        ),
+                    })
+                except Exception as exc:
+                    tiingo_errors.append({
+                        "symbol": symbol, "error_type": type(exc).__name__, "error": str(exc)
+                    })
         except Exception as exc:
             errors.append({"symbol": symbol, "error_type": type(exc).__name__, "error": str(exc)})
 
+    tiingo_all_pass = (
+        not token or (
+            len(tiingo_results) == len(symbol_list)
+            and not tiingo_errors
+            and all(
+                item["tiingo_vs_yahoo"]["diagnostic_pass"]
+                and item["tiingo_vs_alpaca"]["diagnostic_pass"]
+                for item in tiingo_results
+            )
+        )
+    )
     return {
-        "ok": bool(results) and not errors,
+        "ok": bool(results) and not errors and tiingo_all_pass,
         "pipeline": "rocket_trader_alpaca_yahoo_etf_crosscheck_v0_1",
         "mode": "DATA_AUDIT_ONLY",
         "period_start": start.isoformat(),
@@ -225,6 +334,11 @@ def run_audit(
         "price_series": "daily adjusted close",
         "results": results,
         "errors": errors,
+        "tiingo_comparison_requested": bool(token),
+        "tiingo_results": tiingo_results,
+        "tiingo_errors": tiingo_errors,
+        "tiingo_symbols_compared": len(tiingo_results),
+        "tiingo_all_diagnostic_gates_pass": tiingo_all_pass,
         "symbols_diagnostic_pass": sum(bool(x["diagnostic_pass"]) for x in results),
         "symbols_compared": len(results),
         "all_diagnostic_gates_pass": bool(results) and not errors and all(x["diagnostic_pass"] for x in results),
