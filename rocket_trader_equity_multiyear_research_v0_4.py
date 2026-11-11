@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+import exchange_calendars as xcals
 from alpaca.data.enums import Adjustment, DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
@@ -129,25 +130,56 @@ def normalize_frame(frame: pd.DataFrame, symbol: str, min_rows: int = 1) -> pd.D
 
 
 def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
-    dates = pd.to_datetime(frame["timestamp"], utc=True).dt.tz_localize(None).dt.normalize().sort_values()
+    """Measure daily-bar completeness against actual XNYS trading sessions.
+
+    This intentionally replaces weekday counting: weekends and US exchange
+    holidays are not expected sessions and must not penalize valid datasets.
+    """
+    dates = (
+        pd.to_datetime(frame["timestamp"], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+        .drop_duplicates()
+        .sort_values()
+    )
     if dates.empty:
         raise EquityResearchError("Cannot assess empty daily history.")
-    expected_weekdays = int(len(pd.bdate_range(dates.iloc[0], dates.iloc[-1])))
-    bars = int(dates.nunique())
-    missing = max(0, expected_weekdays - bars)
-    gaps = dates.diff().dt.days.dropna()
+    start = pd.Timestamp(dates.iloc[0], tz="UTC")
+    end = pd.Timestamp(dates.iloc[-1], tz="UTC")
+    try:
+        calendar = xcals.get_calendar("XNYS")
+        sessions = calendar.sessions_in_range(start, end)
+    except Exception as exc:
+        raise EquityResearchError(
+            f"Unable to calculate authoritative XNYS sessions: {type(exc).__name__}: {exc}"
+        ) from exc
+    session_dates = pd.DatetimeIndex(sessions)
+    if session_dates.tz is not None:
+        session_dates = session_dates.tz_convert("UTC").tz_localize(None)
+    session_dates = session_dates.normalize()
+    observed = pd.DatetimeIndex(dates)
+    expected_sessions = int(len(session_dates))
+    bars = int(len(observed.intersection(session_dates)))
+    missing = max(0, expected_sessions - bars)
+    missing_dates = session_dates.difference(observed)
+    all_gaps = pd.DatetimeIndex(sorted(set(session_dates).union(set(observed))))
+    gaps = all_gaps.to_series().diff().dt.days.dropna()
     max_gap = int(gaps.max()) if not gaps.empty else 0
-    coverage = bars / expected_weekdays if expected_weekdays else 0.0
+    coverage = bars / expected_sessions if expected_sessions else 0.0
     eligible = coverage >= MIN_WEEKDAY_COVERAGE and max_gap <= MAX_GAP_DAYS
     return {
-        "expected_weekdays_approx": expected_weekdays,
+        "calendar": "XNYS",
+        "expected_exchange_sessions": expected_sessions,
         "daily_bars": bars,
-        "missing_weekday_bars_approx": missing,
-        "weekday_coverage_pct_approx": coverage,
+        "missing_exchange_sessions": missing,
+        "exchange_session_coverage_pct": coverage,
         "max_calendar_gap_days": max_gap,
-        "minimum_weekday_coverage_pct": MIN_WEEKDAY_COVERAGE,
+        "minimum_exchange_session_coverage_pct": MIN_WEEKDAY_COVERAGE,
         "maximum_allowed_gap_days": MAX_GAP_DAYS,
         "eligible_for_strategy_evidence": eligible,
+        "first_missing_exchange_session": (
+            missing_dates[0].date().isoformat() if len(missing_dates) else None
+        ),
     }
 
 
@@ -210,8 +242,8 @@ def fetch_daily_bars(
         raise EquityResearchError(
             f"{clean}: only {len(combined)} daily bars; minimum {minimum_rows} "
             f"for {years} requested years. Returned range={first_seen}..{last_seen}; "
-            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
-            f"missing_weekdays_approx={quality['missing_weekday_bars_approx']}; "
+            f"exchange_session_coverage={quality['exchange_session_coverage_pct']:.2%}; "
+            f"missing_exchange_sessions={quality['missing_exchange_sessions']}; "
             f"max_calendar_gap_days={quality['max_calendar_gap_days']}. "
             "Do not treat this partial history as full-period evidence."
         )
