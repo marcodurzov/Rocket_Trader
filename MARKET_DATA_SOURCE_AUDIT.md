@@ -193,3 +193,5 @@ References:
 - https://docs.alpaca.markets/us/reference/corporateactions-1
 - https://alpaca.markets/sdks/python/api_reference/data/corporate_actions/historical.html
 - https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf
+
+**Response-envelope validation note (2026-11-11):** Alpaca's documented response groups all action-type arrays under the top-level `corporate_actions` object, with `next_page_token` beside it. The parser now validates that envelope and fails closed if it is absent or malformed. Offline pagination fixtures mirror this exact documented shape. The first post-merge run returned zero events because the initial parser incorrectly read the action arrays from the response root; that run must not be interpreted as evidence that Alpaca had no issuer actions.
