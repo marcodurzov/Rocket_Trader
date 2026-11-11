@@ -17,11 +17,13 @@ from rocket_trader_equity_multiyear_research_v0_4 import (
     evaluate_single_asset,
     evaluate_weights,
     strategy_positions,
+    require_zero_budget_feed,
     fetch_daily_bars,
     fetch_yahoo_daily_bars,
     fetch_tiingo_daily_bars,
     source_metadata,
     normalize_frame,
+    research,
 )
 
 
@@ -66,6 +68,15 @@ class FakeYahooTicker:
 
 
 class EquityResearchV04Tests(unittest.TestCase):
+
+    def test_public_research_rejects_tiingo_as_primary_source(self):
+        with self.assertRaisesRegex(ValueError, "Tiingo is disabled"):
+            research(symbols=["SPY", "QQQ"], years=3, feed_name="IEX", source="TIINGO")
+
+    def test_zero_budget_feed_allows_iex_and_rejects_sip(self):
+        self.assertEqual(require_zero_budget_feed("iex"), "IEX")
+        with self.assertRaisesRegex(EquityResearchError, "zero-budget policy"):
+            require_zero_budget_feed("SIP")
     def test_normalize_frame_tolerates_only_float_precision_ohlc_differences(self):
         frame = pd.DataFrame({
             "timestamp": pd.date_range("2024-01-01", periods=2, tz="UTC"),
