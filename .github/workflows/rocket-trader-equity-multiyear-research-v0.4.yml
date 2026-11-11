@@ -27,20 +27,18 @@ on:
         options:
           - YAHOO
           - ALPACA
-          - TIINGO
       years:
         description: Calendar years of adjusted daily ETF data (minimum 3)
         required: false
         default: '10'
         type: string
       feed:
-        description: IEX default; SIP requires Algo Trader Plus entitlement
+        description: Free IEX feed only; paid SIP is disabled by the zero-budget policy
         required: false
         default: 'IEX'
         type: choice
         options:
           - IEX
-          - SIP
   schedule:
     - cron: '0 18 * * 0'
 
@@ -76,7 +74,6 @@ jobs:
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          TIINGO_API_TOKEN: ${{ secrets.TIINGO_API_TOKEN }}
           YEARS_INPUT: ${{ inputs.years || '10' }}
           FEED_INPUT: ${{ inputs.feed || 'IEX' }}
           SOURCE_INPUT: ${{ inputs.source || 'YAHOO' }}
