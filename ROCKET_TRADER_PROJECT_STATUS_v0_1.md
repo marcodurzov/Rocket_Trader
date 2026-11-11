@@ -446,3 +446,16 @@ See `ROCKET_TRADER_HANDOFF.md` section 10 for the canonical experiment/decision 
 - Mandatory append-only change-log template and rules for every future meaningful code or research change.
 
 The canonical Handoff was expanded to prevent repeating failed or superseded experiments. Documentation synchronization does not increase project completion percentage.
+
+
+---
+
+## 2026-11-11 — PR #100 regime timestamp alignment
+- PR #100 merged: https://github.com/marcodurzov/Rocket_Trader/pull/100
+- Merge SHA: `81be6e8e1fea127641b760a469ede4f7a56cdff9`.
+- Root cause: the observer paired cross-asset returns by array position, not timestamp; missing minute bars could misalign observations and corrupt correlations/regime features.
+- Fix: exact UTC timestamp intersection, >=60 common aligned bars, >=95% aligned coverage per symbol, maximum common-series gap 180 seconds, fail-closed on insufficient/stale/unaligned data, and diagnostics persisted.
+- Tests: 22 regime observer tests passed; 9 news assessment tests passed; 156 runtime/accounting tests passed; Compose config and Docker image build/content checks passed.
+- No allocation/order capability added. Observer remains observe-only and cash-only.
+- Predictive value of regime features remains unvalidated; historical point-in-time stability and regime-conditioned performance research are still open.
+- The canonical historical experiment ledger is in `ROCKET_TRADER_HANDOFF.md` section 10.
