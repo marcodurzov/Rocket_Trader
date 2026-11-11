@@ -126,3 +126,10 @@ This allows the investigation to distinguish:
 - a mixture of both.
 
 The output still does not attribute a mismatch to a specific corporate action. Provider action records, ex-dates, amounts and timestamps must be checked independently. The raw and adjusted series are audit evidence only; never auto-repair, overwrite history, or splice providers from this output.
+
+
+## Before/after adjustment-factor evidence
+
+For each largest adjustment-factor step, the report now includes the previous common session, both providers' adjustment factors on the previous session, their factor ratio, and the same fields on the event session. This makes it possible to compare the exact observed factor step with a fund's declared ex-date distribution divided by the previous raw close.
+
+The ratio is still normalized to the first common session for the cumulative divergence metric. Before/after factor fields are the unnormalized provider factors and ratio for those exact sessions. They are diagnostic evidence only; corporate-action attribution still requires checking the issuer's official event record and source raw bars.
