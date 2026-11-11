@@ -324,3 +324,27 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 5. Keep all strategies unapproved until corrected OOS, multiple-testing, empirical costs and Paper acceptance gates pass.
 
 **Progress remains 46%.** The Tiingo adapter and metadata fix improve research source optionality and audit truth, but the adapter has only mocked tests and no live Tiingo evidence; no strategy edge or persistent Paper operation has been established.
+
+
+### PR #108 — Handoff synchronization after PR #106
+- Merge commit: `aaf4cf02c3d04c77925357df7687a1f9946abe2f`.
+- Recorded PR #106's optional Tiingo adapter, corrected Yahoo metadata, offline test evidence and no-subscription boundary.
+
+### Post-merge research run after PR #106 — run 42954130155
+- Workflow run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42954130155
+- Artifact: `13826686266`.
+- Yahoo 10-year research completed successfully for all eight ETFs (DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT); data-quality gate passed for all eight.
+- Report now truthfully states `auto_adjust=True, actions=True, repair=False`.
+- Research family size 73; familywise-significant candidates **0**; pre-screen passes **0**. `candidate_promotion_allowed=false`, `paper_approval=false`, `orders_submitted=0`.
+- This is a consistency/regression run of the already-tested v0.4 family after a metadata/provider-source code change, **not a new hypothesis tranche**. It does not justify rerunning the same family again on the same data/holdout.
+- The run validates Yahoo data retrieval and quality gates, not independent source parity, realistic transaction costs or profitability.
+- Tiingo was not queried: no API token or paid plan is configured. The Tiingo adapter has mocked contract tests only.
+
+**Next continuation point**
+1. For a genuine independent 10-year adjusted EOD validation, use Tiingo only after the user configures an eligible plan/token privately; compare all eight symbols and inspect corporate-action/cumulative-return differences. No purchase without separate approval.
+2. Do not rerun the same 73-hypothesis v0.4 family on the same Yahoo history/holdout as a new research claim.
+3. Continue live Paper operational evidence only after the user's persistent host is deployed.
+4. Investigate broker activity reconciliation on actual Paper fills; current tests are synthetic/fixture-based.
+5. Validate regime stability and predictive value with point-in-time data and new pre-registered hypotheses.
+
+**Progress remains 46%.** Yahoo retrieval is reproducible with corrected metadata, but strategy evidence remains negative (0/73 familywise significant, 0 pre-screen); no independent Tiingo data or Paper forward validation exists.
