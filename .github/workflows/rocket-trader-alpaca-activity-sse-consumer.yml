@@ -6,12 +6,18 @@ on:
     paths:
       - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_activity_sse_consumer_test.py"
+      - "Dockerfile.paper-observer"
+      - "docker-compose.paper-observer.yml"
+      - "PAPER_OBSERVER_DEPLOYMENT.md"
       - ".github/workflows/rocket-trader-alpaca-activity-sse-consumer.yml"
   pull_request:
     branches: [main]
     paths:
       - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_activity_sse_consumer_test.py"
+      - "Dockerfile.paper-observer"
+      - "docker-compose.paper-observer.yml"
+      - "PAPER_OBSERVER_DEPLOYMENT.md"
       - ".github/workflows/rocket-trader-alpaca-activity-sse-consumer.yml"
 
 permissions:
@@ -30,3 +36,7 @@ jobs:
         run: python -m py_compile rocket_trader_alpaca_activity_sse_consumer.py rocket_trader_alpaca_activity_sse_consumer_test.py
       - name: Run offline durable SSE tests
         run: python -m unittest -v rocket_trader_alpaca_activity_sse_consumer_test.py
+      - name: Validate Paper observer Compose configuration
+        run: |
+          touch .env
+          ACTIVITY_SSE_BOOTSTRAP_SINCE=2026-11-11T04:55:00Z docker compose -f docker-compose.paper-observer.yml config --quiet
