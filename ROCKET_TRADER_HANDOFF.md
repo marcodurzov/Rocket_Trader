@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `60059a41379b274ae16a8b20426bbcf96178ae7`  
+**Latest audited code baseline SHA:** `0c3c815437e747f82615b3900cc8cfc7d4ce0066`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -471,3 +471,13 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Tiingo token remains absent. No Tiingo request; no vendor subscription; no strategy/Paper approval or orders.
 
 **Next diagnostic improvement:** include previous-session and current-session provider adjustment factors around each largest factor step, so the audit makes the before/after factor change explicit. Then compare it against the official ex-date cash amount divided by previous raw close. Do not attribute provider fault until this calculation and raw bars are checked.
+
+
+### PR #119 — before/after adjustment-factor evidence
+- Merge commit: `0c3c815437e747f82615b3900cc8cfc7d4ce0066`.
+- Each largest adjustment-factor step now includes the previous common session, Yahoo and Alpaca factors before the event, their before-event ratio, and current-session factors/ratio. This allows a direct comparison with distribution cash amount divided by previous raw close.
+- Regression CI run `42956145698`: compile and all 12 cross-check tests passed; live data step skipped on pull_request by design.
+- No source preference, correction, history splicing, strategy approval or order change.
+- Post-merge live audit has not yet appeared in the workflow list for this merge SHA; inspect before recording the exact before/after factor values.
+
+**Progress remains 46%.** This makes the adjustment mismatch more auditable, but until the before/after live report is reviewed it is not a confirmed vendor attribution.
