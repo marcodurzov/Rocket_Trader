@@ -77,12 +77,35 @@ class DurableActivitySSEInboxTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_healthcheck_cli_verifies_local_database_without_network(self):
+        from rocket_trader_alpaca_activity_sse_consumer import main
+        with patch("sys.argv", [
+            "rocket_trader_alpaca_activity_sse_consumer.py",
+            "--db", self.db, "--healthcheck",
+        ]):
+            self.assertEqual(main(), 0)
+
     def test_parse_sse_multiline_data_and_comments(self):
         frames = list(parse_sse([
             ":heartbeat", "",
             'data: {"event_id":', 'data: "x"}', "",
         ]))
         self.assertEqual(frames, [("comment", "heartbeat"), ("data", '{"event_id":\n"x"}')])
+
+    def test_event_and_cursor_commit_atomically_when_delivery_insert_fails(self):
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("""
+                CREATE TRIGGER fail_delivery_insert
+                BEFORE INSERT ON activity_sse_deliveries
+                BEGIN SELECT RAISE(ABORT, 'injected delivery failure'); END
+            """)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.inbox.stage(activity(1))
+        self.assertIsNone(self.inbox.cursor)
+        self.assertEqual(self.inbox.verify()["activity_count"], 0)
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER fail_delivery_insert")
+        self.assertEqual(self.inbox.stage(activity(1))["status"], "STAGED")
 
     def test_stage_is_atomic_and_persists_cursor(self):
         result = self.inbox.stage(activity(1))
@@ -198,6 +221,15 @@ class DurableActivitySSEInboxTests(unittest.TestCase):
             conn.execute("DROP TRIGGER activity_sse_events_no_update")
             conn.execute("UPDATE activity_sse_events SET payload_json='{}'")
         self.assertEqual(self.inbox.verify()["reason"], "payload_hash_mismatch")
+
+    def test_delivery_payload_mismatch_invalidates_integrity_report(self):
+        self.inbox.stage(activity(1))
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER activity_sse_deliveries_no_update")
+            conn.execute("UPDATE activity_sse_deliveries SET payload_hash='bad'")
+        report = self.inbox.verify()
+        self.assertFalse(report["valid"])
+        self.assertEqual(report["delivery_payload_mismatch_count"], 1)
 
     def test_reopen_recovers_cursor_and_events(self):
         self.inbox.stage(activity(1))
