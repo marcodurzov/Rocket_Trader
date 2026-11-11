@@ -321,7 +321,7 @@ def run_audit(
         )
     )
     return {
-        "ok": bool(results) and not errors and tiingo_all_pass,
+        "ok": bool(results) and not errors and (not token or (len(tiingo_results) == len(symbol_list) and not tiingo_errors)),
         "pipeline": "rocket_trader_alpaca_yahoo_etf_crosscheck_v0_1",
         "mode": "DATA_AUDIT_ONLY",
         "period_start": start.isoformat(),
@@ -341,7 +341,7 @@ def run_audit(
         "tiingo_all_diagnostic_gates_pass": tiingo_all_pass,
         "symbols_diagnostic_pass": sum(bool(x["diagnostic_pass"]) for x in results),
         "symbols_compared": len(results),
-        "all_diagnostic_gates_pass": bool(results) and not errors and all(x["diagnostic_pass"] for x in results),
+        "all_diagnostic_gates_pass": bool(results) and not errors and all(x["diagnostic_pass"] for x in results) and tiingo_all_pass,
         "research_cost_assumptions_validated": False,
         "research_cost_note": (
             "This price-history comparison does not validate historical bid/ask spread, "
