@@ -474,3 +474,12 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Official Alpaca schema mapping documented in `PAPER_OBSERVER_RUNTIME.md` and `ROCKET_TRADER_HANDOFF.md`.
 - Actual Paper account/host validation remains pending; no strategy approval or LIVE authorization.
 - Handoff main SHA updated to current main `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`.
+
+
+---
+
+## 2026-11-11 — PR #104 and data vendor evaluation
+- PR #104 merged as `53a7fc3b4f7c8fd4530a1818e1fd9d31700e5dc1`; Handoff now records PR #103 fill reconciliation.
+- Official provider research: Tiingo Starter lists 5-year history free; Power lists 15+ years at $30/month or $300/year for individuals, with internal-use license. Tiingo documents adjusted OHLC and CRSP-style split/dividend adjustments. Alpha Vantage lists 25+ years adjusted daily but the adjusted endpoint is premium and free API quota is 25 requests/day.
+- No subscription or vendor expense authorized/performed. Tiingo is the best candidate for an optional provider adapter, subject to secure token configuration and separate approval for any paid plan.
+- Canonical Handoff contains source links, provider constraints and next actions. See section 10.10.
