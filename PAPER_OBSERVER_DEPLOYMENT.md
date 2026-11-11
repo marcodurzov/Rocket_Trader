@@ -141,3 +141,29 @@ This stops services but preserves the volume. Do not delete the volume when stop
 ## 7. What deployment does not mean
 
 A healthy Compose stack proves only that the observer processes and data feeds are operating. It does not prove profitability, strategy validity, live execution costs or readiness for real capital. Before any real-money phase, Rocket Trader still needs verified Paper operation, complete fee/fill reconciliation, empirical cost studies, out-of-sample strategy evidence, drawdown/kill-switch validation and a separate explicit live-capital approval.
+
+
+## 8. Read-only execution-journal recovery
+
+Before any future execution process is allowed to accept new order intents after a restart, run the one-shot recovery pass against the **same durable SQLite files** used by the execution adapter. This is separate from the observe-only market-data container and must not point at a fresh or temporary database.
+
+Required environment:
+- `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`: dedicated Paper credentials.
+- `ALPACA_PAPER=true`, `ALPACA_LIVE_ENABLED=false`, `ROCKET_TRADER_EXECUTION_MODE=PAPER`.
+- `ROCKET_TRADER_CRYPTO_EXECUTION_DB`: existing durable execution journal file.
+- `ROCKET_TRADER_EXECUTION_EVENT_LEDGER_DB`: existing immutable event-ledger file; if omitted, the adapter's default sibling path is used.
+
+Run from the repository's Python environment on the persistent host:
+
+```bash
+python alpaca_paper_crypto_execution_recovery_worker.py
+```
+
+The runner verifies that both database files already exist and that the journal has its expected order table **before** constructing the adapter. It verifies the Paper cash-only account policy, then queries each journaled client order ID and reconciles individual FILL activities. It does not submit, cancel, replace or modify broker orders or account settings.
+
+Interpretation:
+- `SUCCESS`: every locally journaled order was found and its FILL activity matched the broker snapshot.
+- `REQUIRES_REVIEW` (exit code 2): one or more orders were missing at the broker or had incomplete/mismatched fill evidence. Keep new execution blocked.
+- Failure (exit code 1): preflight, persistent-state or broker reconciliation error. Do not initialize a replacement database to bypass it.
+
+This is currently an **explicit one-shot runner**, not a continuously scheduled service. It must be wired into the eventual persistent execution service's startup gate before autonomous order intents are enabled. No execution service is currently deployed by this repository workflow.
