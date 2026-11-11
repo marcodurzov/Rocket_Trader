@@ -179,3 +179,12 @@ Alpaca explicitly documents that its Paper simulator may produce partial fills o
 - Crypto historical gaps (notably SOL/USD) remain excluded when data quality fails.
 - Alpaca Paper is the only authorized execution environment for development. No live orders.
 - Strategy acceptance thresholds already in the project remain in force until changed by documented evidence; no threshold is weakened merely to get a pass.
+
+
+## 2026-11-11 — Adaptive rotation and Jefe Maestro evidence discipline
+
+User reaffirmed that the system must rotate among strategy families as regimes/opportunities change, maintain a continuously updated strategy knowledge registry, and statistically validate financial/macro/political/geopolitical/social event information for predictive or risk value. See `ADAPTIVE_STRATEGY_AND_EVENT_EVIDENCE_REQUIREMENTS.md` for the full architecture and test protocol.
+
+Jefe Maestro is a methodological reference only: strict production/research separation, pre-registration, chronological walk-forward and prospective validation, immutable evidence/fingerprints, null controls, bootstrap/permutation inference, family-wise correction and the distinction between descriptive patterns, prediction and economic utility. Its FIX07 and FIX09 negative findings are preserved as warnings about multiple testing; lottery null assumptions are not transferable to financial markets.
+
+No strategy or event signal is thereby approved. Adaptive selection must beat static/equal-weight/simple-rule and cash/buy-and-hold baselines out of sample after costs. News/social/LLM content remains evidence-only until point-in-time event studies establish incremental utility. Research specification is not implementation or profitability proof.
