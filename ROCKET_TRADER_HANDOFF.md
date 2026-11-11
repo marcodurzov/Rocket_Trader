@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main SHA at this handoff update:** `e265cc92a0eb931031151d963e1d320ced990cf7`  
+**Latest main SHA at this handoff update:** `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -250,3 +250,30 @@ Never overwrite the historical truth. Correct stale summaries by explicitly noti
 - Synchronized the canonical handoff and project status with the PR #100 timestamp-alignment fix and its CI evidence.
 - The main SHA in this document now reflects PR #101.
 - Documentation-only; progress remains 46%.
+
+
+### PR #102 — handoff audit-truth correction
+- Merge commit: `d0b8bfc142729f89a7156ecb378e611a91c2cb77`.
+- Corrected the stale pending/queued wording for the completed Yahoo/IEX audit and updated the handoff main SHA after PR #101.
+- Documentation-only; no progress increase.
+
+### PR #103 — broker FILL activity to ledger-inbox reconciliation
+- Merge commit: `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`.
+- Root cause: the runtime staged REST `FILL` activities but did not compare them with the durable fee/FX-aware fill inbox. Account-activity health could therefore be green even if a broker-confirmed fill was absent from the TradingStream/Activity SSE path or remained pending.
+- Official Alpaca schema: legacy REST `FILL.id` is `timestamp::execution_uuid`; Activity SSE `ref_id` carries the same execution identifier. Sources: https://docs.alpaca.markets/us/docs/account-activities and https://docs.alpaca.markets/us/docs/activity-sse.
+- New read-only reconciliation checks each staged FILL against the inbox by execution UUID, quantity, price, normalized symbol, side, order ID and timestamp (2-second tolerance). The inbox must be `PROCESSED`, meaning fee/FX resolution has allowed ledger posting.
+- Missing, mismatched, PENDING or FAILED inbox records now keep account-activity health in ERROR. The module never writes ledger entries or reconstructs fills; the existing fee/FX-aware bridge remains the only posting path.
+- Regression evidence: 8 dedicated activity-reconciliation tests passed; 32 runtime tests passed, including matched and missing fill health cases. All 166 tests across the runtime/accounting workflow passed. Compose validation, Docker Paper observer image build/content verification, and post-merge image publication succeeded. Post-merge workflow IDs: `42953433750` (runtime/accounting), `42953433726` (container), `42953434426` (image publication), `42953435784` (runtime freshness).
+- This is a stronger accounting completeness check, not a proof of broker statement completeness or strategy profitability. It detects missing events but deliberately does not auto-repair them.
+- Paper observer remains OBSERVE_ONLY; LIVE disabled; no orders authorized.
+
+**Current continuation point after PR #103**
+1. Monitor the new activity reconciliation on a persistent Paper deployment; verify actual broker FILL IDs and SSE ref IDs match in practice. No user-host deployment has yet been verified.
+2. If a real mismatch occurs, inspect the exact Alpaca payload and correct the mapping with a regression fixture; never guess or auto-post a fill.
+3. Resolve unlinked daily regulatory fees and trade corrections/busts; they remain manual-review blockers.
+4. Investigate full-history ETF source availability and adjusted-return divergence without weakening data gates.
+5. Validate regime feature stability/predictive value on point-in-time historical data; timestamp alignment correctness is not alpha.
+6. Collect representative Paper spread/slippage/fill costs after user-host deployment.
+7. Preserve zero approved strategy candidates until robust net OOS edge, costs and operations pass.
+
+**Progress remains 46%.** This PR closes an important accounting observability gap, but live broker evidence, persistent deployment, representative costs and strategy edge remain absent.
