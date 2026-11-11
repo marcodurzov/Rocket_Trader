@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (adaptive strategy and event-evidence requirements reaffirmed)  
+**Last updated:** 2026-11-11 (PR #138 merged; adaptive strategy and event-evidence requirements reaffirmed)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `097dd10932ed7ed2e993a2b2110cb7f728450d8b`  
+**Latest main baseline SHA:** `873b26352bdb76f85809b33d1605123e5b301b7e` (documentation merge; no runtime code changed)  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -746,3 +746,12 @@ The historical research landscape and the systematic strategy program are now do
 8. Update this Handoff after every meaningful change, including failures, hypotheses rejected, exact artifacts, commit/PR/test evidence and next action.
 
 **Capital boundary unchanged:** research and Paper only; no real-money orders, paid data subscriptions or credential sharing without the user's separate explicit authorization.
+
+
+### PR #138 — adaptive strategy and event evidence requirements
+- Merged to main: `873b26352bdb76f85809b33d1605123e5b301b7e`.
+- Added `ADAPTIVE_STRATEGY_AND_EVENT_EVIDENCE_REQUIREMENTS.md`; updated this Handoff and `RESEARCH_HYPOTHESIS_PROGRAM.md`.
+- Formalizes adaptive strategy rotation, versioned strategy knowledge registry, regime posterior/uncertainty, hysteresis and champion/challenger controls, benchmark requirements, and point-in-time event/news/social statistical validation.
+- Explicitly transfers Jefe Maestro's research discipline (pre-registration, strict chronological OOS/prospective splits, immutable evidence, null controls, bootstrap/permutation inference, Holm correction) while preserving its negative results: FIX07 no validated advantage; FIX09 4,629 hypotheses / 227 nominal p<.05 / zero Holm survivors. Lottery null assumptions are not transferable to financial markets.
+- Documentation only. No new strategy/event signal approved; no code execution, live orders or profitability validation.
+- Next: expand machine-readable strategy registry; build event-study/experiment ledger; validate regime rotation against static and cash baselines; test news/social incremental OOS value; integrate selector/overlays in shadow mode only.
