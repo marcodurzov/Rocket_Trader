@@ -118,6 +118,11 @@ class AlpacaCryptoPaperExecutionAdapter:
             or f"{self.db_path}.events.sqlite3"
         )
         self.event_ledger = event_ledger or ExecutionEventLedger(ledger_path)
+        ledger_db_path = getattr(self.event_ledger, "db_path", None)
+        if ledger_db_path and os.path.abspath(ledger_db_path) == os.path.abspath(self.db_path):
+            raise CryptoPaperExecutionError(
+                "Execution event ledger must use a separate SQLite file from the mutable order journal."
+            )
         try:
             integrity = self.event_ledger.verify_chain()
         except Exception as exc:
@@ -319,7 +324,7 @@ class AlpacaCryptoPaperExecutionAdapter:
                 )
             if quantity > available:
                 raise CryptoPaperExecutionError(
-                    f"SELL quantity {quantity} exceeds unreserved broker-held {symbol} quantity {available}."
+                    f"SELL quantity {quantity} exceeds broker-held unreserved {symbol} quantity {available} after open-order reservations."
                 )
 
             # Write-ahead evidence and the local reservation are committed before
