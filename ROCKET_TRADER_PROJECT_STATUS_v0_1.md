@@ -753,3 +753,17 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - No broker orders were submitted by PR #163. The module is not deployed or integrated into the observe-only Compose stack; no strategy-driven execution is enabled.
 - Next: use this wrapper in a separately deployed persistent Paper execution host only after the user deploys/configures the durable journal and event ledger. Validate restart recovery on that host. Keep the next manual read-only CFEE-window audit outstanding.
 - Progress remains **55%** (engineering/evidence maturity, not profitability).
+
+
+---
+
+## 2026-11-11 — Alpaca Paper Activity SSE capability probe (PR #165)
+
+- PR #165 merged as `7d92fd7aaa352087552129d02c6e4c4bee24b3fd`.
+- Added a bounded read-only historical probe of `/v2beta1/events/activities` to the manual Paper activity audit. It uses the configured Paper API credentials and queries from the order-window start through current UTC time.
+- The probe reports activity type counts, crypto-like TRD records, CFEE/FEE counts, fill/correction/bust execution types, `previous_id` links, duplicate refs, event ordering anomalies, dropped-message comments and malformed frames.
+- It does not maintain a cursor, change the event ledger, apply trade corrections/busts, mutate positions or submit orders.
+- Official Alpaca documentation describes the endpoint's replayable `event_id` cursor, `ref_id` deduplication and `previous_id` correction link. However, the published TRD schema is described as equity/options; crypto support for this Paper account must be verified empirically before implementing a production consumer.
+- PR CI `43038829544` passed 32 offline tests. Post-merge CI `43038939488` pending final conclusion. The Paper endpoint job remains manual-only.
+- Next: user dispatches the updated read-only Paper activity audit once. Inspect both `paper-activity-report.json` and `paper-activity-sse-probe.json`. Only after actual crypto TRD/correction evidence is confirmed should cursor ingestion or accounting reversal logic be designed.
+- Progress remains **55%** (engineering/evidence maturity, not profitability).
