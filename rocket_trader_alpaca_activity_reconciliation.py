@@ -278,7 +278,14 @@ class AlpacaAccountActivityReader:
         until: str,
         page_size: int = 100,
     ) -> Dict[str, Any]:
-        """Store CFEE activity records separately; never guess an order attribution."""
+        """Preserve account-level CFEE evidence without letting unrelated or
+        malformed symbols invalidate already-reconciled order fills.
+
+        CFEE is queried account-wide. Only records with a valid matching
+        BASE/USD symbol are returned as candidates for the requested pair.
+        Other and unclassifiable records are still appended to the immutable
+        ledger and counted explicitly; none is attributed to an order.
+        """
         normalized_symbol = _normalize_symbol(symbol)
         after_utc = _timestamp(after, "after")
         until_utc = _timestamp(until, "until")
@@ -289,46 +296,110 @@ class AlpacaAccountActivityReader:
             activity_types=["CFEE"], after=after_utc, until=until_utc, page_size=page_size
         )
         fee_records = []
+        unclassified_records = []
+        other_symbol_count = 0
+        incomplete_count = 0
         for activity in activities:
             activity_type = str(activity.get("activity_type", "")).upper()
             if activity_type != "CFEE":
                 raise AlpacaActivityReconciliationError("Crypto fee query returned a non-CFEE activity.")
-            activity_symbol = _normalize_symbol(activity.get("symbol"))
-            if activity_symbol != normalized_symbol:
-                continue
-            fee_amount = _decimal(activity.get("net_amount"), "crypto_fee_net_amount")
-            currency = activity.get("currency")
-            if not isinstance(currency, str) or not currency.strip():
-                raise AlpacaActivityReconciliationError("Crypto fee activity is missing its currency.")
+
+            raw_symbol_value = activity.get("symbol")
+            raw_symbol = (
+                str(raw_symbol_value).strip()[:128]
+                if raw_symbol_value is not None else None
+            )
+            activity_symbol = None
+            classification = "UNCLASSIFIED_SYMBOL"
+            try:
+                activity_symbol = _normalize_symbol(raw_symbol_value)
+                classification = (
+                    "TARGET_SYMBOL" if activity_symbol == normalized_symbol
+                    else "OTHER_SYMBOL"
+                )
+            except AlpacaActivityReconciliationError:
+                pass
+
+            raw_amount = activity.get("net_amount")
+            amount = None
+            try:
+                amount = _decimal(raw_amount, "crypto_fee_net_amount")
+            except AlpacaActivityReconciliationError:
+                incomplete_count += 1
+
+            raw_currency = activity.get("currency")
+            currency = (
+                str(raw_currency).strip().upper()
+                if isinstance(raw_currency, str) and raw_currency.strip()
+                else None
+            )
+            if currency is None:
+                incomplete_count += 1
+
+            created_at = activity.get("created_at")
+            activity_date = activity.get("date")
+            occurred_at = None
+            timestamp_status = "MISSING_OR_INVALID_TIMESTAMP"
+            for candidate in (created_at, activity_date):
+                try:
+                    occurred_at = _timestamp(candidate, "crypto_fee_created_at")
+                    timestamp_status = "VALID"
+                    break
+                except AlpacaActivityReconciliationError:
+                    continue
+            if timestamp_status != "VALID":
+                incomplete_count += 1
+
+            record_status = "COMPLETE" if (
+                amount is not None and currency is not None and timestamp_status == "VALID"
+            ) else "INCOMPLETE_FIELDS"
             payload = {
                 "activity_id": activity["id"],
                 "activity_type": "CFEE",
-                "symbol": normalized_symbol,
-                "net_amount": str(fee_amount),
-                "currency": currency.upper(),
-                "qty": None if activity.get("qty") is None else str(activity.get("qty")),
+                "symbol": activity_symbol,
+                "raw_symbol": raw_symbol,
+                "symbol_classification": classification,
+                "net_amount": str(amount) if amount is not None else (
+                    str(raw_amount)[:128] if raw_amount is not None else None
+                ),
+                "currency": currency,
+                "qty": None if activity.get("qty") is None else str(activity.get("qty"))[:128],
                 "group_id": activity.get("group_id"),
-                "created_at": activity.get("created_at"),
-                "activity_date": activity.get("date"),
+                "created_at": created_at,
+                "activity_date": activity_date,
+                "record_status": record_status,
+                "timestamp_status": timestamp_status,
                 "allocation_status": "UNALLOCATED",
             }
+            event_type = (
+                "CRYPTO_FEE_ACTIVITY_UNCLASSIFIED"
+                if activity_symbol is None
+                else "CRYPTO_FEE_ACTIVITY_UNALLOCATED"
+            )
             self.event_ledger.append_event(
                 event_id=_event_id("fee-", activity["id"]),
                 aggregate_id="account-crypto-fees",
-                event_type="CRYPTO_FEE_ACTIVITY_UNALLOCATED",
+                event_type=event_type,
                 payload=payload,
-                occurred_at=_timestamp(
-                    activity.get("created_at") or activity.get("date"),
-                    "crypto_fee_created_at",
-                ),
+                occurred_at=occurred_at,
             )
-            fee_records.append(payload)
+
+            if classification == "TARGET_SYMBOL":
+                fee_records.append(payload)
+            elif classification == "OTHER_SYMBOL":
+                other_symbol_count += 1
+            else:
+                unclassified_records.append(payload)
 
         return {
             "symbol": normalized_symbol,
             "after": after_utc,
             "until": until_utc,
             "fee_activity_count": len(fee_records),
+            "other_symbol_activity_count": other_symbol_count,
+            "unclassified_activity_count": len(unclassified_records),
+            "incomplete_activity_count": incomplete_count,
             "allocation_status": "UNALLOCATED",
             "fee_activities": fee_records,
+            "unclassified_fee_activities": unclassified_records,
         }
