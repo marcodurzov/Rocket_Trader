@@ -496,3 +496,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Post-merge Yahoo research run 42954130155 was in progress at this update; no Tiingo request was run because no token/paid plan is configured.
 - Post-merge runtime/accounting run 42954130244 passed all 166 offline tests.
 - No subscription purchased; no strategy approvals or orders.
+
+
+---
+
+## 2026-11-11 — PR #108 and post-merge v0.4 consistency run
+- PR #108 merged as `aaf4cf02c3d04c77925357df7687a1f9946abe2f`; Handoff synchronized after PR #106.
+- Post-merge research run 42954130155, artifact 13826686266: Yahoo 10-year data retrieval and quality passed for all 8 ETFs; report metadata correctly records `repair=False`.
+- This repeated the existing v0.4 research family as a regression/consistency check, not a new hypothesis. Family size 73, Holm-significant 0, pre-screen 0, candidate promotion false, Paper approval false, orders 0.
+- No Tiingo API call or subscription; only mocked contract tests. Independent cross-source validation remains open.
+- No progress percentage increase.
