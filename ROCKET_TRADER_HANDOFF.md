@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#161 merged; real Paper FILL reconciliation verified; CFEE time-window filtering hardened)  
+**Last updated:** 2026-11-11 (PRs #141–#163 merged; Paper FILL reconciliation verified; CFEE window filtering hardened; fail-closed execution startup gate added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `62a0ac24b52c9057020e6728ca30be5eaebcdc74` (PR #161 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `a12e69fe1f7fe18f0ed21f99cb4c347de26850fa` (PR #163 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **55%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1011,3 +1011,15 @@ Next actions:
 - No order was submitted/canceled/replaced; account settings were not changed; LIVE remains disabled.
 
 **Progress estimate:** 55% (engineering/evidence maturity only). The real FILL path is verified and CFEE time-window integrity is hardened, but the fix still needs a fresh read-only Paper run, durable automatic recovery/cursors, corrections, empirically measured costs, deployment and strategy OOS edge remain open.
+
+
+### PR #163 — fail-closed Paper crypto execution startup gate
+- Merged to main: `a12e69fe1f7fe18f0ed21f99cb4c347de26850fa`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/163
+- Adds `PaperCryptoExecutionService`, a process-local orchestration gate for a future Paper crypto execution host. New intents are blocked until the service verifies the account's ACTIVE/USD/crypto ACTIVE/cash-only/no-short/options-disabled configuration and the adapter's read-only recovery reconciles every journaled order.
+- `from_existing_storage()` requires pre-existing separate journal and immutable event-ledger files. It opens them read-only before adapter construction, checks the journal schema, event schema, append-only triggers, and requires every journaled order to have matching `ORDER_PREPARED` or `BROKER_ORDER_DISCOVERED` evidence. It requires `ALPACA_PAPER=true`, rejects LIVE, and does not accept an externally injected broker client; the adapter constructs its Alpaca client with `paper=True`.
+- The gate stays closed on failed/malformed recovery, unresolved orders, account-preflight mismatch, `stop()`, or any adapter submission exception. A fresh successful recovery pass is required before another intent.
+- PR CI `43038167066`: success; 65 offline crypto execution/recovery/startup-gate tests passed. Post-merge main run `43038263626` was running when this note was drafted; update with its conclusion.
+- Boundary: this is **not a deployed service** and does not wire itself into the observe-only Compose stack. The low-level adapter remains callable by existing explicit workflows; any future autonomous execution host must use this gate and must not bypass it. No strategy is approved, no strategy-driven orders are enabled, and LIVE remains prohibited.
+
+**Progress estimate:** 55% (engineering/evidence maturity only). Startup recovery now has a tested integration primitive, but persistent host deployment, real Paper restart recovery against the same durable files, activity cursor/backfill/correction handling, empirically calibrated costs and validated strategy edge remain open.
