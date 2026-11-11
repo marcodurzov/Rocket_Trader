@@ -724,3 +724,18 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Manual post-fix Paper audit remains required. Fees are not yet attributed to the buy/sell order and remain unverified.
 - No new order was submitted; Live remains prohibited.
 - Progress: **55%** (engineering/evidence maturity, not profitability).
+
+
+---
+
+## 2026-11-11 — Paper audit result and CFEE window hardening (PR #161)
+
+- Manual Paper run `43036761702` completed successfully on main SHA `57ea51c95df7c2660027f26c2136e6c9490f78b5`.
+- Account preflight: `ACTIVE_USD_CASH_ONLY_NO_SHORT`.
+- Both actual BTC/USD smoke orders matched their broker FILL activity quantities: BUY `0.000133206 BTC`; SELL `0.000132872 BTC`. There were no unmatched orders.
+- The audit returned three target-symbol CFEE records and three unclassified CFEE records. Two target-symbol records and two unclassified records had `created_at` timestamps before the requested fee-window start (2026-11-11 04:55 UTC). The remaining in-window records were one BTC-denominated quantity `-0.000000334 BTC` and one unclassified USD amount `-0.03 USD`, both unallocated and without documented order linkage. No exact order-level cost was established.
+- PR #161 merged as `62a0ac24b52c9057020e6728ca30be5eaebcdc74`. CFEE evidence is now checked locally against broker `created_at` and requested `after`/`until` bounds. Out-of-window and unverified records remain in the append-only ledger but are excluded from interval-specific candidate counts. The audit report and summary expose these counts and window boundaries.
+- PR checks: `43037441267` and `43037441187` succeeded. Post-merge checks: `43037526916` and `43037526946` are to be finalized after their workflow conclusions are available. Live Paper audit job is intentionally skipped on push/PR.
+- **Next verification:** manually dispatch the read-only Paper activity audit again using the same BTC/USD order window and fee window. Expect the two earlier target CFEE and two earlier unclassified CFEE records to appear as out-of-window, not as in-window candidates. Do not infer attribution of the remaining BTC and USD CFEE records.
+- No new order, cancellation, replacement, or account configuration mutation occurred. LIVE remains prohibited.
+- Progress remains **55%** (engineering/evidence maturity, not profitability).
