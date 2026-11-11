@@ -32,7 +32,12 @@ def successful_recovery():
 class PaperCryptoExecutionServiceTests(unittest.TestCase):
     def setUp(self):
         self.adapter = Mock()
-        self.adapter.verify_account.return_value = {"mode": "PAPER"}
+        self.adapter.verify_account.return_value = {
+            "mode": "PAPER", "status": "ACTIVE", "currency": "USD",
+            "crypto_status": "ACTIVE", "trading_blocked": False,
+            "multiplier": "1", "max_margin_multiplier": "1",
+            "no_shorting": True, "max_options_trading_level": 0,
+        }
         self.adapter.recover_journaled_orders.return_value = successful_recovery()
         self.adapter.submit.return_value = {
             "accepted": True, "mode": "PAPER", "order_id": "paper-order-1",
@@ -99,6 +104,14 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
                     self.service.start()
                 self.assertFalse(self.service.health()["ready"])
 
+    def test_malformed_account_preflight_keeps_gate_closed(self):
+        self.adapter.verify_account.return_value = {"mode": "PAPER"}
+        with self.assertRaisesRegex(PaperExecutionStartupError, "cash-only Paper"):
+            self.service.start()
+        self.adapter.recover_journaled_orders.assert_not_called()
+        self.adapter.submit.assert_not_called()
+        self.assertFalse(self.service.health()["ready"])
+
     def test_account_preflight_exception_keeps_gate_closed(self):
         self.adapter.verify_account.side_effect = RuntimeError("offline fake")
         with self.assertRaisesRegex(PaperExecutionStartupError, "verification/recovery failed"):
@@ -138,7 +151,7 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
             try:
                 with self.assertRaisesRegex(PaperExecutionStartupError, "Existing durable"):
                     PaperCryptoExecutionService.from_existing_storage(
-                        db_path=db, event_ledger_path=events, client=object()
+                        db_path=db, event_ledger_path=events
                     )
                 with sqlite3.connect(db) as conn:
                     conn.execute(
@@ -158,7 +171,7 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
                     )
                 with self.assertRaisesRegex(PaperExecutionStartupError, "Existing durable"):
                     PaperCryptoExecutionService.from_existing_storage(
-                        db_path=db, event_ledger_path=events, client=object()
+                        db_path=db, event_ledger_path=events
                     )
                 with sqlite3.connect(events) as conn:
                     conn.executescript("""CREATE TABLE execution_events (
@@ -183,7 +196,7 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
                     return_value=fake_adapter,
                 ) as adapter_factory:
                     service = PaperCryptoExecutionService.from_existing_storage(
-                        db_path=db, event_ledger_path=events, client=object()
+                        db_path=db, event_ledger_path=events
                     )
                 adapter_factory.assert_called_once()
                 self.assertIs(service.adapter, fake_adapter)
@@ -234,7 +247,7 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
                 with patch.object(execution_adapter, "AlpacaCryptoPaperExecutionAdapter") as factory:
                     with self.assertRaisesRegex(PaperExecutionStartupError, "LIVE"):
                         PaperCryptoExecutionService.from_existing_storage(
-                            db_path=db, event_ledger_path=events, client=object()
+                            db_path=db, event_ledger_path=events
                         )
                     factory.assert_not_called()
                 os.environ["ALPACA_LIVE_ENABLED"] = "false"
@@ -242,7 +255,7 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
                 with patch.object(execution_adapter, "AlpacaCryptoPaperExecutionAdapter") as factory:
                     with self.assertRaisesRegex(PaperExecutionStartupError, "ALPACA_PAPER"):
                         PaperCryptoExecutionService.from_existing_storage(
-                            db_path=db, event_ledger_path=events, client=object()
+                            db_path=db, event_ledger_path=events
                         )
                     factory.assert_not_called()
             finally:
