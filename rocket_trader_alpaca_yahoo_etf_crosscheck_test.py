@@ -155,6 +155,29 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         )
 
 
+
+    def test_missing_yahoo_dividend_is_compared_with_alpaca_issuer_event(self):
+        raw = self.yahoo.copy()
+        yahoo_factor = pd.Series([1.0] * 8, index=self.dates)
+        alpaca_factor = pd.Series([0.995] * 4 + [1.0] * 4, index=self.dates)
+        yahoo_dividends = pd.Series([0.0] * 8, index=self.dates)
+        result = compare_adjustment_factors(
+            "TLT", raw, raw * yahoo_factor, raw, raw * alpaca_factor,
+            min_common_sessions=5,
+            yahoo_dividends=yahoo_dividends,
+            alpaca_corporate_actions=[{
+                "action_type": "cash_dividend", "symbol": "TLT",
+                "ex_date": str(self.dates[4].date()), "rate": "0.343177",
+                "process_date": str(self.dates[4].date()),
+            }],
+        )
+        step = result["largest_adjustment_factor_step_changes"][0]
+        self.assertEqual(step["yahoo_dividend_cash_on_session"], 0.0)
+        self.assertAlmostEqual(step["alpaca_cash_dividend_total_on_session"], 0.343177)
+        self.assertAlmostEqual(
+            step["yahoo_minus_alpaca_cash_dividend_on_session"], -0.343177
+        )
+
     def test_alpaca_corporate_actions_fetches_and_paginates_cash_dividends(self):
         calls = []
         payloads = [
