@@ -616,3 +616,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Yahoo action fields (dividends/splits) and prior raw closes are now included around top adjustment-factor step dates; report computes approximate cash-dividend scale in bps for comparison.
 - CI `42956965526`: 12 cross-check tests passed after correcting an overly precise assertion; live data skipped on PR.
 - Post-merge live audit pending. No vendor attribution, Tiingo token, orders or approvals. Progress 46%.
+
+
+---
+
+## 2026-11-11 — PR #124 live event-level dividend audit
+- Live audit `42957082760` succeeded; artifact `13827412712`; 12 cross-check tests passed. Tiingo not requested (no token).
+- QQQ 2022-09-19: Yahoo action `$0.519`; previous raw close `$289.32`; expected cash adjustment scale 17.9386 bps. Relative Alpaca/Yahoo factor ratio moved 0.9982217537 -> 0.9999841026 (+17.6809 bps). This is close to one dividend factor but the difference direction requires checking whether Alpaca applies an extra adjustment.
+- TLT 2026-11-02: Yahoo action feed reports $0.00; previous raw close $81.84; Alpaca/Yahoo factor ratio 0.9958460599 -> 1.0000000000 (+41.7148 bps). iShares official issuer record lists $0.343177 distribution that date, equivalent to ~41.93 bps of prior price. Strong evidence Yahoo action/adjustment history misses or differs on this event.
+- 0/8 full-period coverage gate still passes; no Tiingo data, no source splicing, no strategy/Paper approvals or orders.
+- Progress remains 46%.
