@@ -501,3 +501,17 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 4. Search for a suitable institutional/licensed historical dataset if Tiingo does not provide sufficient depth/quality; no assumption that IEX can substitute for SIP.
 5. Expand strategies only after data-quality remediation; keep the 0/73 negative research result and 0/8 source coverage failures as historical evidence.
 6. Continue fee/FX/corporate-action reconciliation, Paper cost collection after persistent deployment, and selector observe-only validation. No strategy approved; LIVE disabled.
+
+
+### PR #119 — before/after adjustment factor evidence
+- Merge commit: `0c3c815437e747f82615b3900cc8cfc7d4ce0066`.
+- Each largest factor-step date now shows previous common session, Yahoo and Alpaca adjustment factors and ratio before the event, and the corresponding current-session values.
+- PR CI `42956145698`: all 12 cross-check tests passed.
+- Post-merge live audit `42956264138` succeeded; artifact `13827440846`; 12 tests passed. Tiingo was not requested because no token is configured.
+- QQQ ex-date 2022-09-19: prior session 2022-09-16; Yahoo factor 0.9748652963, Alpaca factor 0.9731318510, ratio 0.9982218617. On ex-date: Yahoo 0.9766172744, Alpaca 0.9766019584, ratio 0.9999843173. Relative factor step +17.6820 bps. QQQ distribution that day was $0.51856/share.
+- TLT ex-date 2026-11-02: prior session 2026-10-30; Yahoo factor 1.0000000000, Alpaca factor 0.9958460599, ratio 0.9958460599. On ex-date both factors 1.0000000000. Relative factor step +41.7148 bps. iShares official distribution that day was $0.343177/share.
+- In both cases, Alpaca's adjusted/raw factor is lower than Yahoo's on the previous session and converges on the ex-date. This is strong evidence of different dividend adjustment handling, but it does not establish which provider is correct or whether revision timing/methodology/defect is responsible.
+- QQQ 2024-12-23/24 and SPY 2025-04-09/10 raw-return outliers remain separate; no cause attributed. Full-period source coverage remains 0/8 because IEX overlaps only 62.95% of Yahoo's 10-year period.
+- No Tiingo token, subscription, strategy approval, Paper approval or orders.
+
+**Next:** compare these events with official issuer distribution amounts and prior raw closes, then inspect remaining adjustment-factor and raw-return outlier dates. Do not choose a source or splice history until the data lineage is reconciled.
