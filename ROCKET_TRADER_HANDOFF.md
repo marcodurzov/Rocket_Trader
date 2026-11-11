@@ -1,6 +1,6 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11  
+**Last updated:** 2026-11-11 (adaptive strategy and event-evidence requirements reaffirmed)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Latest audited code baseline SHA:** `097dd10932ed7ed2e993a2b2110cb7f728450d8b`  
@@ -651,3 +651,98 @@ No new strategy is profitable or approved. The research review does not validate
 2. Tiingo comparison remains blocked on a token/eligible plan; no credential or paid subscription configured.
 3. If Tiingo is tested later, compare all eight symbols against both Yahoo and Alpaca, require common-session coverage and preserve explicit status.
 4. Preserve raw-vs-adjusted event diagnostics; never auto-correct or splice provider histories.
+
+
+---
+
+## 2026-11-11 — User-confirmed adaptive strategy, full-domain research and event-evidence requirements
+
+The user explicitly reconfirmed four mandatory requirements:
+1. Rocket Trader must rotate among different strategies as market regimes and opportunities change; it must not be locked to one strategy.
+2. It must maintain a structured, continuously maintained body of knowledge across relevant branches of trading thought, selecting methods only when their assumptions and market/data conditions apply.
+3. Financial, political, geopolitical, macroeconomic and social/news information must be validated statistically and temporally for potential price impact and early-warning value. The user's prior project **Jefe Maestro** is the methodological reference for advanced statistical evidence discipline.
+4. After these requirements are integrated and documented, continue the remaining engineering and validation stages under existing safety and capital rules.
+
+### Interpretation — what "knows all strategies" means operationally
+
+Do not claim literal perfect knowledge of every strategy ever devised. Maintain a versioned strategy taxonomy and evidence registry that is continuously expanded. For each family record:
+- formal hypothesis and mechanism;
+- market, instrument, horizon and regime where it may apply;
+- required data, timestamp granularity, latency and licensing;
+- entry, exit, sizing and execution assumptions;
+- known failure modes, capacity, costs and operational dependencies;
+- primary sources, evidence grade and reproducibility;
+- pre-registered tests, benchmarks, OOS evidence and promotion status.
+
+The registry is a research map, not a menu of live orders. A strategy is eligible only when its assumptions, data and validated net edge match current conditions. Missing evidence means research/shadow mode or abstention.
+
+### Adaptive strategy rotation — mandatory design
+
+Use a hierarchical controller:
+1. **Eligibility and safety:** data freshness/coverage, market calendar, tradability, account/reconciliation health, spread/liquidity, event halts, position/portfolio constraints.
+2. **Regime posterior:** trend, volatility, correlation, breadth, liquidity, cross-asset stress, macro/event state and data confidence; preserve probabilities and uncertainty, not only a hard label.
+3. **Candidate strategies:** independently versioned modules with regime/horizon applicability and validated net-return distributions.
+4. **Meta-allocation:** compare candidate conditional net expectancy and uncertainty on common observations; account for correlation, turnover, capacity, costs and drawdown contribution.
+5. **Rotation controls:** hysteresis, minimum evidence, switching-cost penalty, cooldown/minimum holding logic where appropriate, and champion/challenger shadow evaluation to prevent noisy flip-flopping.
+6. **Risk allocator:** portfolio-level volatility/drawdown/concentration/exposure constraints; uncertainty reduces risk; cash is a first-class allocation.
+7. **Execution:** deterministic order state machine; strategy models cannot bypass hard risk controls.
+
+Required comparisons: each strategy standalone, static equal-weight ensemble, simple regime rules, buy-and-hold, cash and risk-matched controls. Demonstrate incremental OOS net utility of adaptation over static alternatives. A regime classifier that predicts labels but does not improve decisions after costs is not useful.
+
+### Jefe Maestro — transferable statistical discipline
+
+The prior Jefe Maestro work is a methodological template, not a source of financial alpha:
+- separate production from the research/evidence lab;
+- pre-register hypotheses and freeze parameter ranges;
+- use strict chronological train/selection/final/prospective splits and walk-forward evaluation;
+- compare against random/uniform or economically appropriate null controls;
+- preserve immutable evidence logs, data/code fingerprints and reproducible seeds;
+- use block bootstrap, permutation/sign inference, confidence intervals and family-wise multiple-testing correction (Holm or defensible alternatives);
+- evaluate individual signals and joint/combined portfolios separately;
+- distinguish descriptive patterns, predictive evidence and economic utility;
+- require prospective evidence before production promotion.
+
+Historical Jefe Maestro lessons to preserve: prior FIX07 did not validate predictive advantage (confidence intervals included zero; adjusted p=1.000); the later broad FIX09 search reported 4,629 hypotheses, 227 nominal p<0.05 and zero surviving Holm correction. These are warnings about selection bias and multiple testing, not evidence about financial markets. A lottery's null model differs from financial returns; adapt the method, never copy the domain assumptions or claim that lottery signals transfer to markets.
+
+### Financial/political/social/news event validation — mandatory design
+
+Build on the existing official RSS, Alpaca/Benzinga and GDELT observers and curated event-assessment pipeline. Raw headlines, social posts, LLM summaries or sentiment scores must never directly allocate capital.
+
+Every event record should preserve:
+- source identity/type, URL, source-group independence, author/publisher where available;
+- published_at, first_seen_at, retrieved_at, timezone, event_time vs report_time, revisions and content hash;
+- entity/asset/geography mapping, event taxonomy, direction-neutral description and causal channel;
+- evidence spans/quotes within lawful limits, source credibility and corroboration;
+- novelty vs duplicate/recycled story, uncertainty, contradictory evidence and confidence;
+- expected horizon, possible transmission channel and expiration/decay assumptions;
+- point-in-time feature availability and exact decision timestamp.
+
+Statistical research must test, not assume, whether events anticipate returns:
+- define event classes and impact windows before testing (minutes, hours, days, weeks as appropriate);
+- construct point-in-time event studies with pre-event baselines and matched non-event controls;
+- measure abnormal returns, volatility, spread/liquidity, volume, gap risk and cross-asset spillovers;
+- test lead/lag structure without using information unavailable at decision time;
+- deduplicate syndicated stories and cluster correlated sources to avoid false corroboration;
+- use placebo timestamps, shuffled labels, permutation/block bootstrap and negative-control event classes;
+- correct for all tested event classes, assets, horizons and model variants;
+- compare text/NLP/social features against simple structured-event baselines and price/volume-only baselines;
+- test incremental OOS value after costs, delays, slippage and data-vendor latency;
+- monitor source outages, policy/platform API changes, bot/manipulation risk and survivorship of deleted posts.
+
+Political and social content requires neutral, factual event coding. Do not infer market impact from ideological tone or unverified viral claims. Lawful access, terms of service, privacy and licensing are hard constraints. Social data may be excluded if point-in-time availability, provenance or representative coverage cannot be established.
+
+### Research completeness and evidence limits
+
+The historical research landscape and the systematic strategy program are now documented, but neither is an exhaustive inventory of all trading knowledge. Expand them iteratively with source quality labels. Books, forums, Reddit, repositories and famous traders generate hypotheses; only reproducible OOS evidence can promote a method. Verify repository license, maintenance, data assumptions and execution semantics before adoption.
+
+### Next execution sequence
+1. Expand the versioned strategy registry to cover every applicable family in the research taxonomy, including required data, horizon, regime, execution, failure modes and evidence status.
+2. Implement a hypothesis/event evidence ledger with immutable experiment manifests and family-wise correction.
+3. Build point-in-time event datasets and event-study baselines; quantify incremental signal value before any allocation linkage.
+4. Validate regime posterior and temporal alignment on real data, including missingness, coverage, uncertainty and transition stability.
+5. Compare adaptive rotation against static and simple baselines on identical OOS periods and costs.
+6. Connect selector and event overlay in shadow/observe-only mode; no autonomous order path until separate gates pass.
+7. Continue reconciliation, execution-cost collection, Paper deployment and independent operational review.
+8. Update this Handoff after every meaningful change, including failures, hypotheses rejected, exact artifacts, commit/PR/test evidence and next action.
+
+**Capital boundary unchanged:** research and Paper only; no real-money orders, paid data subscriptions or credential sharing without the user's separate explicit authorization.
