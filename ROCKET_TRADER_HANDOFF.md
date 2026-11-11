@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `775186e104a485bbc07b50a5dcc807723aced240`  
+**Latest audited code baseline SHA:** `aaf4cf02c3d04c77925357df7687a1f9946abe2f`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -348,3 +348,24 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 5. Validate regime stability and predictive value with point-in-time data and new pre-registered hypotheses.
 
 **Progress remains 46%.** Yahoo retrieval is reproducible with corrected metadata, but strategy evidence remains negative (0/73 familywise significant, 0 pre-screen); no independent Tiingo data or Paper forward validation exists.
+
+
+### PR #106 — completed post-merge Yahoo 10-year research evidence
+- Post-merge workflow run `42954130155` completed successfully on 2026-11-11; job `130305073197`; artifact `13826686266` (`rocket-trader-equity-multiyear-research-v0-4`).
+- Important: this was the workflow's default **Yahoo Finance** research run, not Tiingo and not a fresh Alpaca IEX/SIP parity run. No Tiingo token was configured, so the new Tiingo adapter was not called.
+- Yahoo supplied all 8 requested ETFs (DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT) for the requested 10-year period. Each had 2,511 daily bars, approximate weekday coverage 96.32%, and maximum calendar gap 4 days. The existing data-quality gate passed for all 8.
+- Research used close-observed signals and next-session-open execution, with chronological 60% train / 20% validation / 20% final holdout. Base cost assumption remains 5 bps per side (2.5 half-spread + 2.5 slippage, zero commission), a placeholder and **not empirical**.
+- Final holdout family: 73 hypotheses, Holm-Bonferroni alpha 0.05, 5,000 centered moving-block bootstrap replicates per hypothesis. **Pre-screen passes: 0/73. Family-wise significant: 0/73.** No candidate qualifies; candidate promotion false; Paper approval false; orders enabled false; orders submitted 0.
+- Result is a successful 10-year Yahoo data retrieval and research execution, but a negative strategy-selection result. Do not misstate it as a validated profitable strategy or a successful cross-vendor 10-year comparison.
+- The earlier Alpaca IEX comparison still only covered 2020-07-27 onward (about 6.3 years) and SIP remained `NOT_ENTITLED`. The previous common-window daily-return correlations were high, but cumulative-return differences reached 220.5 bps for SPY. Yahoo-only coverage does not resolve that vendor adjustment divergence.
+- Workflow `42954130244` also passed the post-merge Paper runtime/accounting suite (166 tests). This remains CI evidence, not evidence from a persistent user-host Paper account.
+- Artifact SHA256 ZIP digest: `6929f6156d5c55665023fb0bcb007a311962c0c70e5837328a8d72e8656f9d0e`.
+
+**Next research steps**
+1. Obtain an independently licensed full-history provider (Tiingo adapter is now available, but no token/subscription has been authorized); compare Yahoo, Tiingo and Alpaca IEX on common dates and corporate actions without splicing.
+2. Revisit strategy hypotheses only with a documented research rationale; do not relax the current statistical gates just to obtain a passing strategy.
+3. Replace placeholder costs with actual Paper spread/slippage/fill and fee data; test sensitivity to materially higher costs.
+4. Extend research to more independent walk-forward periods and multiple market regimes, including stress periods, before considering any candidate.
+5. Keep deployment, broker reconciliation and all trading orders separate: no persistent host evidence and no live-order authorization.
+
+**Progress remains 46%.** Ten-year Yahoo history and the negative research result are now verified; Tiingo live history, independent provider parity, empirical costs, strategy edge and Paper runtime remain unresolved.
