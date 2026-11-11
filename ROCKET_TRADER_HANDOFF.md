@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#150 merged; crypto SELL reservations now account for open orders)  
+**Last updated:** 2026-11-11 (PRs #141–#152 merged; manual read-only Paper order/fill/fee audit workflow added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `e7e26ee89c80568dc50ef05cc423e30027fc6735` (PR #150 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
-**Current progress estimate:** **53%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Latest main HEAD before this Handoff refresh:** `92e427620a504a55a47b280cc617dcb3a94c2749` (PR #152 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Current progress estimate:** **54%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **53%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 53% profitable, nor does it mean a 53% probability of success.
+Current estimate: **54%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 54% profitable, nor does it mean a 54% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
@@ -929,3 +929,18 @@ Next actions:
 - Boundary: this protects concurrent SELL reservations made through Rocket Trader and rechecks broker open orders immediately before submission. It cannot atomically serialize a separate external client placing an order at exactly the same instant. A confirmed terminal partial fill also depends on broker position data being current; any discrepancy must remain blocked and be reconciled.
 
 **Progress estimate:** 53% (engineering/evidence maturity only). The adapter now accounts for broker open SELL orders and serializes local reservation checks. Full recovery scheduling, partial-exit remainder automation, correction/bust ingestion, fee attribution, empirical costs and strategy edge remain unproven.
+
+
+### PR #152 — manual read-only Paper order/fill/fee audit
+- Merged to main: `92e427620a504a55a47b280cc617dcb3a94c2749`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/152
+- Added `alpaca_paper_activity_reconciliation_audit.py` and workflow `.github/workflows/rocket-trader-paper-activity-audit.yml`.
+- The workflow is manual-only for broker access. PR/push events run static compilation and offline tests; they skip the account-audit job.
+- Manual audit explicitly constructs `TradingClient(..., paper=True)`, requires `ALPACA_PAPER=true`, blocks if `ALPACA_LIVE_ENABLED=true`, and read-only verifies ACTIVE/USD/crypto ACTIVE, multiplier 1, shorting disabled, and options level 0.
+- It queries orders by symbol and explicit time range, reconciles each broker order's filled quantity against individual FILL activities, and collects CFEE candidates over a separate window.
+- It creates a JSON report and SQLite event ledger artifact (14-day retention). No orders are submitted, canceled, replaced or modified; account configuration is not changed.
+- Default order window targets the earlier user-dispatched BTC/USD Paper smoke (2026-11-11 04:55–05:05 UTC); default fee window extends to 2026-11-13 to allow delayed fee posting. Both windows are editable in workflow inputs.
+- PR CI run `43015558131`: success; 17 offline tests passed. Post-merge main run `43015657332`: success.
+- **The actual Paper account-activity endpoint has not yet been queried by this new workflow.** It must be manually dispatched by the user from GitHub Actions. If no CFEE activity appears, the report explicitly leaves fee evidence UNKNOWN; it does not infer zero fees.
+
+**Progress estimate:** 54% (engineering/evidence maturity only). A controlled real-Paper read-only audit is now prepared but awaits user dispatch. Full unattended recovery, persistent activity watermarks, corrections/busts, fee attribution, partial-exit automation, deployment, empirical costs and strategy edge remain open.
