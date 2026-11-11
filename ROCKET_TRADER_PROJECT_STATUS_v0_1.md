@@ -639,3 +639,14 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Research result unchanged: 73 hypotheses, Holm significant 0, pre-screen 0, no strategy promotion, no Paper approval, no orders.
 - Alpaca IEX 10-year coverage still only ~63%, 0/8 cross-provider coverage passes. Tiingo not live-tested.
 - Next: investigate IEX/Yahoo adjustment outliers; live Tiingo parity only if eligible token/plan is separately configured; no source splicing; preserve all negative strategy results.
+
+
+---
+
+## 2026-11-11 — Event-level IEX/Yahoo divergence findings
+- Re-examined artifact `13827412712` from run `42957082760`.
+- Official Alpaca docs distinguish IEX (single exchange, approx. 2.5% volume) from SIP (all US exchanges/consolidated tape). IEX is therefore not suitable as a full-market close proxy.
+- SPY cumulative difference +218.90 bps, but max adjustment-factor divergence only 0.004489%; raw normalized-close divergence max 0.8381%. Largest raw return differences: 2025-04-09 -116.75 bps; 2025-04-10 +100.69; 2024-12-24 +93.92; 2024-12-23 -91.53. Likely raw feed price mismatch, exact trade cause not proven.
+- QQQ adjustment-factor max divergence 0.327819%; 2022-09-19 Yahoo action feed shows $0.519 dividend and relative factor step 17.68 bps (~17.94 bps implied by distribution/prior raw close). Exact provider mechanism unproven.
+- TLT adjustment-factor max divergence 0.422290%; official iShares reports $0.343177 ex-distribution 2026-11-02. Prior Yahoo raw close $81.84 implies ~41.93 bps; audit shows Yahoo cash action 0 and no factor step, while Alpaca relative factor step is 41.7148 bps. Consistent with Yahoo event adjustment not yet reflected in that capture; must re-query.
+- Conclusion: mixed provider issues; raw-price differences dominate SPY, adjustment-factor mismatches matter for QQQ/TLT. Neither IEX nor Yahoo alone is certified as institutional-grade truth. Tiingo not live-tested. No subscriptions/spend approved.
