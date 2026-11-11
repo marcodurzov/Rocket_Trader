@@ -164,3 +164,14 @@ Therefore IEX daily bars are not an acceptable substitute for consolidated closi
 - Never splice or average provider histories. Keep raw and adjusted series separate.
 - Re-query TLT after the 2026-11-02 distribution has propagated; verify QQQ's 2022-09-19 event against official Invesco records; compare SIP only if entitled, otherwise Tiingo only after secure token/eligible plan and explicit approval for any cost.
 - No vendor currently certified as institutional-grade 10-year ground truth; no strategy promotion, Paper approval or LIVE authorization from this audit.
+
+
+## 2026-11-11 rerun after TLT distribution event
+
+Workflow `42958406136`, artifact `13827124135`, code SHA `097dd10932ed7ed2e993a2b2110cb7f728450d8b`.
+
+- The same TLT 2026-11-02 discrepancy persisted on a second audit capture (Nov 11): Yahoo dividend action = 0.0 and Yahoo adjustment factor stayed 1.0 from prior session to ex-date. Alpaca adjustment factor stepped 41.7148 bps.
+- Official iShares record remains $0.343177; divided by prior Yahoo raw close $81.839996 gives ~41.93 bps. The provider divergence is close to the official cash distribution scale.
+- Interpretation remains unresolved but stronger: Yahoo's action/adjustment series in these captures has not reflected the issuer's ex-date distribution; do not use Yahoo adjusted TLT total-return history as validated until corrected/reconciled. Do not auto-apply the dividend to historical prices.
+- Tiingo was not requested: `tiingo_comparison_status=NOT_REQUESTED`, `tiingo_all_diagnostic_gates_pass=null`, 0 symbols. This is explicitly not a pass.
+- Overall IEX/Yahoo diagnostic remains false; no candidate promotion, Paper approval or orders.
