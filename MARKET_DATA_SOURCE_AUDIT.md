@@ -233,7 +233,7 @@ References:
 
 ### Actual research outputs (read-only; no orders)
 
-- ETF cross-check run `43080158893`: 10-year window, 8 ETFs, Alpaca IEX vs Yahoo adjusted daily bars. The audit returned `ok=true` but `all_diagnostic_gates_pass=false`; all eight symbols failed minimum source coverage. Common sessions were 62.98% of Yahoo's returned sessions and 99.94% of Alpaca IEX's returned sessions. This is a material historical-coverage limitation, not a strategy result.
+- ETF cross-check run `43080158893`: 10-year window, 8 ETFs, Alpaca IEX vs Yahoo adjusted daily bars. The audit returned `ok=true` but `all_diagnostic_gates_pass=false`; all eight symbols failed the 10-year history-overlap gate. Common sessions were 62.98% of Yahoo's full history and 99.94% of Alpaca IEX's returned sessions. This reflects Alpaca's later first available date (seven ETFs 2020-07-27; SPY 2018-11-01), not a demonstrated 37% internal IEX missing-session rate.
 - Equity research v0.1 run `43080158810`: 5-year Alpaca IEX, 8 ETFs; data quality passed for all eight. This version is exploratory and does not apply the later family-wide multiple-testing test; no candidate was promoted or Paper-approved.
 - Equity research v0.2 run `43080158982`: 10-year Yahoo adjusted daily history, 8 ETFs; data quality passed. Holm-Bonferroni family size 49, 5,000 centered moving-block bootstrap replicates per hypothesis, alpha 0.05. Family-wise significant hypotheses: 0; pre-screen passes: 0.
 - Equity research v0.3 run `43080158898`: 10-year Yahoo adjusted daily history, 8 ETFs; data quality passed. Same 49-hypothesis Holm-Bonferroni framework; family-wise significant hypotheses: 0; pre-screen passes: 0.
@@ -251,3 +251,23 @@ References:
 5. Continue investigating a persistent host that costs USD 0 and is already available to the user. GitHub Actions is for bounded CI/research, not a 24/7 trading runtime. No host has been identified or deployed.
 
 **Progress estimate: 58%** (engineering/evidence maturity, not profitability). The increase from 57% reflects merged zero-budget safeguards and completed statistical research workflows. It does not indicate strategy success, production deployment, Paper approval or readiness for Live.
+
+## 2026-11-11 — Correct interpretation of Alpaca IEX vs Yahoo history coverage
+
+The earlier wording that described Alpaca IEX as the "sparse side" or implied a 37% internal missing-bar rate was inaccurate and is superseded by this correction.
+
+The artifact from run `43080158893` shows:
+- Seven ETFs: Yahoo 2,512 sessions; Alpaca IEX 1,583; common 1,582; first common session 2020-07-27.
+- SPY: Yahoo 2,512 sessions; Alpaca IEX 1,584; common 1,583; first common session 2018-11-01.
+- The 62.98% ratio is common sessions divided by Yahoo's full 10-year history. The 99.94% ratio is common sessions divided by Alpaca's returned history. These ratios describe unequal history horizons.
+- The data do not show that IEX omitted roughly 37% of daily sessions during the period it returned. Within the shared period, almost all returned sessions align between sources.
+- The 10-year audit still correctly fails its full-history-overlap gate: Alpaca's available history for this account does not extend back to the requested 2016 start. It is therefore unsuitable as the only 10-year research source, even though its overlap with Yahoo is highly complete.
+- The code now reports each provider's first/last session, the Alpaca history-start lag, overlap-window session completeness, and a classification distinguishing a later history start from internal gaps. The old `minimum_source_coverage` field remains as a backward-compatible alias; a new explicit `minimum_requested_history_overlap` field explains what it tests.
+
+### Free provider screening (official documentation checked 2026-11-11)
+
+- Alpha Vantage free access is 25 requests/day, but its full daily history (`outputsize=full`) is Premium-only and its split/dividend-adjusted daily endpoint is explicitly Premium. The free daily endpoint is limited to the latest 100 observations. It is not a usable free 5–10-year adjusted OHLC source for this project. Sources: https://www.alphavantage.co/support/api-key/ and https://www.alphavantage.co/documentation/
+- Financial Modeling Prep Basic advertises $0 and 250 calls/day, with a free-use limit of five years of stock history, but its Personal Use license is narrowly non-business/non-commercial. Its Terms prohibit use on behalf of an entity, sharing/integrating data into tools accessible to third parties, and copying/downloading content without prior written approval. Do not wire FMP into Rocket Trader's public repository/workflows or cache its data unless FMP confirms in writing that this specific private personal automated-trading use and storage are permitted. Sources: https://site.financialmodelingprep.com/how-to/how-to-create-a-financial-modeling-prep-account and https://site.financialmodelingprep.com/developer/docs/terms-of-service
+- FMP is therefore not automatically accepted just because its plan is free. Price is only one gate; licensing and intended use must also pass.
+- Continue using Alpaca IEX for the authorized Paper connection and bounded current/history checks, while keeping Yahoo research data segregated and labeled. Do not silently stitch providers or treat Yahoo as an exchange-licensed execution feed.
+
