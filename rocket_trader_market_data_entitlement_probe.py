@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Read-only Alpaca stock-feed entitlement probe (IEX baseline vs SIP)."""
+"""Read-only Alpaca free IEX market-data health probe."""
 
 from __future__ import annotations
 
@@ -37,6 +37,8 @@ def probe_feed(
     *,
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
+    if feed != DataFeed.IEX:
+        raise FeedProbeError("SIP probing is disabled by Rocket Trader's zero-budget policy.")
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() is None:
         raise FeedProbeError("now must be timezone-aware")
@@ -72,7 +74,11 @@ def probe_feed(
 
 def run_probe(client: Any, now: Optional[datetime] = None) -> Dict[str, Any]:
     iex = probe_feed(client, DataFeed.IEX, now=now)
-    sip = probe_feed(client, DataFeed.SIP, now=now)
+    sip = {
+        "feed": "sip",
+        "status": "DISABLED_BY_ZERO_BUDGET_POLICY",
+        "request_made": False,
+    }
     return {
         "ok": iex["status"] == "AVAILABLE",
         "checked_at": (now or datetime.now(timezone.utc)).isoformat(),
@@ -80,7 +86,7 @@ def run_probe(client: Any, now: Optional[datetime] = None) -> Dict[str, Any]:
         "timeframe": "1Day",
         "iex": iex,
         "sip": sip,
-        "research_feed_recommendation": "SIP" if sip["status"] == "AVAILABLE" else "IEX_ONLY_WITH_LIMITATION",
+        "research_feed_recommendation": "IEX_ONLY_WITH_LIMITATION",
         "orders_enabled": False,
         "orders_submitted": 0,
     }
@@ -95,15 +101,19 @@ def self_test() -> Dict[str, Any]:
     import pandas as pd
 
     class FakeClient:
+        def __init__(self):
+            self.calls = []
         def get_stock_bars(self, request):
-            if request.feed == DataFeed.SIP:
-                raise PermissionError("simulated entitlement restriction")
+            self.calls.append(request.feed)
             return _Response(pd.DataFrame({"close": [100.0]}))
+    fake_client = FakeClient()
 
-    result = run_probe(FakeClient(), now=datetime(2026, 11, 9, tzinfo=timezone.utc))
+    result = run_probe(fake_client, now=datetime(2026, 11, 9, tzinfo=timezone.utc))
     assert result["ok"] is True
     assert result["iex"]["status"] == "AVAILABLE"
-    assert result["sip"]["status"] == "ERROR"
+    assert result["sip"]["status"] == "DISABLED_BY_ZERO_BUDGET_POLICY"
+    assert result["sip"]["request_made"] is False
+    assert fake_client.calls == [DataFeed.IEX]
     assert result["orders_enabled"] is False
     assert result["orders_submitted"] == 0
     return {
