@@ -288,7 +288,7 @@ class AlpacaCryptoPaperExecutionAdapter:
                 FROM crypto_paper_order_journal
                 """
             ).fetchall()
-            terminal = {"filled", "canceled", "expired", "rejected", "replaced"}
+            terminal = {"filled", "canceled", "expired", "rejected"}
             for row in local_rows:
                 try:
                     local_payload = json.loads(row["payload_json"])
