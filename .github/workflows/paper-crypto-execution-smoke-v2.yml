@@ -1,20 +1,48 @@
-name: Rocket Trader - Capped Paper Crypto Execution Smoke Test v2
+name: Rocket Trader - Explicitly Authorized Capped Alpaca Paper Crypto Smoke Test
 
 on:
-  push:
-    branches:
-      - paper-crypto-execution-smoke-v2
-    paths:
-      - "alpaca_paper_crypto_execution_smoke.py"
-      - "rocket_trader_crypto_paper_execution.py"
-      - "rocket_trader_core.py"
-      - ".github/workflows/paper-crypto-execution-smoke-v2.yml"
+  workflow_dispatch:
+    inputs:
+      allow_paper_orders:
+        description: "Set true only to submit the capped USD 10 Paper BTC/USD buy-and-close lifecycle test"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  capped-paper-smoke:
+  paper-preflight:
+    name: Read-only Alpaca Paper connection and cash-only preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+      ALPACA_LIVE_ENABLED: "false"
+      ROCKET_TRADER_APPLY_CASH_ONLY_CONFIG: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Alpaca SDK
+        run: python -m pip install --upgrade pip && pip install "alpaca-py>=0.43,<1.0"
+      - name: Verify Paper connection (read-only)
+        run: python alpaca_connection_test.py
+      - name: Verify cash-only and no-short account settings (read-only; no account changes)
+        run: python alpaca_paper_cash_only_preflight.py
+      - name: Verify crypto Paper permissions (read-only)
+        run: python alpaca_crypto_paper_permissions_test.py
+      - name: Compile capped Paper smoke adapter
+        run: python -m py_compile alpaca_paper_crypto_execution_smoke.py rocket_trader_crypto_paper_execution.py rocket_trader_core.py
+
+  capped-paper-order-lifecycle:
+    name: USD 10 BTC/USD Paper buy and broker-confirmed close
+    needs: paper-preflight
+    if: ${{ inputs.allow_paper_orders == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -30,8 +58,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Alpaca SDK
-        run: pip install "alpaca-py>=0.43,<1.0"
-      - name: Compile smoke test and adapters
-        run: python -m py_compile alpaca_paper_crypto_execution_smoke.py rocket_trader_crypto_paper_execution.py rocket_trader_core.py
+        run: python -m pip install --upgrade pip && pip install "alpaca-py>=0.43,<1.0"
       - name: Submit capped Paper buy and close only broker-confirmed net quantity
         run: python alpaca_paper_crypto_execution_smoke.py
