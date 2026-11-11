@@ -596,3 +596,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - No Tiingo comparison run (0 symbols); this does not validate PR #106 adapter. No errors in workflow, but diagnostic failed because IEX lacks full decade.
 - No strategy promotion, Paper approval or orders. Research costs still unvalidated.
 - Next: exchange-session calendar, investigate outlier corporate-action dates and provider adjustments, perform Tiingo live validation only with token/eligible plan and explicit no-spend approval, preserve separate provider series.
+
+
+---
+
+## 2026-11-11 — PR #119 live adjustment factor result
+- PR #119 merged: https://github.com/marcodurzov/Rocket_Trader/pull/119; main code SHA `0c3c815437e747f82615b3900cc8cfc7d4ce0066`.
+- Live audit `42956264138` succeeded; artifact `13827440846`; all 12 cross-check tests passed. No Tiingo token configured.
+- QQQ 2022-09-19: factor ratio Alpaca/Yahoo 0.9982218617 on prior session, 0.9999843173 on ex-date; +17.6820 bps. Distribution $0.51856/share.
+- TLT 2026-11-02: factor ratio 0.9958460599 on prior session, 1.0000000000 on ex-date; +41.7148 bps. iShares distribution $0.343177/share.
+- Both suggest dividend adjustment handling differences; no provider declared correct. Full 10-year coverage gate 0/8. No approvals or orders. Progress 46%.
