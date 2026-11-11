@@ -563,3 +563,22 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 4. Re-run strategy research only with point-in-time data, multiple walk-forward folds and independent holdout; current 0/73 remains a valid negative result.
 5. Close remaining accounting fee/FX/corporate-action reconciliation, collect representative Paper execution costs after persistent user-host deployment.
 6. Selector remains observe-only/cash-safe. No approved strategy; LIVE disabled.
+
+
+### 10.13 Provider divergence investigation — artifact 13827412712
+Crosscheck run `42957082760` (code commit `ca0450287284af014e68bd5e31d05e641b8d110d`) and artifact `13827412712` was downloaded and re-examined at event level. This is the latest completed IEX/Yahoo comparison before the XNYS-calendar-only change.
+
+**Raw-price divergence vs adjustment-factor divergence**
+- Alpaca IEX is not consolidated US market data: Alpaca's official documentation describes IEX as a single exchange (~2.5% of market volume) and SIP as all US exchanges / consolidated tape (~100% volume). Sources: https://docs.alpaca.markets/us/v1.4.2/docs/historical-stock-data-1 and https://docs.alpaca.markets/us/docs/market-data-faq.
+- For SPY, cumulative return difference was +218.90 bps, while max relative adjustment-factor divergence was only 0.004489%; raw-price path difference reached 0.8381%. Largest raw daily divergences were 2025-04-09 (-116.75 bps), 2025-04-10 (+100.69 bps), 2024-12-24 (+93.92 bps), and 2024-12-23 (-91.53 bps). This points primarily to raw-price/feed differences rather than dividend-adjustment factors for SPY. It does not prove the exact trade-level cause.
+- DIA had +5.47 bps cumulative difference and only 0.002529% max relative factor divergence; EFA +1.22 bps / 0.012368%; GLD +3.29 bps / 0%; IWM -0.75 bps / 0.006514%; EEM +8.82 bps / 0.022271%. Their largest normalized raw-close differences were still material (roughly 0.3–0.72%), so IEX is not a consolidated close substitute.
+- QQQ had +89.97 bps cumulative difference and 0.327819% max relative adjustment-factor divergence. On 2022-09-19 Yahoo's action feed recorded a $0.519 distribution; prior Yahoo raw close was $289.32, implying ~17.94 bps. The audit's daily relative factor step was 17.68 bps. This is close in scale to one distribution, but the exact provider-side adjustment mechanism remains unproven. Yahoo history reference: https://finance.yahoo.com/quote/QQQ/history/.
+- TLT had +26.02 bps cumulative difference and 0.422290% max relative adjustment-factor divergence. Official iShares distribution table reports a $0.343177 distribution with ex-date 2026-11-02: https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf. On the prior Yahoo raw close of $81.84 this equals ~41.93 bps. The audit capture showed Yahoo dividend cash = $0 and no Yahoo factor step, while Alpaca's relative factor step was 41.7148 bps. The observed Alpaca step is close to the official distribution scale; this is consistent with Yahoo's event/adjustment not yet reflecting the distribution in that capture, but must be re-queried and independently confirmed before attribution.
+- These facts show the cross-provider difference is mixed: raw-price/feed differences dominate SPY; corporate-action adjustment mismatches matter for QQQ/TLT; do not apply one blanket explanation.
+
+**Operational conclusion**
+- Do not use Alpaca IEX daily bars as a substitute for SIP/consolidated prices in full-market backtests or closing-price validation. The official IEX/SIP coverage difference explains why the IEX series is a diagnostic reference only, not a complete market benchmark.
+- Do not blindly treat Yahoo adjusted history as corporate-action ground truth either: the TLT capture missed an issuer-confirmed distribution event. Re-query after vendor updates, compare official issuer events, and preserve raw and adjusted series separately.
+- No source is currently certified as a 10-year institutional-grade truth set. Tiingo is integrated but not live-tested; no Tiingo token/plan was used in this artifact.
+- Next: re-run TLT after the 2026-11-02 event has propagated; inspect QQQ 2022-09-19 factor step against official Invesco distribution records; compare SIP only if entitlement is available, otherwise test Tiingo after explicit credential/plan approval. No vendor subscription without explicit approval; never splice sources.
+
