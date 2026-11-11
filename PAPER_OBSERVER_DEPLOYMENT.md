@@ -196,3 +196,32 @@ If recovery is missing, malformed, unresolved or failed, `start()` raises and th
 The manual workflow now also runs `alpaca_paper_activity_sse_probe.py` against the Paper Activity SSE endpoint using a finite historical window from `orders_after` through current UTC time. It records whether the account returns TRD, crypto-like symbols, CFEE/FEE, `trade_correct`, `trade_bust` or `previous_id` evidence.
 
 This is a diagnostic probe only. It does not create a persistent SSE consumer, save a replay cursor, modify the execution ledger, reverse fills, change positions or submit orders. A missing crypto event is not proof that Alpaca does not support crypto on this endpoint; it is simply an unconfirmed capability until compared with the known Paper order history or clarified by Alpaca support.
+
+
+## 11. Optional Paper Activity SSE durable inbox service
+
+The repository now contains a separate read-only Activity SSE consumer. It must be run as its own process/container, not inside the market-data observer loop.
+
+Before enabling it, add the following to the deployment host's private `.env` file (never commit this file):
+
+```dotenv
+ALPACA_API_KEY=your_existing_paper_key
+ALPACA_SECRET_KEY=your_existing_paper_secret
+ACTIVITY_SSE_BOOTSTRAP_SINCE=2026-11-11T04:55:00Z
+```
+
+The bootstrap timestamp should be chosen deliberately: it is the first historical business-time boundary to replay. The confirmed BTC/USD Paper smoke fills occurred shortly after 2026-11-11T04:57:47Z. Starting earlier than the first event that must be captured avoids skipping that evidence. On subsequent reconnects, the service uses its SQLite-persisted `since_id` cursor, not the bootstrap timestamp.
+
+The Compose service `rocket-trader-alpaca-activity-sse` is explicitly pinned to `ALPACA_PAPER=true`, `ALPACA_LIVE_ENABLED=false` and `ROCKET_TRADER_EXECUTION_MODE=PAPER`. It uses the shared persistent `rocket_trader_data` volume and a dedicated `rocket_trader_activity_sse.sqlite3` inbox. It does not submit, cancel or replace orders and does not update positions, cash, fees or P&L. Corrections and busts are stored only as evidence.
+
+Deployment commands, after reviewing the environment and backup plan:
+
+```bash
+docker compose -f docker-compose.paper-observer.yml build rocket-trader-alpaca-activity-sse
+docker compose -f docker-compose.paper-observer.yml up -d rocket-trader-alpaca-activity-sse
+docker compose -f docker-compose.paper-observer.yml logs -f rocket-trader-alpaca-activity-sse
+```
+
+The container health check verifies the local hash chain and cursor without contacting Alpaca. Confirm the container is healthy and inspect logs for `STREAM_ENDED_OR_RECONNECTING` / `RECONNECTING` records. Back up the shared volume before upgrading or changing the inbox schema.
+
+**Not deployed by GitHub CI:** these files prepare the service configuration only. A host operator must deploy it on the actual persistent server and verify that the named volume survives container recreation. Do not use a disposable GitHub Actions runner as the persistent event consumer.
