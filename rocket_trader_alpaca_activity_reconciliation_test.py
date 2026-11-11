@@ -140,15 +140,18 @@ class AlpacaActivityReconciliationTests(unittest.TestCase):
         events = self.ledger.list_events(aggregate_id="account-crypto-fees")
         self.assertEqual(events[0]["event_type"], "CRYPTO_FEE_ACTIVITY_UNALLOCATED")
 
-    def test_fee_activity_without_amount_or_currency_is_not_assumed_zero(self):
+    def test_fee_activity_without_amount_is_preserved_as_incomplete_not_zero(self):
         fee = {
             "id": "fee-incomplete", "activity_type": "CFEE", "symbol": "BTC/USD",
             "net_amount": None, "currency": "BTC", "created_at": "2026-11-12T00:00:00Z",
         }
-        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "net_amount"):
-            self.reader({None: [fee]}).collect_crypto_fee_candidates(
-                symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
-            )
+        result = self.reader({None: [fee]}).collect_crypto_fee_candidates(
+            symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
+        )
+        self.assertEqual(result["fee_activity_count"], 1)
+        self.assertEqual(result["incomplete_activity_count"], 1)
+        self.assertEqual(result["fee_activities"][0]["net_amount"], None)
+        self.assertEqual(result["fee_activities"][0]["record_status"], "INCOMPLETE_FIELDS")
 
     def test_pagination_uses_activity_id_cursor_and_preserves_all_fills(self):
         page_one = [self.fill("page-1", "0.00004", "50000", "0.00004")]
