@@ -16,6 +16,8 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
@@ -284,6 +286,115 @@ def fetch_yahoo_daily_bars(
             f"{clean}: Yahoo history is stale; latest daily bar is {last_seen.date()}."
         )
     return normalized
+
+
+
+def fetch_tiingo_daily_bars(
+    symbol: str,
+    *,
+    years: int = DEFAULT_YEARS,
+    api_token: Optional[str] = None,
+    opener: Any = urlopen,
+    end: Optional[datetime] = None,
+) -> pd.DataFrame:
+    """Fetch split/dividend-adjusted EOD OHLCV from Tiingo for research only."""
+    if years < 3:
+        raise ValueError("years must be >=3.")
+    token = str(api_token or os.getenv("TIINGO_API_TOKEN", "")).strip()
+    if not token:
+        raise EquityResearchError("TIINGO_API_TOKEN is required for the Tiingo source.")
+    clean = normalize_symbol(symbol)
+    end_at = end or datetime.now(timezone.utc)
+    if end_at.tzinfo is None or end_at.utcoffset() is None:
+        raise ValueError("end must be timezone-aware")
+    start_at = end_at - timedelta(days=365 * years)
+    url = (
+        "https://api.tiingo.com/tiingo/daily/"
+        + quote(clean, safe="")
+        + "?"
+        + urlencode({
+            "startDate": start_at.date().isoformat(),
+            "endDate": end_at.date().isoformat(),
+            "format": "json",
+        })
+    )
+    request = Request(url, headers={
+        "Authorization": f"Token {token}",
+        "Accept": "application/json",
+    })
+    try:
+        with opener(request, timeout=30) as response:
+            status = getattr(response, "status", 200)
+            if status != 200:
+                raise EquityResearchError(f"Tiingo returned HTTP {status}")
+            payload = json.loads(response.read().decode("utf-8"))
+    except EquityResearchError:
+        raise
+    except Exception as exc:
+        raise EquityResearchError(
+            f"{clean}: Tiingo EOD history failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not isinstance(payload, list) or not payload:
+        raise EquityResearchError(f"{clean}: Tiingo returned no daily history.")
+    rows = []
+    for item in payload:
+        if not isinstance(item, dict):
+            raise EquityResearchError(f"{clean}: Tiingo returned a malformed daily row.")
+        required = ("date", "adjOpen", "adjHigh", "adjLow", "adjClose", "adjVolume")
+        if any(item.get(key) is None for key in required):
+            raise EquityResearchError(
+                f"{clean}: Tiingo row is missing adjusted OHLCV fields."
+            )
+        rows.append({
+            "timestamp": item["date"],
+            "open": item["adjOpen"],
+            "high": item["adjHigh"],
+            "low": item["adjLow"],
+            "close": item["adjClose"],
+            "volume": item["adjVolume"],
+        })
+    normalized = normalize_frame(pd.DataFrame(rows), clean, min_rows=1)
+    minimum_rows = max(900, int(years * 252 * 0.65))
+    quality = data_quality_metrics(normalized)
+    first_seen = normalized.iloc[0]["timestamp"]
+    last_seen = normalized.iloc[-1]["timestamp"]
+    if len(normalized) < minimum_rows:
+        raise EquityResearchError(
+            f"{clean}: Tiingo returned only {len(normalized)} daily bars; "
+            f"minimum {minimum_rows} for {years} years. "
+            f"Returned range={first_seen.isoformat()}..{last_seen.isoformat()}; "
+            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
+            f"max_calendar_gap_days={quality['max_calendar_gap_days']}."
+        )
+    if first_seen > pd.Timestamp(start_at).tz_convert("UTC") + pd.Timedelta(days=60):
+        raise EquityResearchError(
+            f"{clean}: Tiingo history does not cover the requested {years}-year start."
+        )
+    if last_seen.date() < end_at.date() - timedelta(days=7):
+        raise EquityResearchError(
+            f"{clean}: Tiingo history is stale; latest daily bar is {last_seen.date()}."
+        )
+    return normalized
+
+
+def source_metadata(source: str, feed_name: str = "IEX") -> Dict[str, str]:
+    clean = str(source).strip().upper()
+    if clean == "YAHOO":
+        return {
+            "data_source": "Yahoo Finance via yfinance, daily auto_adjust=True, actions=True, repair=False (research only)",
+            "price_adjustment": "Yahoo Finance yfinance history auto_adjust=True with actions=True and repair=False; research-only provider.",
+        }
+    if clean == "TIINGO":
+        return {
+            "data_source": "Tiingo EOD adjusted daily OHLCV via adjOpen/adjHigh/adjLow/adjClose/adjVolume (research only)",
+            "price_adjustment": "Tiingo adjusted OHLCV fields; provider documents split/dividend adjustment following CRSP methodology.",
+        }
+    if clean == "ALPACA":
+        return {
+            "data_source": f"Alpaca US stock daily bars, {feed_name.upper()} feed, Adjustment.ALL",
+            "price_adjustment": "Alpaca Adjustment.ALL (splits, dividends, spin-offs).",
+        }
+    raise ValueError("source must be ALPACA, YAHOO or TIINGO")
 
 
 def _stateful_long_only(entry: pd.Series, exit_: pd.Series, index: pd.Index) -> pd.Series:
@@ -680,14 +791,16 @@ def research(
     if len(clean) < 2:
         raise EquityResearchError("Cross-sectional research requires at least two ETFs.")
     source = str(source).strip().upper()
-    if source not in {"ALPACA", "YAHOO"}:
-        raise ValueError("source must be ALPACA or YAHOO")
+    if source not in {"ALPACA", "YAHOO", "TIINGO"}:
+        raise ValueError("source must be ALPACA, YAHOO or TIINGO")
     frames: Dict[str, pd.DataFrame] = {}
     failures = []
     for symbol in clean:
         try:
             if source == "YAHOO":
                 frames[symbol] = fetch_yahoo_daily_bars(symbol, years=years)
+            elif source == "TIINGO":
+                frames[symbol] = fetch_tiingo_daily_bars(symbol, years=years)
             else:
                 frames[symbol] = fetch_daily_bars(symbol, years=years, feed_name=feed_name)
         except Exception as exc:
@@ -773,11 +886,7 @@ def research(
         "version": VERSION,
         "pipeline": "rocket_trader_equity_multiyear_research_v0_4",
         "mode": "RESEARCH_ONLY",
-        "data_source": (
-            "Yahoo Finance via yfinance, daily auto_adjust=True, actions=True, repair=True (research only)"
-            if source == "YAHOO" else
-            f"Alpaca US stock daily bars, {feed_name.upper()} feed, Adjustment.ALL"
-        ),
+        "data_source": source_metadata(source, feed_name)["data_source"],
         "lookback_years_requested": years,
         "symbols_processed": clean,
         "data_quality_pass": not issues,
@@ -798,11 +907,7 @@ def research(
         "cross_sectional_2x_cost": cross_stress,
         "multiple_testing": multiple_testing,
         "methodology": {
-            "price_adjustment": (
-                "Yahoo Finance yfinance history auto_adjust=True with actions=True; research-only provider."
-                if source == "YAHOO" else
-                "Alpaca Adjustment.ALL (splits, dividends, spin-offs)."
-            ),
+            "price_adjustment": source_metadata(source, feed_name)["price_adjustment"],
             "signal_timing": "Signals use completed daily close; execution at next session open; returns are open-to-next-open, with final liquidation at the last available open.",
             "chronological_windows": "First 60% train, next 20% validation, final 20% holdout.",
             "strategy_hypotheses": [
@@ -876,7 +981,7 @@ def main() -> int:
     parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
     parser.add_argument("--years", type=int, default=DEFAULT_YEARS)
     parser.add_argument("--feed", default="IEX", choices=["IEX", "SIP"])
-    parser.add_argument("--source", default="ALPACA", choices=["ALPACA", "YAHOO"])
+    parser.add_argument("--source", default="ALPACA", choices=["ALPACA", "YAHOO", "TIINGO"])
     parser.add_argument("--output", default="research_artifacts/equity_multiyear_research_v0_4.json")
     args = parser.parse_args()
     if args.self_test:
