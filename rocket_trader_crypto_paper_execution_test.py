@@ -588,7 +588,7 @@ class CryptoPaperExecutionTests(unittest.TestCase):
             side=Side.SELL, quantity="0.0007",
         ))
         self.assertTrue(first["accepted"])
-        with self.assertRaisesRegex(CryptoPaperExecutionError, "unreserved broker-held"):
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "broker-held unreserved"):
             self.adapter.submit(CryptoOrderIntent(
                 client_order_id="sell-reserve-2", symbol="BTC/USD",
                 side=Side.SELL, quantity="0.0004",
