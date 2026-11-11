@@ -667,3 +667,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 
 
 - 2026-11-10 follow-up: added specific dated r/algotrading threads on regime/HMM uncertainty, backtest-to-live execution failures, regime switching, strategy decay and overfitting. Evidence class: anecdotal only; no profitability claims accepted.
+
+
+---
+
+## 2026-11-11 — PR #131 and post-merge audit rerun
+- PR #131 merged as `097dd10932ed7ed2e993a2b2110cb7f728450d8b`.
+- Tiingo status is tri-state: with no token, `NOT_REQUESTED`, `tiingo_all_diagnostic_gates_pass=null`, zero symbols. Absent data is not a pass.
+- PR audit workflow `42958291332` passed offline tests. Main runtime `42958406230` passed. Main crosscheck `42958406136` passed; artifact `13827124135` inspected.
+- Re-run still reports Yahoo dividend action = 0 and no Yahoo factor step for TLT on 2026-11-02, nine days after official iShares ex-distribution $0.343177; Alpaca factor step 41.7148 bps vs ~41.93 bps implied by official distribution/prior raw close. Persistent unresolved Yahoo corporate-action discrepancy.
+- Overall IEX/Yahoo gates false; no strategy promotion, Paper approval or orders. Tiingo not compared.
