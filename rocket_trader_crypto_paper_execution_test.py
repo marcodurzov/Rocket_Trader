@@ -397,6 +397,9 @@ class CryptoPaperExecutionTests(unittest.TestCase):
 
     def test_event_ledger_failure_before_submit_fails_closed(self):
         class BrokenLedger:
+            def verify_chain(self):
+                return {"valid": True}
+
             def append_event(self, **kwargs):
                 raise RuntimeError("simulated durable ledger write failure")
 
@@ -446,6 +449,36 @@ class CryptoPaperExecutionTests(unittest.TestCase):
             ["ORDER_PREPARED", "ORDER_STATE_OBSERVED"],
         )
         self.assertTrue(flaky_ledger.verify_chain()["valid"])
+
+
+    def test_corrupted_event_ledger_blocks_adapter_initialization(self):
+        ledger = ExecutionEventLedger(self.db + ".events.sqlite3")
+        ledger.append_event(
+            event_id="seed-event", aggregate_id="seed-order",
+            event_type="ORDER_PREPARED", payload={"symbol": "BTC/USD"},
+        )
+        with sqlite3.connect(self.db + ".events.sqlite3") as connection:
+            connection.execute("DROP TRIGGER execution_events_no_update")
+            connection.execute(
+                "UPDATE execution_events SET payload_json='{\"tampered\":true}' "
+                "WHERE event_id='seed-event'"
+            )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "integrity check failed"):
+            AlpacaCryptoPaperExecutionAdapter(
+                db_path=self.db, client=self.client, event_ledger=ledger
+            )
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_unverifiable_event_ledger_blocks_adapter_initialization(self):
+        class UnverifiableLedger:
+            def verify_chain(self):
+                raise OSError("ledger storage unavailable")
+
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "cannot be verified"):
+            AlpacaCryptoPaperExecutionAdapter(
+                db_path=self.db, client=self.client, event_ledger=UnverifiableLedger()
+            )
+        self.assertEqual(self.client.submit_count, 0)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
