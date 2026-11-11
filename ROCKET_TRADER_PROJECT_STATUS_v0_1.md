@@ -650,3 +650,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - QQQ adjustment-factor max divergence 0.327819%; 2022-09-19 Yahoo action feed shows $0.519 dividend and relative factor step 17.68 bps (~17.94 bps implied by distribution/prior raw close). Exact provider mechanism unproven.
 - TLT adjustment-factor max divergence 0.422290%; official iShares reports $0.343177 ex-distribution 2026-11-02. Prior Yahoo raw close $81.84 implies ~41.93 bps; audit shows Yahoo cash action 0 and no factor step, while Alpaca relative factor step is 41.7148 bps. Consistent with Yahoo event adjustment not yet reflected in that capture; must re-query.
 - Conclusion: mixed provider issues; raw-price differences dominate SPY, adjustment-factor mismatches matter for QQQ/TLT. Neither IEX nor Yahoo alone is certified as institutional-grade truth. Tiingo not live-tested. No subscriptions/spend approved.
+
+
+---
+
+## 2026-11-11 — PR #131 and post-merge audit rerun
+- PR #131 merged as `097dd10932ed7ed2e993a2b2110cb7f728450d8b`.
+- Tiingo audit status is now tri-state. With no token: `NOT_REQUESTED`, `tiingo_all_diagnostic_gates_pass=null`, 0 symbols compared. This prevents absent data from being represented as a pass.
+- PR audit workflow `42958291332` passed offline tests. Main runtime `42958406230` passed. Main crosscheck `42958406136` passed and artifact `13827124135` was inspected.
+- Re-run still reports TLT Yahoo action cash = 0 and no Yahoo factor step on 2026-11-02, nine days after official iShares ex-distribution $0.343177; Alpaca factor step 41.7148 bps vs ~41.93 bps implied by official distribution/prior raw close. Persistent unresolved Yahoo corporate-action discrepancy.
+- Overall IEX/Yahoo gates remain false; no strategy promotion, Paper approval or orders. Tiingo has not been compared.
