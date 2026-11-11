@@ -55,19 +55,70 @@ class PaperCryptoExecutionService:
             raise PaperExecutionStartupError(
                 "Existing durable journal and event-ledger files are required; empty state will not be initialized."
             )
+        if journal.resolve() == events.resolve():
+            raise PaperExecutionStartupError(
+                "Mutable order journal and immutable event ledger must be separate files."
+            )
+        required_journal_columns = {
+            "client_order_id", "fingerprint", "payload_json", "state",
+            "broker_order_id", "broker_status", "filled_qty",
+            "filled_avg_price", "last_error", "created_at", "updated_at",
+        }
+        required_event_columns = {
+            "sequence", "event_id", "aggregate_id", "event_type",
+            "occurred_at", "payload_json", "previous_hash", "event_hash",
+        }
         try:
             with sqlite3.connect(journal.resolve().as_uri() + "?mode=ro", uri=True) as conn:
-                found = conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-                    ("crypto_paper_order_journal",),
-                ).fetchone()
+                journal_columns = {
+                    row[1] for row in conn.execute(
+                        "PRAGMA table_info(crypto_paper_order_journal)"
+                    ).fetchall()
+                }
+                journal_orders = {
+                    row[0] for row in conn.execute(
+                        "SELECT client_order_id FROM crypto_paper_order_journal"
+                    ).fetchall()
+                } if journal_columns else set()
+            if not required_journal_columns.issubset(journal_columns):
+                raise PaperExecutionStartupError(
+                    "Existing execution journal is missing required order-state columns."
+                )
+            with sqlite3.connect(events.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+                event_columns = {
+                    row[1] for row in conn.execute(
+                        "PRAGMA table_info(execution_events)"
+                    ).fetchall()
+                }
+                triggers = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    ).fetchall()
+                }
+                order_evidence = {
+                    (row[0], row[1]) for row in conn.execute(
+                        "SELECT DISTINCT aggregate_id, event_type FROM execution_events"
+                    ).fetchall()
+                } if event_columns else set()
         except sqlite3.Error as exc:
             raise PaperExecutionStartupError(
-                "Existing execution journal cannot be opened read-only."
+                "Existing execution journal or immutable event ledger cannot be opened read-only."
             ) from exc
-        if found is None:
+        if not required_event_columns.issubset(event_columns):
             raise PaperExecutionStartupError(
-                "Existing execution journal is missing its order table."
+                "Existing immutable event ledger is missing its event table or required columns."
+            )
+        if not {"execution_events_no_update", "execution_events_no_delete"}.issubset(triggers):
+            raise PaperExecutionStartupError(
+                "Existing event ledger is missing append-only integrity triggers."
+            )
+        initial_evidence = {
+            aggregate_id for aggregate_id, event_type in order_evidence
+            if event_type in {"ORDER_PREPARED", "BROKER_ORDER_DISCOVERED"}
+        }
+        if not journal_orders.issubset(initial_evidence):
+            raise PaperExecutionStartupError(
+                "One or more journaled orders lack matching immutable preparation evidence."
             )
 
         from rocket_trader_crypto_paper_execution import AlpacaCryptoPaperExecutionAdapter
