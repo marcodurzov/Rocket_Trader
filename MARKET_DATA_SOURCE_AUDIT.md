@@ -213,3 +213,6 @@ References:
 - Removed Tiingo as a selectable primary source from public equity research v0.4 and removed the Tiingo token from that workflow's environment. The Tiingo fetcher remains covered by offline tests but is not reachable from public workflow selection.
 - The optional Tiingo comparison in the dedicated ETF cross-check remains local/programmatic only and requires explicit `--include-tiingo`; the public GitHub Actions workflow does not inject the token or opt in.
 - The $0 Tiingo Starter plan is only a potential personal 5-year cross-check; account creation and token setup remain user-controlled. No provider account was created and no Tiingo API request was made.
+
+- The weekly market-data entitlement probe has also been converted to an IEX-only health probe. It makes one IEX request, reports SIP as `DISABLED_BY_ZERO_BUDGET_POLICY` with `request_made=false`, and the self-test asserts that no SIP request is issued.
+- Repository-wide workflow scan found no other SIP or Tiingo token usage outside the four equity research workflows, the ETF cross-check workflow, and this entitlement probe. The four equity workflows and cross-check are being hardened in this change; this probe is now IEX-only.
