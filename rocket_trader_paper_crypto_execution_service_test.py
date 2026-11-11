@@ -142,13 +142,41 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
                     )
                 with sqlite3.connect(db) as conn:
                     conn.execute(
-                        "CREATE TABLE crypto_paper_order_journal (client_order_id TEXT PRIMARY KEY)"
+                        """CREATE TABLE crypto_paper_order_journal (
+                        client_order_id TEXT PRIMARY KEY,
+                        fingerprint TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        broker_order_id TEXT,
+                        broker_status TEXT,
+                        filled_qty TEXT,
+                        filled_avg_price TEXT,
+                        last_error TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )"""
                     )
                 with self.assertRaisesRegex(PaperExecutionStartupError, "Existing durable"):
                     PaperCryptoExecutionService.from_existing_storage(
                         db_path=db, event_ledger_path=events, client=object()
                     )
-                Path(events).touch()
+                with sqlite3.connect(events) as conn:
+                    conn.executescript("""CREATE TABLE execution_events (
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id TEXT NOT NULL UNIQUE,
+                        aggregate_id TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        previous_hash TEXT NOT NULL,
+                        event_hash TEXT NOT NULL
+                    );
+                    CREATE TRIGGER execution_events_no_update
+                    BEFORE UPDATE ON execution_events
+                    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+                    CREATE TRIGGER execution_events_no_delete
+                    BEFORE DELETE ON execution_events
+                    BEGIN SELECT RAISE(ABORT, 'append-only'); END;""")
                 fake_adapter = Mock()
                 with patch.object(
                     execution_adapter, "AlpacaCryptoPaperExecutionAdapter",
@@ -169,9 +197,37 @@ class PaperCryptoExecutionServiceTests(unittest.TestCase):
             events = str(Path(tmp) / "events.sqlite3")
             with sqlite3.connect(db) as conn:
                 conn.execute(
-                    "CREATE TABLE crypto_paper_order_journal (client_order_id TEXT PRIMARY KEY)"
+                    """CREATE TABLE crypto_paper_order_journal (
+                        client_order_id TEXT PRIMARY KEY,
+                        fingerprint TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        broker_order_id TEXT,
+                        broker_status TEXT,
+                        filled_qty TEXT,
+                        filled_avg_price TEXT,
+                        last_error TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )"""
                 )
-            Path(events).touch()
+            with sqlite3.connect(events) as conn:
+                conn.executescript("""CREATE TABLE execution_events (
+                        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id TEXT NOT NULL UNIQUE,
+                        aggregate_id TEXT NOT NULL,
+                        event_type TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        previous_hash TEXT NOT NULL,
+                        event_hash TEXT NOT NULL
+                    );
+                    CREATE TRIGGER execution_events_no_update
+                    BEFORE UPDATE ON execution_events
+                    BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+                    CREATE TRIGGER execution_events_no_delete
+                    BEFORE DELETE ON execution_events
+                    BEGIN SELECT RAISE(ABORT, 'append-only'); END;""")
             os.environ["ALPACA_PAPER"] = "true"
             os.environ["ALPACA_LIVE_ENABLED"] = "true"
             try:
