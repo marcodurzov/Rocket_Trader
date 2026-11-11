@@ -9,6 +9,12 @@ on:
       - "rocket_trader_reference_strategies.py"
       - "rocket_trader_reference_strategies_test.py"
       - ".github/workflows/rocket-trader-reference-strategies-tests.yml"
+  pull_request:
+    paths:
+      - "research/reference_strategy_registry_v0_1.json"
+      - "rocket_trader_reference_strategies.py"
+      - "rocket_trader_reference_strategies_test.py"
+      - ".github/workflows/rocket-trader-reference-strategies-tests.yml"
   workflow_dispatch:
 
 permissions:
