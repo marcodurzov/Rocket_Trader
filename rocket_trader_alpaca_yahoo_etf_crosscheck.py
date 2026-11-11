@@ -100,7 +100,7 @@ def compare_close_series(
         alpaca.index.min() > yahoo.index.min()
         and min(yahoo_overlap_completeness, alpaca_overlap_completeness) >= min_source_coverage
     ):
-        history_window_assessment = "ALPACA_HISTORY_STARTS_LATER_THAN_YAHOO"
+        history_window_assessment = "RIGHT_SOURCE_STARTS_LATER_THAN_LEFT"
     elif min(yahoo_overlap_completeness, alpaca_overlap_completeness) < min_source_coverage:
         history_window_assessment = "SESSION_GAPS_WITHIN_OVERLAP"
     else:
@@ -292,6 +292,15 @@ def _rename_pair_result(
         ("alpaca_sessions", f"{right_name.lower()}_sessions"),
         ("yahoo_coverage_on_common", f"{left_name.lower()}_coverage_on_common"),
         ("alpaca_coverage_on_common", f"{right_name.lower()}_coverage_on_common"),
+        ("yahoo_first_session", f"{left_name.lower()}_first_session"),
+        ("alpaca_first_session", f"{right_name.lower()}_first_session"),
+        ("yahoo_last_session", f"{left_name.lower()}_last_session"),
+        ("alpaca_last_session", f"{right_name.lower()}_last_session"),
+        ("alpaca_history_start_lag_days", f"{right_name.lower()}_history_start_lag_days"),
+        ("yahoo_sessions_in_overlap_window", f"{left_name.lower()}_sessions_in_overlap_window"),
+        ("alpaca_sessions_in_overlap_window", f"{right_name.lower()}_sessions_in_overlap_window"),
+        ("yahoo_overlap_session_completeness", f"{left_name.lower()}_overlap_session_completeness"),
+        ("alpaca_overlap_session_completeness", f"{right_name.lower()}_overlap_session_completeness"),
         ("yahoo_cumulative_return_common_period", f"{left_name.lower()}_cumulative_return_common_period"),
         ("alpaca_cumulative_return_common_period", f"{right_name.lower()}_cumulative_return_common_period"),
     ):
