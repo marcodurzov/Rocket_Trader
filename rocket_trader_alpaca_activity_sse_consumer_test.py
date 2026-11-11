@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from rocket_trader_alpaca_activity_sse_consumer import (
     ACTIVITY_SSE_ENDPOINT,
+    _activity_fingerprint,
     ActivitySSEConsumerError,
     AlpacaPaperActivitySSEConsumer,
     DurableActivitySSEInbox,
