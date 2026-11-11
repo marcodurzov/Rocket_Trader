@@ -19,6 +19,8 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     fetch_tiingo_history,
     fetch_alpaca_corporate_actions,
     tiingo_audit_status,
+    require_zero_budget_feed,
+    resolve_tiingo_token,
     _rename_pair_result,
 )
 
@@ -290,6 +292,19 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(calls["auto_adjust"])
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["actions"])
+
+    def test_tiingo_token_is_ignored_without_explicit_opt_in(self):
+        self.assertEqual(resolve_tiingo_token(False, "secret-token"), "")
+
+    def test_tiingo_token_requires_explicit_opt_in_and_token(self):
+        with self.assertRaisesRegex(CrosscheckError, "explicitly requested"):
+            resolve_tiingo_token(True, None)
+        self.assertEqual(resolve_tiingo_token(True, "starter-token"), "starter-token")
+
+    def test_zero_budget_feed_allows_iex_and_blocks_sip(self):
+        self.assertEqual(require_zero_budget_feed("iex"), "IEX")
+        with self.assertRaisesRegex(CrosscheckError, "zero-budget policy"):
+            require_zero_budget_feed("SIP")
 
     def test_tiingo_history_uses_adjusted_close_and_token_header(self):
         calls = {}
