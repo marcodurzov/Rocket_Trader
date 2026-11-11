@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `aaf4cf02c3d04c77925357df7687a1f9946abe2f`  
+**Latest audited code baseline SHA:** `6a2cfd760d707da9eb8a1ba1f640e8db834a9aab`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -369,3 +369,41 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 5. Keep deployment, broker reconciliation and all trading orders separate: no persistent host evidence and no live-order authorization.
 
 **Progress remains 46%.** Ten-year Yahoo history and the negative research result are now verified; Tiingo live history, independent provider parity, empirical costs, strategy edge and Paper runtime remain unresolved.
+
+
+### PR #110 — verified Yahoo 10-year research result
+- Merge commit: `9cc9568567d203297d6fbf5e8ee25ad69fcecbd4`.
+- Recorded post-merge run `42954130155`, artifact `13826686266`, and the exact negative result: 8/8 Yahoo ETF histories pass the data-quality gate; 73 holdout hypotheses, 0 pre-screen passes, 0 Holm-Bonferroni significant; no promotion/Paper approval/orders.
+- Preserved caveats: costs remain placeholder 5 bps/side, this was Yahoo-only, and prior Alpaca IEX history was only ~6.3 years with unresolved cumulative divergence.
+
+### PR #111 — optional three-source adjusted history audit
+- Merge commit: `6a2cfd760d707da9eb8a1ba1f640e8db834a9aab`.
+- The read-only Alpaca/Yahoo audit now optionally consumes Tiingo adjusted daily closes when `TIINGO_API_TOKEN` is configured privately as a GitHub Actions secret.
+- Produces two separately named comparisons per ETF: Tiingo vs Yahoo and Tiingo vs Alpaca, with session counts, common-session coverage, daily return correlation, absolute return differences, cumulative-return difference direction and diagnostic gates.
+- No token means Tiingo is explicitly not requested and the existing two-provider audit runs unchanged. A configured token with missing/malformed history records a Tiingo error; no fallback or history splicing.
+- A full 10-year Tiingo-vs-IEX overlap will fail the 95% source-coverage gate while IEX only provides ~6.3 years. This is intentional; the audit must not label partial overlap as 10-year validation.
+- Correctness detail: report distinguishes successful data retrieval from diagnostic parity failure. A provider mismatch can be reported with a successful audit run while `all_diagnostic_gates_pass=false`; provider fetch errors remain explicit.
+- PR CI run `42954914689`: compile + all 9 cross-check tests passed; live data step skipped on pull_request by design.
+- Post-merge audit run `42955004812` completed successfully; artifact `13827085617`. All 8 ETFs were retrieved from Yahoo (2,513 sessions each) and Alpaca IEX (1,582 sessions for 7 symbols; 1,583 for SPY). Common range: 2020-07-27 to 2026-11-10. Yahoo common-session coverage was 62.95%; IEX coverage 100%. Therefore 0/8 passed the full-period 95% coverage gate. Daily return correlations were 0.99835–0.99975, but cumulative-return differences ranged from -0.75 bps (IWM) to +218.90 bps (SPY); QQQ was +89.98 bps and TLT +26.01 bps. High correlation does not erase adjustment divergence. Tiingo token was absent (`tiingo_comparison_requested=false`), so no Tiingo data was fetched.
+- Post-merge runtime run `42955004617` completed successfully: all 10 runtime/accounting test modules passed (95 tests in aggregate). This is CI-only evidence, not persistent Paper deployment or actual broker-account reconciliation.
+- No Tiingo secret/token or paid plan configured; no vendor spend. No order or Paper approval changes.
+
+**Next steps**
+1. To run a real Tiingo comparison, the user must separately decide whether to obtain an eligible plan and configure `TIINGO_API_TOKEN` as a repository secret. Do not ask for the token in chat or incur spend.
+3. Reconcile adjustment methodology/corporate actions across sources; keep each provider's time series separate.
+4. Strategy work remains research-only: the 10-year Yahoo holdout produced 0/73 pre-screen and 0/73 Holm-significant hypotheses. Do not loosen statistical gates to force a winner.
+5. Empirical costs, multi-fold OOS, live Paper deployment and broker evidence remain blockers.
+
+**Progress remains 46%.** PR #111 adds a new independent-source audit path but has not produced Tiingo evidence because no token is configured. It does not improve the strategy-edge evidence.
+
+
+### PR #111 — post-merge audit result (2026-11-11)
+- Audit workflow `42955004812` completed successfully; immutable artifact `13827085617`.
+- The standard push run used Yahoo and Alpaca IEX only. `TIINGO_API_TOKEN` was blank, so `tiingo_comparison_requested=false` and zero Tiingo requests were made.
+- Eight ETF pairs retrieved successfully: Yahoo 2,513 sessions each; Alpaca IEX 1,582 sessions for DIA/EEM/EFA/GLD/IWM/QQQ/TLT and 1,583 for SPY. Common dates 2020-07-27 through 2026-11-10. Yahoo common coverage 62.95%; Alpaca IEX 100%.
+- Full-period coverage diagnostic: 0/8 pass because Yahoo's 10-year period cannot overlap 95% with Alpaca's ~6.3-year IEX history. This is expected and correctly fails closed.
+- Daily return correlations 0.99835–0.99975. Yet cumulative return difference (Alpaca minus Yahoo on common period) ranges -0.7507 bps IWM to +218.9025 bps SPY; QQQ +89.9785 bps; TLT +26.0144 bps. This confirms source adjustment differences remain material for some instruments despite high daily correlation.
+- Runtime workflow `42955004617` completed successfully; 10 runtime/accounting test modules passed (95 tests aggregate).
+- No Tiingo source evidence, no empirical cost validation, no strategy approval, no Paper deployment evidence and no orders.
+
+**Current next best research action:** investigate per-symbol corporate-action/adjustment divergence (especially SPY, QQQ and TLT) using vendor corporate-action records and event-level normalized prices. Do not choose one provider as truth or splice price series until a documented reconciliation exists.

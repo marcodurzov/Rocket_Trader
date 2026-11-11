@@ -518,3 +518,25 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Artifact SHA256: `6929f6156d5c55665023fb0bcb007a311962c0c70e5837328a8d72e8656f9d0e`.
 - Paper runtime/accounting post-merge CI `42954130244` passed 166 tests; no persistent user-host Paper evidence.
 - Main baseline SHA at this update: `aaf4cf02c3d04c77925357df7687a1f9946abe2f`; progress unchanged at 46%.
+
+
+---
+
+## 2026-11-11 — PR #111 optional three-source audit
+- PR #111 merged: https://github.com/marcodurzov/Rocket_Trader/pull/111
+- Main SHA: `6a2cfd760d707da9eb8a1ba1f640e8db834a9aab`.
+- Optional Tiingo adjusted close source added to the existing read-only Yahoo/Alpaca audit. If configured, emits Tiingo-vs-Yahoo and Tiingo-vs-Alpaca reports; no token means no Tiingo call.
+- Strict coverage gate intentionally rejects 10-year Tiingo/IEX parity while Alpaca IEX has only ~6.3 years; no splicing or fallback.
+- CI run `42954914689`: all 9 cross-check tests passed. Live data skipped on PR.
+- Post-merge runs `42955004812` (data audit) and `42955004617` (Paper runtime) pending at update time.
+- No token/subscription, no order changes. Progress remains 46%.
+
+
+---
+
+## 2026-11-11 — PR #111 post-merge results
+- Audit run `42955004812` succeeded; artifact `13827085617`. Tiingo token absent, so no Tiingo request was made.
+- Yahoo: 2,513 sessions per ETF; Alpaca IEX: 1,582 sessions (SPY 1,583). Common period 2020-07-27 to 2026-11-10; Yahoo common coverage 62.95%, IEX 100%; 0/8 pass the 95% full-period coverage gate.
+- Daily return correlation 0.99835–0.99975 but cumulative return difference Alpaca minus Yahoo: -0.75 bps IWM to +218.90 bps SPY; QQQ +89.98 bps; TLT +26.01 bps. Provider adjustment divergence remains unresolved.
+- Runtime CI `42955004617`: 10 test modules passed, 95 tests aggregate.
+- No Paper deployment evidence, empirical costs, strategy approval or orders. Progress 46%.
