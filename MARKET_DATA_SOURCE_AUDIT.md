@@ -107,3 +107,10 @@ The Alpaca-vs-Yahoo cross-check now accepts an optional `TIINGO_API_TOKEN` GitHu
 If the token is absent, Tiingo is explicitly marked as not requested and the original Yahoo/Alpaca audit runs unchanged. If a token is present but Tiingo data is missing, malformed, too short, or not sufficiently overlapping, the Tiingo comparison is recorded as an error or a failed coverage gate; the report does not silently pass or splice histories. The current Alpaca IEX history begins in 2020 for this account, so a full 10-year Tiingo-vs-IEX overlap is expected to fail the 95% per-source coverage gate until Alpaca entitlement/history changes. That is intentional: it prevents the system from calling a partial common period a ten-year three-provider validation.
 
 No Tiingo token or subscription is configured by this change. No provider is treated as ground truth merely because its data are adjusted; corporate-action and adjustment methodology still need review.
+
+
+## Date-level divergence diagnostics
+
+Each two-provider comparison now records the ten largest absolute daily-return differences with exact session date, Yahoo return, Alpaca return and signed Alpaca-minus-Yahoo basis-point difference. It also records the ten largest divergences between normalized adjusted-close paths after anchoring both sources at the first common session.
+
+These are investigation leads, not corporate-action attribution. A large one-day discrepancy can be caused by a split/dividend adjustment, symbol mapping, bad/missing bar or vendor correction; the report does not claim which cause applies. Follow-up must inspect provider corporate-action records and raw/unadjusted bars around each flagged session. Never auto-correct or splice the series from these diagnostics alone.

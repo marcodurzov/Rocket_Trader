@@ -98,6 +98,24 @@ def compare_close_series(
         (alpaca_norm / yahoo_norm - 1.0).abs() * 100.0
     )
 
+    return_diff = (paired["alpaca"] - paired["yahoo"]) * 10000.0
+    largest_return_divergences = []
+    for session, value in return_diff.abs().sort_values(ascending=False).head(10).items():
+        largest_return_divergences.append({
+            "session": str(session),
+            "yahoo_daily_return_pct": round(float(paired.loc[session, "yahoo"] * 100.0), 6),
+            "alpaca_daily_return_pct": round(float(paired.loc[session, "alpaca"] * 100.0), 6),
+            "alpaca_minus_yahoo_return_difference_bps": round(float(return_diff.loc[session]), 4),
+        })
+    largest_close_divergences = []
+    for session, value in normalized_close_diff_pct.sort_values(ascending=False).head(10).items():
+        largest_close_divergences.append({
+            "session": str(session),
+            "yahoo_normalized_close": round(float(yahoo_norm.loc[session]), 8),
+            "alpaca_normalized_close": round(float(alpaca_norm.loc[session]), 8),
+            "alpaca_vs_yahoo_normalized_close_difference_pct": round(float(value), 6),
+        })
+
     gates = {
         "minimum_common_sessions": len(common) >= min_common_sessions,
         "minimum_source_coverage": min(yahoo_coverage, alpaca_coverage) >= min_source_coverage,
@@ -122,6 +140,8 @@ def compare_close_series(
         "alpaca_cumulative_return_common_period": round(alpaca_total, 8),
         "cumulative_return_difference_bps": round((alpaca_total - yahoo_total) * 10000.0, 4),
         "max_normalized_close_difference_pct": round(float(normalized_close_diff_pct.max()), 4),
+        "largest_daily_return_divergences": largest_return_divergences,
+        "largest_normalized_close_divergences": largest_close_divergences,
         "diagnostic_gates": gates,
         "diagnostic_pass": all(gates.values()),
     }
