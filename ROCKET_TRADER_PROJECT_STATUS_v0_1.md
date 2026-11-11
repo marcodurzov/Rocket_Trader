@@ -830,7 +830,7 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 
 - Keep Alpaca Basic IEX as the zero-cost Paper execution/data connection, but do not use its observed sparse history as the sole source for long-horizon ETF backtests.
 - Evaluate free historical sources (Yahoo and other genuinely free, legally usable sources) for complete adjusted daily bars; cross-validate dates, actions, splits, dividends and survivorship/adjustment conventions. Use issuer records as the reference for declared distributions.
-- SIP/all-exchange data is not authorized because it requires a paid plan. Tiingo paid plan remains unauthorized. Do not activate or consume any paid provider without explicit approval.
+- Recent/live SIP streaming and SIP data inside the latest 15 minutes require the paid Algo Trader Plus plan and remain unauthorized. Historical SIP ending at least 15 minutes ago is available on Basic at $0. Tiingo paid plan remains unauthorized. Do not activate or consume any paid provider without explicit approval.
 - Before any candidate can pass, the data gate must require adequate coverage from the actual primary backtest source and a second independent reference; missing sessions must be measured by date and reason, not hidden by inner joins.
 - The continuous Activity SSE service remains undeployed. No persistent host has been identified; continue with GitHub Actions for bounded tests/research and do not represent it as a 24/7 runtime.
 
