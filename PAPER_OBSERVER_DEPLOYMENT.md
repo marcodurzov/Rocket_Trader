@@ -166,4 +166,26 @@ Interpretation:
 - `REQUIRES_REVIEW` (exit code 2): one or more orders were missing at the broker or had incomplete/mismatched fill evidence. Keep new execution blocked.
 - Failure (exit code 1): preflight, persistent-state or broker reconciliation error. Do not initialize a replacement database to bypass it.
 
-This is currently an **explicit one-shot runner**, not a continuously scheduled service. It must be wired into the eventual persistent execution service's startup gate before autonomous order intents are enabled. No execution service is currently deployed by this repository workflow.
+This remains an **explicit one-shot runner**, not a continuously scheduled service. PR #163 adds a tested process-local startup-gate wrapper for a future execution host, but no persistent execution service currently instantiates that wrapper or is deployed by this repository workflow.
+
+
+## 9. Fail-closed execution startup gate (not deployed)
+
+A future Paper crypto execution host must not call the low-level adapter directly before recovering its existing durable state. Use `PaperCryptoExecutionService` as the process-local submission gate. The observer Compose stack remains observe-only and must not be repurposed as an execution host.
+
+The service factory requires both existing database files and the expected order-journal table before it constructs the adapter. It also requires `ALPACA_PAPER=true` and rejects LIVE. Example host integration:
+
+```python
+from rocket_trader_paper_crypto_execution_service import PaperCryptoExecutionService
+
+service = PaperCryptoExecutionService.from_existing_storage(
+    db_path="/persistent/rocket-trader/crypto-execution.sqlite3",
+    event_ledger_path="/persistent/rocket-trader/crypto-execution-events.sqlite3",
+)
+startup = service.start()  # account preflight + read-only reconciliation of every journaled order
+if not startup["ready"]:
+    raise RuntimeError("Paper execution recovery is not complete")
+# Only after start() succeeds may the host pass a validated intent to service.submit(intent).
+```
+
+If recovery is missing, malformed, unresolved or failed, `start()` raises and the gate remains closed. A submission exception also closes the process-local gate; restart and recover again before retrying. `stop()` closes the gate without a broker action. No continuous loop, order strategy, production host, or autonomous trading path is deployed by this module. It is an integration primitive that must be used by the eventual execution process.
