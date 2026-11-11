@@ -496,3 +496,22 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - CI run `42954001467`: 19 regression tests passed; offline self-test passed. Pull-request live research step was skipped by design.
 - Post-merge actual research run `42954130155` is in progress; results pending.
 - Handoff updated with full evidence, limitations and next steps; progress stays 46%.
+
+
+---
+
+## 2026-11-11 — PR #106 and ten-year equity research result
+
+### Provider adapter
+- PR #106 merged; main SHA `775186e104a485bbc07b50a5dcc807723aced240`.
+- Optional Tiingo EOD adjusted OHLCV source added to the equity research runner. Token required via `TIINGO_API_TOKEN`; default source unchanged; no automatic fallback or data splicing.
+- Mocked contract and failure-path tests passed in workflow `42954130155`; no real provider validation because no token/eligible subscription. No paid plan acquired.
+- Yahoo provider metadata corrected from the inaccurate `repair=True` label to actual `repair=False`.
+
+### Ten-year equity benchmark result
+- Workflow `42954130155` passed and artifact `13826686266` was downloaded/inspected.
+- Yahoo adjusted daily history, 8 ETFs, 2,511 bars per symbol, approximate weekday coverage 96.32%, maximum calendar gap 4 days. The approximate weekday metric counts US holidays as expected weekdays; a real exchange-session calendar is still required.
+- Multiple-testing family: 73 hypotheses; Holm-significant 0; pre-screen passes 0. No strategy promoted, no Paper approval, no orders.
+- Cross-sectional top-1 momentum underperformed equal-weight buy-and-hold over the full sample: CAGR 7.65% vs 11.53%, Sharpe 0.48 vs 0.87, max drawdown -35.0% vs -27.0%. Final holdout excess was statistically inconclusive (raw bootstrap p=0.399; Holm p=1.0; 5th percentile excess -31.56 percentage points).
+- Assumed 5 bps/side costs and 0 commission are still placeholders, not measured costs.
+- Next: exchange-session calendar, audit Alpaca/Yahoo discrepancy artifact, then research new pre-registered hypotheses. Preserve this negative result; do not loosen gates.
