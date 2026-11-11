@@ -90,6 +90,21 @@ def compare_close_series(
         corr = 0.0
     yahoo_coverage = len(common) / len(yahoo)
     alpaca_coverage = len(common) / len(alpaca)
+    overlap_start = common.index.min()
+    overlap_end = common.index.max()
+    yahoo_overlap = yahoo.loc[(yahoo.index >= overlap_start) & (yahoo.index <= overlap_end)]
+    alpaca_overlap = alpaca.loc[(alpaca.index >= overlap_start) & (alpaca.index <= overlap_end)]
+    yahoo_overlap_completeness = len(common) / len(yahoo_overlap)
+    alpaca_overlap_completeness = len(common) / len(alpaca_overlap)
+    if (
+        alpaca.index.min() > yahoo.index.min()
+        and min(yahoo_overlap_completeness, alpaca_overlap_completeness) >= min_source_coverage
+    ):
+        history_window_assessment = "ALPACA_HISTORY_STARTS_LATER_THAN_YAHOO"
+    elif min(yahoo_overlap_completeness, alpaca_overlap_completeness) < min_source_coverage:
+        history_window_assessment = "SESSION_GAPS_WITHIN_OVERLAP"
+    else:
+        history_window_assessment = "COMPARABLE_HISTORY_WINDOWS"
     yahoo_total = float((1.0 + paired["yahoo"]).prod() - 1.0)
     alpaca_total = float((1.0 + paired["alpaca"]).prod() - 1.0)
     yahoo_norm = common["yahoo"] / common["yahoo"].iloc[0]
@@ -116,9 +131,15 @@ def compare_close_series(
             "alpaca_vs_yahoo_normalized_close_difference_pct": round(float(value), 6),
         })
 
+    history_overlap_gate = min(yahoo_coverage, alpaca_coverage) >= min_source_coverage
     gates = {
         "minimum_common_sessions": len(common) >= min_common_sessions,
-        "minimum_source_coverage": min(yahoo_coverage, alpaca_coverage) >= min_source_coverage,
+        "minimum_requested_history_overlap": history_overlap_gate,
+        # Backward-compatible alias; this is full-history overlap, not missing-bar rate.
+        "minimum_source_coverage": history_overlap_gate,
+        "minimum_overlap_session_completeness": min(
+            yahoo_overlap_completeness, alpaca_overlap_completeness
+        ) >= min_source_coverage,
         "minimum_daily_return_correlation": corr >= min_return_correlation,
         "maximum_p95_abs_return_difference": float(abs_diff_bps.quantile(0.95))
         <= max_p95_abs_return_diff_bps,
@@ -128,10 +149,24 @@ def compare_close_series(
         "yahoo_sessions": int(len(yahoo)),
         "alpaca_sessions": int(len(alpaca)),
         "common_sessions": int(len(common)),
+        "yahoo_first_session": str(yahoo.index.min()),
+        "alpaca_first_session": str(alpaca.index.min()),
+        "yahoo_last_session": str(yahoo.index.max()),
+        "alpaca_last_session": str(alpaca.index.max()),
         "first_common_session": str(common.index[0]),
         "last_common_session": str(common.index[-1]),
+        "history_window_assessment": history_window_assessment,
+        "alpaca_history_start_lag_days": int((alpaca.index.min() - yahoo.index.min()).days),
+        "yahoo_sessions_in_overlap_window": int(len(yahoo_overlap)),
+        "alpaca_sessions_in_overlap_window": int(len(alpaca_overlap)),
+        "yahoo_overlap_session_completeness": round(float(yahoo_overlap_completeness), 6),
+        "alpaca_overlap_session_completeness": round(float(alpaca_overlap_completeness), 6),
         "yahoo_coverage_on_common": round(float(yahoo_coverage), 6),
         "alpaca_coverage_on_common": round(float(alpaca_coverage), 6),
+        "coverage_gate_semantics": (
+            "Full-history overlap ratio; a low value may reflect different first available "
+            "dates, not missing sessions within the shared date window."
+        ),
         "daily_return_correlation": round(corr, 8),
         "mean_abs_daily_return_difference_bps": round(float(abs_diff_bps.mean()), 4),
         "p95_abs_daily_return_difference_bps": round(float(abs_diff_bps.quantile(0.95)), 4),
