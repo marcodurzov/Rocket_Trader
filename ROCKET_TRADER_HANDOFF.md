@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `aaf4cf02c3d04c77925357df7687a1f9946abe2f`  
+**Latest audited code baseline SHA:** `6a2cfd760d707da9eb8a1ba1f640e8db834a9aab`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -369,3 +369,29 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 5. Keep deployment, broker reconciliation and all trading orders separate: no persistent host evidence and no live-order authorization.
 
 **Progress remains 46%.** Ten-year Yahoo history and the negative research result are now verified; Tiingo live history, independent provider parity, empirical costs, strategy edge and Paper runtime remain unresolved.
+
+
+### PR #110 — verified Yahoo 10-year research result
+- Merge commit: `9cc9568567d203297d6fbf5e8ee25ad69fcecbd4`.
+- Recorded post-merge run `42954130155`, artifact `13826686266`, and the exact negative result: 8/8 Yahoo ETF histories pass the data-quality gate; 73 holdout hypotheses, 0 pre-screen passes, 0 Holm-Bonferroni significant; no promotion/Paper approval/orders.
+- Preserved caveats: costs remain placeholder 5 bps/side, this was Yahoo-only, and prior Alpaca IEX history was only ~6.3 years with unresolved cumulative divergence.
+
+### PR #111 — optional three-source adjusted history audit
+- Merge commit: `6a2cfd760d707da9eb8a1ba1f640e8db834a9aab`.
+- The read-only Alpaca/Yahoo audit now optionally consumes Tiingo adjusted daily closes when `TIINGO_API_TOKEN` is configured privately as a GitHub Actions secret.
+- Produces two separately named comparisons per ETF: Tiingo vs Yahoo and Tiingo vs Alpaca, with session counts, common-session coverage, daily return correlation, absolute return differences, cumulative-return difference direction and diagnostic gates.
+- No token means Tiingo is explicitly not requested and the existing two-provider audit runs unchanged. A configured token with missing/malformed history records a Tiingo error; no fallback or history splicing.
+- A full 10-year Tiingo-vs-IEX overlap will fail the 95% source-coverage gate while IEX only provides ~6.3 years. This is intentional; the audit must not label partial overlap as 10-year validation.
+- Correctness detail: report distinguishes successful data retrieval from diagnostic parity failure. A provider mismatch can be reported with a successful audit run while `all_diagnostic_gates_pass=false`; provider fetch errors remain explicit.
+- PR CI run `42954914689`: compile + all 9 cross-check tests passed; live data step skipped on pull_request by design.
+- Post-merge push runs `42955004812` (Alpaca/Yahoo audit) and `42955004617` (Paper runtime) were in progress at handoff update. Inspect before recording final results.
+- No Tiingo secret/token or paid plan configured; no vendor spend. No order or Paper approval changes.
+
+**Next steps**
+1. Inspect post-merge runs `42955004812` and `42955004617`; record exact results.
+2. To run a real Tiingo comparison, the user must separately decide whether to obtain an eligible plan and configure `TIINGO_API_TOKEN` as a repository secret. Do not ask for the token in chat or incur spend.
+3. Reconcile adjustment methodology/corporate actions across sources; keep each provider's time series separate.
+4. Strategy work remains research-only: the 10-year Yahoo holdout produced 0/73 pre-screen and 0/73 Holm-significant hypotheses. Do not loosen statistical gates to force a winner.
+5. Empirical costs, multi-fold OOS, live Paper deployment and broker evidence remain blockers.
+
+**Progress remains 46%.** PR #111 adds a new independent-source audit path but has not produced Tiingo evidence because no token is configured. It does not improve the strategy-edge evidence.
