@@ -3,6 +3,7 @@
 """Offline tests for Alpaca account activity and crypto fee reconciliation."""
 
 import os
+import sqlite3
 import tempfile
 import unittest
 
@@ -201,6 +202,34 @@ class AlpacaActivityReconciliationTests(unittest.TestCase):
                 until="2026-11-11T00:00:00Z",
             )
 
+
+
+    def test_reader_requests_paper_activity_endpoint_with_exact_fill_filter(self):
+        activity = self.fill("fill-request", "0.0001", "50000", "0.0001")
+        client = FakeActivityClient({None: [activity]})
+        reader = AlpacaAccountActivityReader(client, self.ledger)
+        reader.reconcile_order_fills(
+            client_order_id="rt-order-1", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy", expected_filled_qty="0.0001",
+        )
+        path, params = client.calls[0]
+        self.assertEqual(path, "/account/activities")
+        self.assertEqual(params["activity_types"], "FILL")
+        self.assertEqual(params["order_id"], "broker-order-1")
+        self.assertEqual(params["direction"], "asc")
+
+    def test_reader_refuses_corrupted_event_ledger(self):
+        self.ledger.append_event(
+            event_id="tamper-seed", aggregate_id="seed", event_type="SEED", payload={}
+        )
+        with sqlite3.connect(self.ledger.db_path) as connection:
+            connection.execute("DROP TRIGGER execution_events_no_update")
+            connection.execute(
+                "UPDATE execution_events SET payload_json='{\"tampered\":true}' "
+                "WHERE event_id='tamper-seed'"
+            )
+        with self.assertRaisesRegex(AlpacaActivityReconciliationError, "integrity check failed"):
+            AlpacaAccountActivityReader(FakeActivityClient({None: []}), self.ledger)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
