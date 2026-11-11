@@ -325,7 +325,7 @@ class AlpacaAccountActivityReader:
             try:
                 amount = _decimal(raw_amount, "crypto_fee_net_amount")
             except AlpacaActivityReconciliationError:
-                incomplete_count += 1
+                amount = None
 
             raw_currency = activity.get("currency")
             currency = (
@@ -333,9 +333,6 @@ class AlpacaAccountActivityReader:
                 if isinstance(raw_currency, str) and raw_currency.strip()
                 else None
             )
-            if currency is None:
-                incomplete_count += 1
-
             created_at = activity.get("created_at")
             activity_date = activity.get("date")
             occurred_at = None
@@ -347,12 +344,13 @@ class AlpacaAccountActivityReader:
                     break
                 except AlpacaActivityReconciliationError:
                     continue
-            if timestamp_status != "VALID":
+            record_is_incomplete = (
+                amount is None or currency is None or timestamp_status != "VALID"
+            )
+            if record_is_incomplete:
                 incomplete_count += 1
 
-            record_status = "COMPLETE" if (
-                amount is not None and currency is not None and timestamp_status == "VALID"
-            ) else "INCOMPLETE_FIELDS"
+            record_status = "INCOMPLETE_FIELDS" if record_is_incomplete else "COMPLETE"
             payload = {
                 "activity_id": activity["id"],
                 "activity_type": "CFEE",
