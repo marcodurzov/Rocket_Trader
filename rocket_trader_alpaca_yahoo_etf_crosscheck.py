@@ -96,15 +96,17 @@ def compare_close_series(
     alpaca_overlap = alpaca.loc[(alpaca.index >= overlap_start) & (alpaca.index <= overlap_end)]
     yahoo_overlap_completeness = len(common) / len(yahoo_overlap)
     alpaca_overlap_completeness = len(common) / len(alpaca_overlap)
-    if (
-        alpaca.index.min() > yahoo.index.min()
-        and min(yahoo_overlap_completeness, alpaca_overlap_completeness) >= min_source_coverage
-    ):
+    if alpaca.index.min() > yahoo.index.min():
         history_window_assessment = "RIGHT_SOURCE_STARTS_LATER_THAN_LEFT"
-    elif min(yahoo_overlap_completeness, alpaca_overlap_completeness) < min_source_coverage:
-        history_window_assessment = "SESSION_GAPS_WITHIN_OVERLAP"
+    elif yahoo.index.min() > alpaca.index.min():
+        history_window_assessment = "LEFT_SOURCE_STARTS_LATER_THAN_RIGHT"
     else:
         history_window_assessment = "COMPARABLE_HISTORY_WINDOWS"
+    overlap_session_assessment = (
+        "OVERLAP_SESSIONS_ALIGNED"
+        if min(yahoo_overlap_completeness, alpaca_overlap_completeness) >= min_source_coverage
+        else "SESSION_GAPS_WITHIN_OVERLAP"
+    )
     yahoo_total = float((1.0 + paired["yahoo"]).prod() - 1.0)
     alpaca_total = float((1.0 + paired["alpaca"]).prod() - 1.0)
     yahoo_norm = common["yahoo"] / common["yahoo"].iloc[0]
@@ -156,6 +158,7 @@ def compare_close_series(
         "first_common_session": str(common.index[0]),
         "last_common_session": str(common.index[-1]),
         "history_window_assessment": history_window_assessment,
+        "overlap_session_assessment": overlap_session_assessment,
         "alpaca_history_start_lag_days": int((alpaca.index.min() - yahoo.index.min()).days),
         "yahoo_sessions_in_overlap_window": int(len(yahoo_overlap)),
         "alpaca_sessions_in_overlap_window": int(len(alpaca_overlap)),
