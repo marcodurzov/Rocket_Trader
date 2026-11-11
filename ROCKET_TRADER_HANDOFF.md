@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `6ac4caa90de52ad1d1faefedbe301997b2360480`  
+**Latest audited code baseline SHA:** `60059a41379b274ae16a8b20426bbcf96178ae7f`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -439,3 +439,27 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Runtime suite `42955454994` passed all modules. CI does not establish actual Paper host operation.
 
 **Immediate next action:** extend the audit to capture the raw/unadjusted close, adjusted close and per-session adjustment factor around each flagged date; add a separate corporate-action/event comparison when provider APIs expose records. Do not normalize away discrepancies or change research source until reconciled.
+
+
+### PR #106 — optional Tiingo adjusted EOD source
+- Merge commit: `775186e104a485bbc07b50a5dcc807723aced240`; subsequent main baseline at this update: `60059a41379b274ae16a8b20426bbcf96178ae7f`.
+- Adds `TIINGO` as an optional research-only provider to the ten-year equity research runner. Uses documented adjusted OHLCV fields (`adjOpen`, `adjHigh`, `adjLow`, `adjClose`, `adjVolume`) and Token authorization.
+- Requires `TIINGO_API_TOKEN`; no token embedded in code/logs. Workflow exposes it only as a GitHub secret. Default source unchanged; no silent fallback or source splicing; insufficient history fails closed.
+- Mocked request contract, missing-token, short-history and provider-metadata tests passed. No live Tiingo call: no token/eligible plan configured. No subscription purchased.
+- Corrected Yahoo metadata that inaccurately claimed `repair=True`; actual yfinance request uses `repair=False`.
+
+### 10.11 Ten-year equity research run — 2026-11-11
+- Workflow `42954130155` completed SUCCESS at commit `775186e104a485bbc07b50a5dcc807723aced240`. Artifact `rocket-trader-equity-multiyear-research-v0-4`, ID `13826686266`, SHA-256 `6929f6156d5c55665023fb0bcb007a311962c0c70e5837328a8d72e8656f9d0e`; downloaded and inspected.
+- Dataset: Yahoo Finance adjusted daily history (not Tiingo/Alpaca SIP), 8 ETFs (DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT), 2,511 daily bars per symbol, approx. 96.32% weekday coverage, maximum calendar gap 4 days. The denominator counts weekdays including US market holidays; this metric is not true exchange-session coverage and needs correction before stronger data-quality claims.
+- Multiple-testing family: 73 strategy-vs-benchmark hypotheses; Holm family-wise significant = 0; pre-screen passes = 0. Candidate promotion false; Paper approval false; orders enabled false; orders submitted 0.
+- Cross-sectional top-1 126-day momentum underperformed equal-weight buy-and-hold over full period: CAGR 7.65% vs 11.53%, Sharpe 0.48 vs 0.87, max drawdown -35.0% vs -27.0%. Final holdout excess was statistically inconclusive: raw bootstrap p=0.399, Holm p=1.0, 5th-percentile bootstrap excess -31.56 percentage points. This is negative evidence; preserve it.
+- Costs remain placeholders: 5 bps/side (2.5 spread + 2.5 slippage), 2x stress, zero commission. This run contains no empirical execution-cost validation.
+- Runtime workflow `42954130244` passed offline runtime/accounting tests; this does not prove persistent Paper deployment.
+
+**Continuation queue**
+1. Replace approximate weekday denominator with an authoritative US exchange-session calendar and regression tests for holidays/closures.
+2. Add a Tiingo live-provider validation only after a token and eligible data plan are separately configured; no spending without explicit approval.
+3. Inspect Alpaca-vs-Yahoo ten-year audit artifact/run `42922974687` and quantify discrepancies; never average or splice providers.
+4. Expand strategy hypotheses only with pre-registered rationale, clean point-in-time data and independent holdout folds. Do not loosen OOS, multiple-testing, cost or data gates.
+5. Resolve delayed fees, FX and corporate-action corrections; collect Paper execution costs only after persistent user-host deployment.
+6. Keep regime selector observe-only and cash-safe. No strategy approved; LIVE disabled.
