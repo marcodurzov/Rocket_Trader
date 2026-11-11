@@ -55,6 +55,22 @@ class FakeCryptoClient:
     def get_asset(self, symbol):
         return SimpleNamespace(symbol=symbol, asset_class="crypto", tradable=True)
 
+    def get_orders(self, filter=None):
+        symbols = set(getattr(filter, "symbols", None) or [])
+        side = getattr(getattr(filter, "side", None), "value", getattr(filter, "side", None))
+        status = getattr(getattr(filter, "status", None), "value", getattr(filter, "status", None))
+        if status not in (None, "open") or side not in (None, "sell"):
+            return []
+        return [
+            order for order in self.orders.values()
+            if str(getattr(order.side, "value", order.side)).lower() == "sell"
+            and str(order.status).lower() in {
+                "new", "accepted", "pending_new", "partially_filled",
+                "pending_cancel", "accepted_for_bidding", "suspended",
+            }
+            and (not symbols or order.symbol in symbols)
+        ]
+
     def get_all_positions(self):
         return self.positions
 
@@ -89,8 +105,9 @@ class FakeCryptoClient:
             symbol=order_data.symbol,
             side=order_data.side,
             status="accepted",
-            filled_qty="0.0001" if getattr(order_data, "notional", None) else str(order_data.qty),
-            filled_avg_price="50000",
+            qty=None if getattr(order_data, "notional", None) else str(order_data.qty),
+            filled_qty="0",
+            filled_avg_price=None,
             notional=getattr(order_data, "notional", None),
         )
         self.orders[order_data.client_order_id] = order
@@ -503,6 +520,7 @@ class CryptoPaperExecutionTests(unittest.TestCase):
 
     def test_adapter_reconcile_ingests_individual_fills(self):
         self.adapter.submit(self.buy())
+        self.client.orders["crypto-buy-001"].filled_qty = "0.0001"
         self.client.activities = [{
             "id": "adapter-fill-1",
             "activity_type": "FILL",
@@ -526,6 +544,7 @@ class CryptoPaperExecutionTests(unittest.TestCase):
 
     def test_adapter_reconcile_reports_missing_fill_activity_as_incomplete(self):
         self.adapter.submit(self.buy())
+        self.client.orders["crypto-buy-001"].filled_qty = "0.0001"
         result = self.adapter.reconcile("crypto-buy-001")
         self.assertEqual(
             result["activity_reconciliation"]["reconciliation_status"],
@@ -562,6 +581,151 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(CryptoPaperExecutionError, "activity reconciliation failed"):
             self.adapter.reconcile("crypto-buy-001")
         self.assertEqual(self.client.submit_count, 1)
+
+
+    def test_second_sell_cannot_use_quantity_reserved_by_open_sell_order(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        first = self.adapter.submit(CryptoOrderIntent(
+            client_order_id="sell-reserve-1", symbol="BTC/USD",
+            side=Side.SELL, quantity="0.0007",
+        ))
+        self.assertTrue(first["accepted"])
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "broker-held unreserved"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-reserve-2", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0004",
+            ))
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_partial_open_sell_reserves_only_its_unfilled_remainder(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        self.adapter.submit(CryptoOrderIntent(
+            client_order_id="sell-partial-reserve", symbol="BTC/USD",
+            side=Side.SELL, quantity="0.0007",
+        ))
+        order = self.client.orders["sell-partial-reserve"]
+        order.status = "partially_filled"
+        order.filled_qty = "0.0002"
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.0008")]
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "broker-held unreserved"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-partial-second", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0004",
+            ))
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_confirmed_cancel_releases_only_the_unfilled_reservation(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        self.adapter.submit(CryptoOrderIntent(
+            client_order_id="sell-cancel-reserve", symbol="BTC/USD",
+            side=Side.SELL, quantity="0.0007",
+        ))
+        order = self.client.orders["sell-cancel-reserve"]
+        order.filled_qty = "0.0002"
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.0008")]
+        canceled = self.adapter.cancel("sell-cancel-reserve")
+        self.assertEqual(canceled["status"], "canceled")
+        next_order = self.adapter.submit(CryptoOrderIntent(
+            client_order_id="sell-after-cancel", symbol="BTC/USD",
+            side=Side.SELL, quantity="0.0008",
+        ))
+        self.assertTrue(next_order["accepted"])
+        self.assertEqual(self.client.submit_count, 2)
+
+    def test_open_sell_query_failure_blocks_new_sell(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        self.client.get_orders = lambda filter=None: (_ for _ in ()).throw(TimeoutError("offline"))
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "Cannot verify open broker SELL orders"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-open-query-fail", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0005",
+            ))
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_unmatched_local_unknown_sell_blocks_new_sell(self):
+        with sqlite3.connect(self.db) as connection:
+            connection.execute(
+                """
+                INSERT INTO crypto_paper_order_journal
+                (client_order_id, fingerprint, payload_json, state, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "sell-unknown-local", "fingerprint",
+                    '{"client_order_id":"sell-unknown-local","symbol":"BTC/USD","side":"sell","quantity":"0.0005"}',
+                    "SUBMISSION_UNKNOWN", "2026-11-11T12:00:00Z", "2026-11-11T12:00:00Z",
+                ),
+            )
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "existing local SELL order"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-after-unknown", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0005",
+            ))
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_competing_adapter_instances_cannot_reserve_same_sell_quantity(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        second_adapter = AlpacaCryptoPaperExecutionAdapter(db_path=self.db, client=self.client)
+
+        def submit(adapter, client_id):
+            try:
+                return adapter.submit(CryptoOrderIntent(
+                    client_order_id=client_id, symbol="BTC/USD",
+                    side=Side.SELL, quantity="0.0007",
+                ))
+            except CryptoPaperExecutionError as exc:
+                return exc
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(
+                lambda args: submit(*args),
+                [(self.adapter, "sell-race-1"), (second_adapter, "sell-race-2")],
+            ))
+        accepted = [item for item in results if isinstance(item, dict) and item.get("accepted")]
+        rejected = [item for item in results if isinstance(item, CryptoPaperExecutionError)]
+        self.assertEqual(len(accepted), 1)
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(self.client.submit_count, 1)
+
+
+    def test_external_open_sell_order_reserves_position_quantity(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        self.client.orders["external-sell"] = SimpleNamespace(
+            id="external-broker-order", client_order_id="external-sell",
+            symbol="BTC/USD", side="sell", status="new",
+            qty="0.0008", filled_qty="0", filled_avg_price=None,
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "broker-held unreserved"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-behind-external", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0003",
+            ))
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_malformed_open_broker_sell_order_blocks_new_sell(self):
+        self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.001")]
+        self.client.orders["external-malformed"] = SimpleNamespace(
+            id="external-malformed-id", client_order_id="external-malformed",
+            symbol="BTC/USD", side="sell", status="new",
+            qty=None, filled_qty="0",
+        )
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "incomplete quantity data"):
+            self.adapter.submit(CryptoOrderIntent(
+                client_order_id="sell-behind-malformed", symbol="BTC/USD",
+                side=Side.SELL, quantity="0.0001",
+            ))
+        self.assertEqual(self.client.submit_count, 0)
+
+    def test_event_ledger_must_not_share_mutable_journal_database(self):
+        same_database_ledger = ExecutionEventLedger(self.db)
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "separate SQLite file"):
+            AlpacaCryptoPaperExecutionAdapter(
+                db_path=self.db, client=self.client, event_ledger=same_database_ledger
+            )
+        self.assertEqual(self.client.submit_count, 0)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

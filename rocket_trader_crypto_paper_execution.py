@@ -118,6 +118,11 @@ class AlpacaCryptoPaperExecutionAdapter:
             or f"{self.db_path}.events.sqlite3"
         )
         self.event_ledger = event_ledger or ExecutionEventLedger(ledger_path)
+        ledger_db_path = getattr(self.event_ledger, "db_path", None)
+        if ledger_db_path and os.path.abspath(ledger_db_path) == os.path.abspath(self.db_path):
+            raise CryptoPaperExecutionError(
+                "Execution event ledger must use a separate SQLite file from the mutable order journal."
+            )
         try:
             integrity = self.event_ledger.verify_chain()
         except Exception as exc:
@@ -191,6 +196,149 @@ class AlpacaCryptoPaperExecutionAdapter:
                 if qty > 0:
                     return qty
         return Decimal("0")
+
+
+    def _broker_open_sell_orders(self, symbol: str) -> list[Any]:
+        """Read all open broker SELL orders for this symbol; fail closed on ambiguity."""
+        try:
+            from alpaca.trading.enums import OrderSide, QueryOrderStatus
+            from alpaca.trading.requests import GetOrdersRequest
+
+            request = GetOrdersRequest(
+                status=QueryOrderStatus.OPEN,
+                side=OrderSide.SELL,
+                symbols=[symbol],
+                limit=500,
+            )
+            orders = self.client.get_orders(filter=request)
+        except Exception as exc:
+            raise CryptoPaperExecutionError(
+                "Cannot verify open broker SELL orders; new SELL orders are blocked."
+            ) from exc
+        if not isinstance(orders, list):
+            raise CryptoPaperExecutionError(
+                "Broker open-order response is malformed; new SELL orders are blocked."
+            )
+        if len(orders) >= 500:
+            raise CryptoPaperExecutionError(
+                "Broker open-order result reached the 500-order limit; reservation state may be truncated."
+            )
+
+        normalized = []
+        for order in orders:
+            order_symbol = normalize_crypto_symbol(_value(order, "symbol", ""))
+            side = str(_value(order, "side", "")).lower()
+            if order_symbol != symbol or side != "sell":
+                raise CryptoPaperExecutionError(
+                    "Broker open-order response conflicts with the requested SELL symbol/side."
+                )
+            order_id = str(_value(order, "id", "") or "")
+            if not order_id:
+                raise CryptoPaperExecutionError(
+                    "Open broker SELL order is missing its order ID; new SELL orders are blocked."
+                )
+            raw_qty = _value(order, "qty", None)
+            raw_filled = _value(order, "filled_qty", None)
+            if raw_qty is None or raw_filled is None:
+                raise CryptoPaperExecutionError(
+                    "Open broker SELL order has incomplete quantity data; new SELL orders are blocked."
+                )
+            qty = _decimal(raw_qty, "open_sell_order_qty")
+            filled = _decimal(raw_filled, "open_sell_order_filled_qty")
+            if qty <= 0 or filled < 0 or filled > qty:
+                raise CryptoPaperExecutionError(
+                    "Open broker SELL order has inconsistent quantity data; new SELL orders are blocked."
+                )
+            normalized.append(
+                {
+                    "order_id": order_id,
+                    "client_order_id": str(_value(order, "client_order_id", "") or ""),
+                    "remaining_qty": qty - filled,
+                }
+            )
+        return normalized
+
+    def _prepare_sell_order(
+        self,
+        *,
+        client_id: str,
+        fingerprint: str,
+        payload: Dict[str, Any],
+        symbol: str,
+        quantity: Decimal,
+    ) -> None:
+        """Atomically reserve local SELL intent against broker open orders."""
+        open_orders = self._broker_open_sell_orders(symbol)
+        broker_reserved = sum(
+            (item["remaining_qty"] for item in open_orders),
+            Decimal("0"),
+        )
+        open_client_ids = {
+            item["client_order_id"] for item in open_orders if item["client_order_id"]
+        }
+        open_order_ids = {item["order_id"] for item in open_orders}
+        held = self._available_position_qty(symbol)
+
+        with self._connect() as conn:
+            # Serialize competing adapter processes, not just threads in one process.
+            conn.execute("BEGIN IMMEDIATE")
+            local_rows = conn.execute(
+                """
+                SELECT client_order_id, payload_json, state, broker_order_id
+                FROM crypto_paper_order_journal
+                """
+            ).fetchall()
+            terminal = {"filled", "canceled", "expired", "rejected"}
+            for row in local_rows:
+                try:
+                    local_payload = json.loads(row["payload_json"])
+                except (TypeError, ValueError) as exc:
+                    raise CryptoPaperExecutionError(
+                        "Local order journal is malformed; new SELL orders are blocked."
+                    ) from exc
+                if (
+                    str(local_payload.get("side", "")).lower() != "sell"
+                    or local_payload.get("symbol") != symbol
+                ):
+                    continue
+                state = str(row["state"] or "").lower()
+                if state in terminal:
+                    continue
+                if (
+                    row["client_order_id"] in open_client_ids
+                    or row["broker_order_id"] in open_order_ids
+                ):
+                    # Count this order from the broker snapshot exactly once.
+                    continue
+                # PREPARED, unknown, stale or unfamiliar local states are not
+                # assumed released just because the open-order query omitted them.
+                raise CryptoPaperExecutionError(
+                    "An existing local SELL order is not present in the broker open-order snapshot; "
+                    "reconcile it before submitting another SELL."
+                )
+
+            available = held - broker_reserved
+            if available < 0:
+                raise CryptoPaperExecutionError(
+                    "Broker open SELL orders reserve more quantity than the current position."
+                )
+            if quantity > available:
+                raise CryptoPaperExecutionError(
+                    f"SELL quantity {quantity} exceeds broker-held unreserved {symbol} quantity {available} after open-order reservations."
+                )
+
+            # Write-ahead evidence and the local reservation are committed before
+            # any broker submission. BEGIN IMMEDIATE prevents a second process
+            # from passing the same available-quantity check concurrently.
+            self._record_event(client_id, "ORDER_PREPARED", {"order_intent": payload})
+            conn.execute(
+                """
+                INSERT INTO crypto_paper_order_journal
+                (client_order_id, fingerprint, payload_json, state, created_at, updated_at)
+                VALUES (?, ?, ?, 'PREPARED', ?, ?)
+                """,
+                (client_id, fingerprint, json.dumps(payload, sort_keys=True), _utc_now(), _utc_now()),
+            )
 
     @staticmethod
     def _snapshot(order: Any) -> Dict[str, Any]:
@@ -422,28 +570,27 @@ class AlpacaCryptoPaperExecutionAdapter:
                 )
                 return {"accepted": True, "mode": "PAPER", "duplicate_prevented": True, **broker}
 
-            # Check current owned quantity only for a genuinely new SELL.
-            # Duplicate retries must be reconciled first, because a prior fill may
-            # already have reduced the broker position to zero.
             if intent.side == Side.SELL:
-                held = self._available_position_qty(symbol)
-                if quantity > held:
-                    raise CryptoPaperExecutionError(
-                        f"SELL quantity {quantity} exceeds broker-held {symbol} quantity {held}."
-                    )
-
-            # Write-ahead evidence: if this fails, do not create the mutable
-            # journal row and, critically, do not send an order to the broker.
-            self._record_event(client_id, "ORDER_PREPARED", {"order_intent": payload})
-            with self._connect() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO crypto_paper_order_journal
-                    (client_order_id, fingerprint, payload_json, state, created_at, updated_at)
-                    VALUES (?, ?, ?, 'PREPARED', ?, ?)
-                    """,
-                    (client_id, fingerprint, json.dumps(payload, sort_keys=True), _utc_now(), _utc_now()),
+                self._prepare_sell_order(
+                    client_id=client_id,
+                    fingerprint=fingerprint,
+                    payload=payload,
+                    symbol=symbol,
+                    quantity=quantity,
                 )
+            else:
+                # Write-ahead evidence: if this fails, do not create the mutable
+                # journal row and, critically, do not send an order to the broker.
+                self._record_event(client_id, "ORDER_PREPARED", {"order_intent": payload})
+                with self._connect() as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO crypto_paper_order_journal
+                        (client_order_id, fingerprint, payload_json, state, created_at, updated_at)
+                        VALUES (?, ?, ?, 'PREPARED', ?, ?)
+                        """,
+                        (client_id, fingerprint, json.dumps(payload, sort_keys=True), _utc_now(), _utc_now()),
+                    )
 
             try:
                 from alpaca.trading.enums import OrderSide, TimeInForce
