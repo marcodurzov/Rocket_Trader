@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "alpaca_paper_activity_reconciliation_audit.py"
+      - "alpaca_paper_activity_reconciliation_audit_test.py"
       - ".github/workflows/rocket-trader-paper-activity-audit.yml"
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_execution_event_ledger.py"
