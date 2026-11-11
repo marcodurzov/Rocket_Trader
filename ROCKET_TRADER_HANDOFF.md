@@ -327,3 +327,33 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 5. Continue costs and regime OOS validation. Current strategy approval remains zero.
 
 **Progress estimate remains 46%.** This is infrastructure/research-source capability; no new alpha, verified Tiingo history, Paper evidence or strategy approval has been established.
+
+
+### PR #105 — data-provider research handoff update
+- Merge commit: `b43c8f67676f264639fe85f12d614eff7becd8c0`.
+- Recorded Tiingo/Alpha Vantage coverage, price and license findings, and explicitly preserved the no-subscription/no-spend rule.
+- Documentation only; no change to strategy approval.
+
+### PR #106 — optional Tiingo adjusted EOD source
+- Merge commit / main SHA: `775186e104a485bbc07b50a5dcc807723aced240`.
+- Adds `TIINGO` as an optional research-only provider to the ten-year equity research runner. Uses the documented adjusted OHLCV fields (`adjOpen`, `adjHigh`, `adjLow`, `adjClose`, `adjVolume`) and Token authorization header.
+- Requires `TIINGO_API_TOKEN`; no token is embedded in code or logs. Workflow exposes it only as a GitHub secret. Default source remains unchanged; there is no silent fallback, no source splicing, and insufficient history fails closed.
+- Tests include mocked request contract, missing token, short history and provider metadata. The offline workflow passed. No live Tiingo call was possible because no token/eligible subscription is configured. No subscription was purchased.
+- Corrected a metadata defect: Yahoo output had described `repair=True` although actual yfinance request was `repair=False`; metadata and tests now reflect the actual setting.
+
+### 10.11 Ten-year equity research run — 2026-11-11
+- Main workflow run: `42954130155`, commit `775186e104a485bbc07b50a5dcc807723aced240`, completed SUCCESS. Artifact: `rocket-trader-equity-multiyear-research-v0-4`, artifact ID `13826686266`, SHA-256 `6929f6156d5c55665023fb0bcb007a311962c0c70e5837328a8d72e8656f9d0e`.
+- Actual artifact was downloaded and inspected; it is Yahoo Finance research, not Tiingo or Alpaca SIP. Eight ETFs (DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT), 2,511 daily bars each, approximately 96.32% weekday coverage, maximum calendar gap 4 days. The code's approximate weekday denominator includes US holidays, so this coverage metric is not a true exchange-session completeness measure; retain that caveat and improve the calendar logic before treating it as strong data-quality evidence.
+- 73 strategy-vs-benchmark hypotheses in the multiple-testing family; Holm family-wise significant = 0; pre-screen passes = 0. Candidate promotion false; Paper approval false; orders enabled false; orders submitted 0.
+- Cross-sectional top-1 126-day momentum was inferior to equal-weight buy-and-hold on full-period CAGR (7.65% vs 11.53%), Sharpe (0.48 vs 0.87) and max drawdown (-35.0% vs -27.0%). On final holdout its raw excess return was positive (~10.18 percentage points) but bootstrap p=0.399, Holm-adjusted p=1.0, and 5th percentile bootstrap excess was negative (~-31.56 points). It does NOT pass.
+- Assumed costs are still placeholders: 5 bps per side (2.5 half-spread + 2.5 slippage), stress multiplier 2x, commission 0. No empirical cost evidence is represented by this run.
+- Interpretation: no validated ETF alpha found in this research family. Do not loosen multiple-testing, OOS, data-quality or cost gates to manufacture a candidate. Improve data calendars/provider corroboration and expand hypotheses only with pre-registered reasoning and new independent holdout evidence.
+- The separate runtime push workflow `42954130244` also passed. It validates offline runtime/accounting tests only, not a deployed Paper account.
+
+**Updated continuation queue**
+1. Fix the approximate weekday denominator using an authoritative exchange-session calendar and test holiday/closure cases; current 96.32% metric overstates certainty because holidays are counted as expected sessions.
+2. Add Tiingo mocked parity tests and provider source identity into report metadata; real Tiingo validation waits for user-provided secret and eligible plan, with no spend without approval.
+3. Investigate Alpaca-vs-Yahoo ten-year audit artifact/run `42922974687` and compare discrepancies. Never average or splice provider series.
+4. Rework benchmark comparisons and strategy research only after data-quality/calendar validity is improved; preserve all 0-of-73 results as historical negative evidence.
+5. Improve fee/FX and corporate-action reconciliation; collect real Paper execution costs after persistent user-host deployment.
+6. Keep selector observe-only and cash-safe. No candidate currently qualifies; LIVE disabled.
