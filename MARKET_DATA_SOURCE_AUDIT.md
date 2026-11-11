@@ -140,3 +140,27 @@ The ratio is still normalized to the first common session for the cumulative div
 Yahoo raw/adjusted history now also retains its `Dividends` and `Stock Splits` action fields. For each largest adjustment-factor step, the report includes the prior raw close from both providers, the Yahoo cash distribution and split ratio recorded on the event session, and a first-order implied cash-distribution adjustment in basis points (`cash distribution / prior Yahoo raw close × 10,000`).
 
 This lets the audit compare the observed provider factor step with the issuer's declared cash distribution scale. The calculation is a diagnostic approximation, not an adjustment formula to apply to prices. It does not replace official issuer action records or explain provider-specific methodology, taxes, return-of-capital, capital gains, special distributions, or correction timing. No automatic adjustment is applied.
+
+
+## 2026-11-11 — Event-level investigation of IEX/Yahoo divergence
+
+Latest inspected crosscheck artifact: workflow `42957082760`, artifact `13827412712`.
+
+### Feed semantics
+Alpaca documents IEX as one exchange (~2.5% of market volume) and SIP as all US exchanges / consolidated tape (~100% coverage):
+- https://docs.alpaca.markets/us/v1.4.2/docs/historical-stock-data-1
+- https://docs.alpaca.markets/us/docs/market-data-faq
+
+Therefore IEX daily bars are not an acceptable substitute for consolidated closing prices in full-market research.
+
+### Raw price vs adjustment factors
+- SPY: cumulative return difference +218.90 bps; max relative adjustment-factor divergence 0.004489%; max raw normalized-close divergence 0.8381%. Largest raw return differences were 2025-04-09 (-116.75 bps), 2025-04-10 (+100.69 bps), 2024-12-24 (+93.92 bps), 2024-12-23 (-91.53 bps). The mismatch is primarily raw-price/feed-related in this sample; exact trade-level cause remains unknown.
+- QQQ: cumulative difference +89.97 bps; max adjustment-factor divergence 0.327819%. On 2022-09-19 Yahoo recorded $0.519 cash distribution; prior raw close $289.32 implies ~17.94 bps, while the relative factor step was 17.68 bps. This is distribution-scale evidence, not conclusive provider attribution. Yahoo history: https://finance.yahoo.com/quote/QQQ/history/.
+- TLT: cumulative difference +26.02 bps; max adjustment-factor divergence 0.422290%. Official iShares records $0.343177 ex-date 2026-11-02: https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf. Prior Yahoo raw close $81.84 implies ~41.93 bps. Audit recorded no Yahoo dividend event/factor step, while Alpaca relative factor step was 41.7148 bps. This is consistent with a missing/late Yahoo event adjustment in that capture; re-query before attribution.
+- DIA, EEM, EFA, GLD, IWM: smaller factor divergences, but raw normalized close differences still reach roughly 0.3–0.72%.
+
+### Decision
+- The mismatch is mixed: raw-price/feed effects dominate SPY; adjustment-factor effects matter for QQQ and TLT.
+- Never splice or average provider histories. Keep raw and adjusted series separate.
+- Re-query TLT after the 2026-11-02 distribution has propagated; verify QQQ's 2022-09-19 event against official Invesco records; compare SIP only if entitled, otherwise Tiingo only after secure token/eligible plan and explicit approval for any cost.
+- No vendor currently certified as institutional-grade 10-year ground truth; no strategy promotion, Paper approval or LIVE authorization from this audit.
