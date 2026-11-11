@@ -733,6 +733,76 @@ class AlpacaCryptoPaperExecutionAdapter:
                 "Crypto fee activity collection failed; fees remain unreconciled."
             ) from exc
 
+    def recover_journaled_orders(self) -> Dict[str, Any]:
+        """Recover every locally journaled order from broker truth without trading.
+
+        This method is intended for an explicit startup/restart recovery pass.
+        It never submits or cancels orders. Missing broker orders and any
+        ambiguous activity evidence remain unresolved and must block execution.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT client_order_id, state, broker_order_id
+                FROM crypto_paper_order_journal
+                ORDER BY created_at, client_order_id
+                """
+            ).fetchall()
+
+        items = []
+        reconciled = 0
+        unresolved = 0
+        failed = 0
+        for row in rows:
+            client_order_id = str(row["client_order_id"])
+            item = {
+                "client_order_id": client_order_id,
+                "journal_state_before": str(row["state"] or "UNKNOWN"),
+                "journal_broker_order_id": row["broker_order_id"],
+            }
+            try:
+                result = self.reconcile(client_order_id)
+                if not result.get("found"):
+                    item["recovery_status"] = "BROKER_ORDER_NOT_FOUND"
+                    unresolved += 1
+                else:
+                    activity = result.get("activity_reconciliation") or {}
+                    activity_status = str(
+                        activity.get("reconciliation_status", "UNKNOWN")
+                    )
+                    item.update({
+                        "broker_order_id": result.get("order_id"),
+                        "broker_status": result.get("status"),
+                        "filled_qty": result.get("filled_qty"),
+                        "activity_reconciliation_status": activity_status,
+                    })
+                    if activity_status == "MATCHED":
+                        item["recovery_status"] = "RECONCILED"
+                        reconciled += 1
+                    else:
+                        item["recovery_status"] = "REQUIRES_REVIEW"
+                        unresolved += 1
+            except Exception as exc:
+                # Do not include raw SDK exception strings in recovery reports.
+                item["recovery_status"] = "RECONCILIATION_FAILED"
+                item["error_type"] = type(exc).__name__
+                failed += 1
+            items.append(item)
+
+        return {
+            "mode": "PAPER",
+            "read_only": True,
+            "orders_scanned": len(rows),
+            "orders_reconciled": reconciled,
+            "orders_unresolved": unresolved,
+            "orders_failed": failed,
+            "status": (
+                "SUCCESS" if unresolved == 0 and failed == 0
+                else "REQUIRES_REVIEW"
+            ),
+            "orders": items,
+        }
+
     def reconcile_positions(self) -> Dict[str, Any]:
         """Read-only broker snapshot; broker holdings remain authoritative."""
         positions = self.client.get_all_positions()
