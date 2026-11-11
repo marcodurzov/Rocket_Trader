@@ -161,3 +161,20 @@ orders. Unresolved movements continue to fail the account-activity health gate.
   drawdown guard, broker order/position reconciliation, order idempotency,
   partial-fill exits, session/calendar controls, and recovery tests before
   any Paper orders can be enabled.
+
+
+## Broker fill activity reconciliation — 2026-11-11
+
+The read-only Account Activities endpoint reports legacy trade fills as `FILL` with an activity ID in `timestamp::execution_uuid` format. Alpaca's Activity SSE identifies the same execution with `ref_id`. Rocket Trader now uses this stable execution identifier to compare each staged REST fill with the fee/FX-aware ledger inbox.
+
+For every staged fill, the reconciliation checks:
+- matching execution UUID in the durable fill inbox;
+- quantity, price, normalized symbol, side and order ID;
+- execution timestamp within a two-second tolerance;
+- final inbox state `PROCESSED`, which implies the fee and FX resolvers allowed ledger posting.
+
+A missing event, changed payload, unresolved fee/FX or failed inbox entry leaves account-activity health in ERROR. This is a read-only cross-check: it does not reconstruct or post fills automatically, and it cannot submit or cancel orders. The user must not interpret a healthy check as strategy profitability.
+
+Official schema references:
+- https://docs.alpaca.markets/us/docs/account-activities
+- https://docs.alpaca.markets/us/docs/activity-sse

@@ -12,6 +12,8 @@ on:
       - "rocket_trader_alpaca_fee_resolver.py"
       - "rocket_trader_fx_provider.py"
       - "rocket_trader_currency.py"
+      - "rocket_trader_paper_activity_reconciliation.py"
+      - "rocket_trader_paper_activity_reconciliation_test.py"
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_paper_reconciliation_test.py"
       - "rocket_trader_alpaca_activity_stager.py"
@@ -43,6 +45,8 @@ on:
       - "rocket_trader_alpaca_fee_resolver.py"
       - "rocket_trader_fx_provider.py"
       - "rocket_trader_currency.py"
+      - "rocket_trader_paper_activity_reconciliation.py"
+      - "rocket_trader_paper_activity_reconciliation_test.py"
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_paper_reconciliation_test.py"
       - "rocket_trader_alpaca_activity_stager.py"
@@ -70,7 +74,7 @@ jobs:
       - name: Install research comparison dependencies
         run: pip install -r requirements-yahoo.txt
       - name: Compile observer and accounting modules
-        run: python -m py_compile rocket_trader_stream_runtime.py rocket_trader_stream_runtime_test.py rocket_trader_realized_pnl_ledger.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_alpaca_fee_resolver.py rocket_trader_fx_provider.py rocket_trader_alpaca_activity_stager.py rocket_trader_alpaca_activity_stager_test.py rocket_trader_alpaca_cash_activity_bridge.py rocket_trader_alpaca_cash_activity_bridge_test.py rocket_trader_currency.py rocket_trader_paper_reconciliation.py rocket_trader_paper_reconciliation_test.py rocket_trader_regime_observer.py rocket_trader_regime_selector.py rocket_trader_news_event_assessment.py rocket_trader_execution_cost_telemetry.py
+        run: python -m py_compile rocket_trader_stream_runtime.py rocket_trader_stream_runtime_test.py rocket_trader_realized_pnl_ledger.py rocket_trader_paper_fill_ledger_bridge.py rocket_trader_alpaca_fee_resolver.py rocket_trader_fx_provider.py rocket_trader_alpaca_activity_stager.py rocket_trader_alpaca_activity_stager_test.py rocket_trader_alpaca_cash_activity_bridge.py rocket_trader_alpaca_cash_activity_bridge_test.py rocket_trader_currency.py rocket_trader_paper_activity_reconciliation.py rocket_trader_paper_activity_reconciliation_test.py rocket_trader_paper_reconciliation.py rocket_trader_paper_reconciliation_test.py rocket_trader_regime_observer.py rocket_trader_regime_selector.py rocket_trader_news_event_assessment.py rocket_trader_execution_cost_telemetry.py
       - name: Run offline runtime and accounting tests
         run: |
           python -m unittest -v rocket_trader_stream_runtime_test.py
@@ -81,6 +85,7 @@ jobs:
           python -m unittest -v rocket_trader_fx_provider_test.py
           python -m unittest -v rocket_trader_alpaca_activity_stager_test.py
           python -m unittest -v rocket_trader_alpaca_cash_activity_bridge_test.py
+          python -m unittest -v rocket_trader_paper_activity_reconciliation_test.py
           python -m unittest -v rocket_trader_paper_reconciliation_test.py
           python -m unittest discover -s tests -p "test_rocket_trader_regime_observer.py" -v
           python -m unittest discover -s tests -p "test_rocket_trader_regime_selector.py" -v
