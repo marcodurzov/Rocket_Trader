@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#157 merged; one-shot Paper execution journal recovery runner added)  
+**Last updated:** 2026-11-11 (PRs #141–#159 merged; real Paper FILL activity matched and account-wide CFEE handling corrected)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `adab3f2bc29e71be788fa47335f73e0cce9830fc` (PR #157 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
-**Current progress estimate:** **54%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Latest main HEAD before this Handoff refresh:** `60ff6607780f66fb830a0629fd5cb7047c46e7ea` (PR #159 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Current progress estimate:** **55%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -983,3 +983,18 @@ Next actions:
 - Boundary: this is a one-shot runner, **not yet a persistent loop, scheduled worker, or automatic startup gate**. It must use the same durable DB files as the eventual execution service. No such service has been deployed by this workflow.
 
 **Progress estimate:** 54% (engineering/evidence maturity only). A restart recovery path is now callable and offline-tested, but automatic service integration and live Paper validation remain open.
+
+
+### PR #159 — fix account-wide CFEE symbol handling
+- Merged to main: `60ff6607780f66fb830a0629fd5cb7047c46e7ea`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/159
+- Real manual Paper audit run `43034874861` (job `130570956064`) reached Alpaca successfully, passed account cash-only preflight, queried the two BTC/USD smoke orders and reconciled both FILL histories: BUY `0.000133206 BTC` MATCHED and SELL `0.000132872 BTC` MATCHED.
+- The run then failed during the account-wide CFEE query with `Activity has an invalid crypto symbol.` The CFEE collector incorrectly assumed every account-level fee record had a valid BASE/USD pair symbol. FILL evidence was already successfully reconciled; the error was isolated to CFEE processing.
+- PR #159 changes CFEE handling to preserve all returned CFEE evidence in the append-only ledger and classify it as target-symbol, other-symbol, or unclassified. Incomplete amount/currency/timestamp records are retained and marked incomplete. No fee is assigned to an order without documented linkage.
+- The audit JSON and GitHub step summary now expose target, other-symbol, unclassified and incomplete fee evidence. Fill reconciliation status no longer fails merely because an unrelated CFEE symbol is unclassifiable.
+- Regression coverage includes account-wide unclassifiable CFEE, other crypto symbols, incomplete fee fields and end-to-end audit success with matched FILLs.
+- PR CI: `43035761377` and `43035761387` succeeded. Post-merge runs `43035852426` (activity tests) succeeded; `43035852875` (audit static-check) was still running at handoff update time. Manual Paper audit job is skipped in push/PR CI.
+- **Still pending:** user must manually dispatch the read-only Paper activity audit on current main to inspect actual CFEE results. The previous report showed 2/2 fills matched but did not provide successful fee evidence. No new order was submitted by PR #159.
+- No Live access, order submission, cancellation, replacement or account mutation occurred.
+
+**Progress estimate:** 55% (engineering/evidence maturity only). Real Alpaca order FILL evidence is now confirmed for both smoke orders and the CFEE failure root cause is corrected in code; actual post-fix CFEE evidence and profitability remain unvalidated.

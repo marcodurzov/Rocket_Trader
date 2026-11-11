@@ -711,3 +711,16 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - This is not yet a continuous worker or automatic startup gate. The eventual persistent execution service must call it before accepting new intents and share the same durable DB files.
 - No live Paper endpoint was called by this PR; no strategy approval or autonomous trading was enabled.
 - Progress remains **54%**.
+
+
+---
+
+## 2026-11-11 — Real Paper FILL reconciliation and CFEE correction (PR #159)
+- Manual run `43034874861`, job `130570956064`, reached Alpaca Paper and passed ACTIVE/USD/crypto ACTIVE/cash-only/no-short preflight.
+- Two actual smoke orders were found and matched against broker FILL activities: BUY 0.000133206 BTC; SELL 0.000132872 BTC. Both activity quantities matched the broker order snapshots.
+- The audit then failed in account-wide CFEE processing because a fee activity had a symbol that was not parseable as BASE/USD. This was a collector bug, not an Alpaca connection or FILL reconciliation failure.
+- PR #159 merged `60ff6607780f66fb830a0629fd5cb7047c46e7ea`. CFEE records are now preserved as unallocated evidence and classified target/other/unclassified; incomplete fields are flagged, never assumed zero. FILL status remains separate from fee evidence quality.
+- PR checks `43035761377` and `43035761387` succeeded. Post-merge activity CI `43035852426` succeeded; post-merge static audit CI `43035852875` pending at this note.
+- Manual post-fix Paper audit remains required. Fees are not yet attributed to the buy/sell order and remain unverified.
+- No new order was submitted; Live remains prohibited.
+- Progress: **55%** (engineering/evidence maturity, not profitability).
