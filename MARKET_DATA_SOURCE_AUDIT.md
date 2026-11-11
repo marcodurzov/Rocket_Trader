@@ -175,3 +175,21 @@ Workflow `42958406136`, artifact `13827124135`, code SHA `097dd10932ed7ed2e993a2
 - Interpretation remains unresolved but stronger: Yahoo's action/adjustment series in these captures has not reflected the issuer's ex-date distribution. Do not auto-apply a dividend to historical prices.
 - Tiingo was not requested: `tiingo_comparison_status=NOT_REQUESTED`, `tiingo_all_diagnostic_gates_pass=null`, 0 symbols. This is explicitly not a pass.
 - Overall IEX/Yahoo diagnostic remains false; no candidate promotion, Paper approval or orders.
+
+
+## Alpaca issuer corporate-action reconciliation
+
+The audit now queries Alpaca's official market-data Corporate Actions endpoint for the same ETF universe and period (with a 60-day process-date padding, because the endpoint filters/sorts by `process_date`, not solely by `ex_date`). It preserves event type, symbol, ex-date, cash rate, capital-gain rates, split fields, process date, payable date and other relevant metadata.
+
+For each largest adjustment-factor step, the report now shows Alpaca corporate actions on the event date and previous session, the sum of Alpaca cash dividends on the event date, and the difference versus Yahoo's `Dividends` field. This can distinguish:
+- an issuer cash distribution present in Alpaca's corporate-action feed but absent from Yahoo's action field;
+- an event present in both feeds but with different amounts;
+- an event present in Yahoo but absent from Alpaca's corporate-action feed;
+- a factor-step discrepancy without a matching cash dividend (which may instead involve capital gains, splits, spin-offs, timing, or bad price data).
+
+The official endpoint is `GET https://data.alpaca.markets/v1/corporate-actions`. Alpaca warns that corporate-action records can be delayed and does not guarantee when records are created; absence from this API is not proof that no issuer event exists. Issuer records remain the authority for declared distributions. This endpoint is read-only and does not change account positions or submit orders.
+
+References:
+- https://docs.alpaca.markets/us/reference/corporateactions-1
+- https://alpaca.markets/sdks/python/api_reference/data/corporate_actions/historical.html
+- https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf
