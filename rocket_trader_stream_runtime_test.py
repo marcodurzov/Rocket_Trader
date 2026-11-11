@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Offline tests for Paper observer runtime; no broker or network calls."""
-import asyncio, os, tempfile, unittest
+import asyncio, json, os, sqlite3, tempfile, unittest
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -245,6 +245,112 @@ class StreamRuntimeTests(unittest.TestCase):
         report = runtime._sync_account_activities()
         self.assertEqual(report["total_staged"], 3)
         self.assertEqual(stager.calls, 1)
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertTrue(health["healthy"])
+        self.assertEqual(health["components"]["account_activity"]["status"], "HEALTHY")
+
+    def test_unmatched_staged_fill_keeps_account_activity_unhealthy(self):
+        activity_db = os.path.join(self.tmp.name, "activities.sqlite3")
+        inbox_db = os.path.join(self.tmp.name, "inbox.sqlite3")
+        execution_id = "8efc7b9a-8b2b-4000-9955-d36e7db0df74"
+        activity = {
+            "id": "20261110160000000::" + execution_id,
+            "activity_type": "FILL", "transaction_time": "2026-11-10T16:00:00Z",
+            "symbol": "SPY", "side": "buy", "qty": "1", "price": "500",
+            "order_id": "order-1",
+        }
+        with sqlite3.connect(activity_db) as db:
+            db.execute("""CREATE TABLE staged_activities (
+                activity_id TEXT PRIMARY KEY, activity_type TEXT, occurred_at TEXT,
+                payload_json TEXT, payload_hash TEXT, classification TEXT, staged_at TEXT
+            )""")
+            db.execute("INSERT INTO staged_activities VALUES(?,?,?,?,?,?,?)", (
+                activity["id"], "FILL", activity["transaction_time"],
+                json.dumps(activity), "hash", "STAGED_PENDING_RECONCILIATION", "now",
+            ))
+        with sqlite3.connect(inbox_db) as db:
+            db.execute("""CREATE TABLE paper_fill_ledger_inbox (
+                execution_id TEXT PRIMARY KEY, payload_hash TEXT, payload_json TEXT,
+                status TEXT, last_error TEXT, fx_json TEXT, created_at TEXT, updated_at TEXT
+            )""")
+        class FakeStager:
+            db_path = activity_db
+            def sync(self):
+                return {
+                    "total_staged": 1, "ledger_posting_enabled": False,
+                    "blocked_activity_types": [],
+                    "counts": {"FILL:STAGED_PENDING_RECONCILIATION": 1},
+                }
+        class FakeBridge:
+            db_path = inbox_db
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder, fill_ledger_bridge=FakeBridge(),
+            activity_stager=FakeStager(),
+        )
+        report = runtime._sync_account_activities()
+        self.assertEqual(report["trade_fill_reconciliation"]["missing_inbox_fills"], 1)
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(health["healthy"])
+        self.assertEqual(health["components"]["account_activity"]["status"], "ERROR")
+
+    def test_matched_processed_fill_allows_account_activity_reconciliation(self):
+        activity_db = os.path.join(self.tmp.name, "activities.sqlite3")
+        inbox_db = os.path.join(self.tmp.name, "inbox.sqlite3")
+        execution_id = "8efc7b9a-8b2b-4000-9955-d36e7db0df74"
+        activity = {
+            "id": "20261110160000000::" + execution_id,
+            "activity_type": "FILL", "transaction_time": "2026-11-10T16:00:00Z",
+            "symbol": "SPY", "side": "buy", "qty": "1", "price": "500",
+            "order_id": "order-1",
+        }
+        payload = {
+            "event": "fill", "execution_id": execution_id,
+            "timestamp": "2026-11-10T16:00:00Z", "symbol": "SPY",
+            "side": "BUY", "qty": "1.0", "price": "500",
+            "order": {"id": "order-1", "symbol": "SPY", "side": "BUY"},
+        }
+        with sqlite3.connect(activity_db) as db:
+            db.execute("""CREATE TABLE staged_activities (
+                activity_id TEXT PRIMARY KEY, activity_type TEXT, occurred_at TEXT,
+                payload_json TEXT, payload_hash TEXT, classification TEXT, staged_at TEXT
+            )""")
+            db.execute("INSERT INTO staged_activities VALUES(?,?,?,?,?,?,?)", (
+                activity["id"], "FILL", activity["transaction_time"],
+                json.dumps(activity), "hash", "STAGED_PENDING_RECONCILIATION", "now",
+            ))
+        with sqlite3.connect(inbox_db) as db:
+            db.execute("""CREATE TABLE paper_fill_ledger_inbox (
+                execution_id TEXT PRIMARY KEY, payload_hash TEXT, payload_json TEXT,
+                status TEXT, last_error TEXT, fx_json TEXT, created_at TEXT, updated_at TEXT
+            )""")
+            db.execute("INSERT INTO paper_fill_ledger_inbox VALUES(?,?,?,?,?,?,?,?)", (
+                execution_id, "hash", json.dumps(payload), "PROCESSED",
+                None, None, "now", "now",
+            ))
+        class FakeStager:
+            db_path = activity_db
+            def sync(self):
+                return {
+                    "total_staged": 1, "ledger_posting_enabled": False,
+                    "blocked_activity_types": [],
+                    "counts": {"FILL:STAGED_PENDING_RECONCILIATION": 1},
+                }
+        class FakeBridge:
+            db_path = inbox_db
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder, fill_ledger_bridge=FakeBridge(),
+            activity_stager=FakeStager(),
+        )
+        report = runtime._sync_account_activities()
+        self.assertEqual(report["trade_fill_reconciliation"]["status"], "RECONCILED")
         health = self.recorder.health(max_age_seconds=120)
         self.assertTrue(health["healthy"])
         self.assertEqual(health["components"]["account_activity"]["status"], "HEALTHY")
