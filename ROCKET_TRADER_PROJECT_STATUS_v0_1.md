@@ -585,3 +585,14 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - This strongly suggests dividend adjustment handling contributes to these two factor divergences, but does not prove which vendor is right or explain all discrepancies.
 - Raw price series still diverge: max normalized raw close difference QQQ 0.9620%, SPY 0.8381%, TLT 0.2633%; p95 absolute raw daily return difference 4.69–9.94 bps.
 - Tiingo token absent; no Tiingo comparison. No strategy approval or orders. Progress remains 46%.
+
+
+---
+
+## 2026-11-11 — Ten-year Alpaca IEX vs Yahoo crosscheck
+- Workflow `42955879451` succeeded; artifact `13825994525` downloaded and inspected.
+- Ten-year request, 8 ETFs. Alpaca IEX only 1,582–1,583 sessions since 2020-07-27 vs Yahoo 2,513; common-session IEX coverage approx. 62.95%. All 8 symbols failed minimum source coverage; 0/8 passed all diagnostic gates.
+- Common-period daily return correlation high (0.99835–0.99975), but p95 absolute daily-return differences 4.69–9.97 bps and max outliers 31.5–116.7 bps. Cumulative differences (bps): DIA +5.47, EEM +8.82, EFA +1.22, GLD +3.29, IWM -0.75, QQQ +89.98, SPY +218.89, TLT +26.02.
+- No Tiingo comparison run (0 symbols); this does not validate PR #106 adapter. No errors in workflow, but diagnostic failed because IEX lacks full decade.
+- No strategy promotion, Paper approval or orders. Research costs still unvalidated.
+- Next: exchange-session calendar, investigate outlier corporate-action dates and provider adjustments, perform Tiingo live validation only with token/eligible plan and explicit no-spend approval, preserve separate provider series.
