@@ -447,7 +447,7 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Computes per-provider adjustment factors (adjusted/raw), normalized relative factor divergence, largest factor-step dates, raw-price return differences and normalized raw-price path divergence.
 - This is designed to separate raw underlying price mismatches from corporate-action adjustment differences. It does not assign a cause or auto-correct data.
 - PR CI run `42955793577`: compile and all 12 cross-check tests passed; live audit skipped on pull_request by design.
-- No post-merge workflow run was returned for merge SHA at the time of this handoff update; verify Actions and run the full read-only audit before relying on live adjustment-factor findings.
+- Post-merge audit run `42955879451` completed successfully; artifact `13825994525`. The run included raw/adjusted fields for all 8 ETFs. Runtime/accounting run `42955879365` also completed successfully.
 - No Tiingo token, subscription, strategy approval, Paper approval or orders changed.
 
 **Next steps**
@@ -457,3 +457,17 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 4. Continue strategy edge, empirical cost and persistent Paper deployment work only after the data lineage blocker is understood.
 
 **Progress remains 46%.** This adds an attribution diagnostic, not a resolution or strategy edge.
+
+
+### PR #115 — post-merge raw/adjusted factor findings
+- Live audit `42955879451` succeeded; artifact `13825994525`; 12 cross-check tests passed. Runtime/accounting run `42955879365` passed.
+- Yahoo raw/adjusted and Alpaca RAW/ALL series intersected for 1,582 sessions (SPY 1,583) on the IEX common period.
+- Maximum normalized relative adjustment-factor divergence by ETF: DIA 0.0025%, EEM 0.0223%, EFA 0.0124%, GLD 0%, IWM 0.0065%, QQQ 0.3278%, SPY 0.0045%, TLT 0.4223%.
+- QQQ's largest factor step was 2022-09-19: +17.6852 bps. QQQ's documented ex-dividend distribution that day was $0.51856/share: https://stockanalysis.com/etf/qqq/dividend/ and https://app.tiingo.com/qqq/dividends.
+- TLT's largest factor step was 2026-11-02: +41.7148 bps. iShares official distribution table lists an ex-date and income distribution of $0.343177/share that day: https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf.
+- The close magnitude/date alignment is strong evidence that dividend-adjustment handling explains at least these two factor steps. It does **not** yet identify which vendor's factor is correct or prove the whole cumulative-return discrepancy is explained. The report currently normalizes factor ratio to first common session; it does not show before/after raw factor values side-by-side.
+- Raw price series still differ: max normalized raw close divergence ranges from 0.2633% TLT to 0.9620% QQQ; p95 absolute raw daily return differences 4.6855–9.9434 bps. This is separate from the adjustment-factor issue and deserves investigation.
+- The large QQQ 2024-12-23/24 and SPY 2025-04-09/10 return outliers are not automatically explained by the 2022 QQQ or 2026 TLT factor events. Keep these as separate raw/session anomalies until their raw close fields are checked.
+- Tiingo token remains absent. No Tiingo request; no vendor subscription; no strategy/Paper approval or orders.
+
+**Next diagnostic improvement:** include previous-session and current-session provider adjustment factors around each largest factor step, so the audit makes the before/after factor change explicit. Then compare it against the official ex-date cash amount divided by previous raw close. Do not attribute provider fault until this calculation and raw bars are checked.
