@@ -423,6 +423,10 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertIn("yahoo_sessions", named)
         self.assertIn("tiingo_sessions", named)
         self.assertIn("tiingo_coverage_on_common", named)
+        self.assertIn("tiingo_first_session", named)
+        self.assertIn("tiingo_history_start_lag_days", named)
+        self.assertIn("tiingo_overlap_session_completeness", named)
+        self.assertIn("overlap_session_assessment", named)
         self.assertAlmostEqual(
             named["right_minus_left_cumulative_return_difference_bps"],
             raw["cumulative_return_difference_bps"],
