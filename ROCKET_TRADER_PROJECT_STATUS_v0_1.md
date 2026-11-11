@@ -540,3 +540,14 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Daily return correlation 0.99835–0.99975 but cumulative return difference Alpaca minus Yahoo: -0.75 bps IWM to +218.90 bps SPY; QQQ +89.98 bps; TLT +26.01 bps. Provider adjustment divergence remains unresolved.
 - Runtime CI `42955004617`: 10 test modules passed, 95 tests aggregate.
 - No Paper deployment evidence, empirical costs, strategy approval or orders. Progress 46%.
+
+
+---
+
+## 2026-11-11 — PR #113 date-level divergence diagnostics
+- PR #113 merged: https://github.com/marcodurzov/Rocket_Trader/pull/113
+- Main SHA: `6ac4caa90de52ad1d1faefedbe301997b2360480`.
+- Audit now records top 10 daily-return divergence dates and top 10 normalized adjusted-close path divergence dates per symbol.
+- CI `42955368774`: 10 cross-check tests passed; live data skipped on PR.
+- Post-merge audit `42955455037` and runtime suite `42955454994` pending at update time.
+- No provider correction, Tiingo request, strategy approval or orders. Progress remains 46%.
