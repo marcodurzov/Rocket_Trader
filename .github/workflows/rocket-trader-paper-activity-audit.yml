@@ -15,6 +15,7 @@ on:
       - main
     paths:
       - "alpaca_paper_activity_reconciliation_audit.py"
+      - "alpaca_paper_activity_reconciliation_audit_test.py"
       - ".github/workflows/rocket-trader-paper-activity-audit.yml"
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_execution_event_ledger.py"
@@ -66,7 +67,7 @@ jobs:
       - name: Compile and run offline activity tests
         run: |
           python -m py_compile alpaca_paper_activity_reconciliation_audit.py
-          python -m unittest -v rocket_trader_alpaca_activity_reconciliation_audit_test.py rocket_trader_alpaca_activity_reconciliation_test.py
+          python -m unittest -v alpaca_paper_activity_reconciliation_audit_test.py rocket_trader_alpaca_activity_reconciliation_test.py
 
   paper-activity-audit:
     if: github.event_name == 'workflow_dispatch'
