@@ -49,6 +49,28 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(result["diagnostic_pass"])
         self.assertFalse(result["diagnostic_gates"]["maximum_p95_abs_return_difference"])
 
+
+    def test_return_divergence_report_identifies_exact_sessions(self):
+        alpaca = self.yahoo.copy()
+        alpaca.iloc[4:] = alpaca.iloc[4:] * 1.03
+        result = compare_close_series(
+            "SPY", self.yahoo, alpaca,
+            min_common_sessions=5,
+            min_source_coverage=1.0,
+            max_p95_abs_return_diff_bps=1.0,
+        )
+        outlier = result["largest_daily_return_divergences"][0]
+        self.assertEqual(outlier["session"], str(self.dates[4].date()))
+        self.assertGreater(
+            abs(outlier["alpaca_minus_yahoo_return_difference_bps"]), 200.0
+        )
+        self.assertEqual(len(result["largest_daily_return_divergences"]), 7)
+        self.assertTrue(result["largest_normalized_close_divergences"])
+        self.assertIn(
+            "alpaca_vs_yahoo_normalized_close_difference_pct",
+            result["largest_normalized_close_divergences"][0],
+        )
+
     def test_source_coverage_is_measured_separately(self):
         alpaca = self.yahoo.iloc[1:-1]
         result = compare_close_series(
