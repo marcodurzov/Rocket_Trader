@@ -143,10 +143,16 @@ class MarketFeatureBuilder:
     """Builds cross-sectional features; insufficient or stale bars fail closed."""
 
     def __init__(self, market_db: str, min_bars: int = 60,
-                 max_bar_age_seconds: int = 1800) -> None:
+                 max_bar_age_seconds: int = 1800,
+                 min_aligned_coverage: float = 0.95,
+                 max_aligned_gap_seconds: int = 180) -> None:
         self.market_db = market_db
         self.min_bars = max(30, int(min_bars))
         self.max_bar_age_seconds = max(60, int(max_bar_age_seconds))
+        if not 0.0 < float(min_aligned_coverage) <= 1.0:
+            raise ValueError("min_aligned_coverage must be in (0, 1]")
+        self.min_aligned_coverage = float(min_aligned_coverage)
+        self.max_aligned_gap_seconds = max(60, int(max_aligned_gap_seconds))
 
     def _load(self, asset_class: str, symbols: Sequence[str]) -> Dict[str, List[Tuple[str, float]]]:
         result: Dict[str, List[Tuple[str, float]]] = {}
@@ -168,20 +174,72 @@ class MarketFeatureBuilder:
         counts = {symbol: len(rows) for symbol, rows in bars.items()}
         if not symbols or any(count < self.min_bars for count in counts.values()):
             return None, {"status": "INSUFFICIENT_DATA", "bar_counts": counts}
-        latest_times = [_parse_time(rows[-1][0]) for rows in bars.values()]
-        latest = min(latest_times)
+
+        # Normalize timestamps to UTC instants and align by timestamp, never by
+        # array position. A single missing minute in one asset must not pair its
+        # return with a different minute from another asset.
+        timestamp_maps: Dict[str, Dict[datetime, float]] = {}
+        for symbol, rows in bars.items():
+            normalized: Dict[datetime, float] = {}
+            for raw_timestamp, close in rows:
+                timestamp = _parse_time(raw_timestamp)
+                if timestamp in normalized:
+                    return None, {
+                        "status": "DUPLICATE_NORMALIZED_TIMESTAMPS",
+                        "symbol": symbol,
+                        "timestamp": timestamp.isoformat(),
+                    }
+                normalized[timestamp] = close
+            timestamp_maps[symbol] = normalized
+
+        latest_times = [max(values) for values in timestamp_maps.values()]
         skew = (max(latest_times) - min(latest_times)).total_seconds()
+        common_timestamps = sorted(set.intersection(*(
+            set(values) for values in timestamp_maps.values()
+        )))
+        coverage_by_symbol = {
+            symbol: len(common_timestamps) / len(values)
+            for symbol, values in timestamp_maps.items()
+        }
+        min_coverage = min(coverage_by_symbol.values(), default=0.0)
+        if len(common_timestamps) < self.min_bars or min_coverage < self.min_aligned_coverage:
+            return None, {
+                "status": "INSUFFICIENT_ALIGNED_DATA",
+                "bar_counts": counts,
+                "common_aligned_bars": len(common_timestamps),
+                "aligned_coverage_by_symbol": coverage_by_symbol,
+                "minimum_aligned_coverage": self.min_aligned_coverage,
+                "cross_symbol_skew_seconds": skew,
+            }
+
+        latest = common_timestamps[-1]
         age = (current - latest).total_seconds()
+        gaps = [
+            (right - left).total_seconds()
+            for left, right in zip(common_timestamps, common_timestamps[1:])
+        ]
+        max_gap = max(gaps, default=0.0)
         if age < 0 or age > self.max_bar_age_seconds or skew > 180:
             return None, {"status": "STALE_OR_UNALIGNED_DATA", "bar_counts": counts,
                           "latest_bar_at": latest.isoformat(), "bar_age_seconds": age,
-                          "cross_symbol_skew_seconds": skew}
+                          "cross_symbol_skew_seconds": skew,
+                          "common_aligned_bars": len(common_timestamps),
+                          "aligned_coverage_by_symbol": coverage_by_symbol}
+        if max_gap > self.max_aligned_gap_seconds:
+            return None, {
+                "status": "ALIGNED_SERIES_GAP",
+                "bar_counts": counts,
+                "common_aligned_bars": len(common_timestamps),
+                "aligned_coverage_by_symbol": coverage_by_symbol,
+                "maximum_aligned_gap_seconds": max_gap,
+                "allowed_aligned_gap_seconds": self.max_aligned_gap_seconds,
+            }
 
         returns: Dict[str, List[float]] = {}
         momentum: Dict[str, float] = {}
         vol_percentiles: List[float] = []
-        for symbol, rows in bars.items():
-            closes = [price for _, price in rows]
+        for symbol, values in timestamp_maps.items():
+            closes = [values[timestamp] for timestamp in common_timestamps]
             if any(not math.isfinite(x) or x <= 0 for x in closes):
                 return None, {"status": "INVALID_PRICE_DATA", "symbol": symbol}
             series = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes))]
@@ -195,8 +253,7 @@ class MarketFeatureBuilder:
             percentile = sum(x <= current_vol for x in rolling_vol) / len(rolling_vol)
             vol_percentiles.append(percentile)
 
-        aligned_length = min(len(x) for x in returns.values())
-        aligned = [values[-aligned_length:] for values in returns.values()]
+        aligned = list(returns.values())
         correlations = []
         for i in range(len(aligned)):
             for j in range(i + 1, len(aligned)):
@@ -212,14 +269,15 @@ class MarketFeatureBuilder:
         breadth = sum(value > 0 for value in momentum.values()) / len(symbols)
         volatility = mean(vol_percentiles)
         drawdowns = []
-        for rows in bars.values():
-            closes = [price for _, price in rows[-60:]]
+        for symbol, values in timestamp_maps.items():
+            closes = [values[timestamp] for timestamp in common_timestamps[-60:]]
             peak = max(closes)
             drawdowns.append((peak - closes[-1]) / peak if peak else 0.0)
         stress = _clamp(0.45 * volatility + 0.30 * max(0.0, correlation)
                         + 0.25 * _clamp(mean(drawdowns) / 0.08))
-        quality = _clamp(1.0 - age / self.max_bar_age_seconds) * _clamp(
-            1.0 - skew / 180.0)
+        freshness_quality = _clamp(1.0 - age / self.max_bar_age_seconds)
+        skew_quality = _clamp(1.0 - skew / 180.0)
+        quality = freshness_quality * skew_quality * min_coverage
         state = MarketState(
             trend_strength=trend_strength,
             trend_direction=trend_direction,
@@ -240,6 +298,11 @@ class MarketFeatureBuilder:
                 "correlation": correlation, "stress": stress, "data_quality": quality,
             },
             "feature_window": "minute bars; up to 180 observations; 20-bar momentum and realized volatility",
+            "common_aligned_bars": len(common_timestamps),
+            "aligned_coverage_by_symbol": coverage_by_symbol,
+            "minimum_aligned_coverage": self.min_aligned_coverage,
+            "maximum_aligned_gap_seconds": max_gap,
+            "allowed_aligned_gap_seconds": self.max_aligned_gap_seconds,
         }
 
 
