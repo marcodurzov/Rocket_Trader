@@ -77,6 +77,16 @@ class DurableActivitySSEInboxTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_healthcheck_cli_does_not_create_missing_database(self):
+        from rocket_trader_alpaca_activity_sse_consumer import main
+        missing = os.path.join(self.temp.name, "missing.sqlite3")
+        with patch("sys.argv", [
+            "rocket_trader_alpaca_activity_sse_consumer.py",
+            "--db", missing, "--healthcheck",
+        ]):
+            self.assertEqual(main(), 1)
+        self.assertFalse(os.path.exists(missing))
+
     def test_healthcheck_cli_verifies_local_database_without_network(self):
         from rocket_trader_alpaca_activity_sse_consumer import main
         with patch("sys.argv", [
@@ -221,6 +231,14 @@ class DurableActivitySSEInboxTests(unittest.TestCase):
             conn.execute("DROP TRIGGER activity_sse_events_no_update")
             conn.execute("UPDATE activity_sse_events SET payload_json='{}'")
         self.assertEqual(self.inbox.verify()["reason"], "payload_hash_mismatch")
+
+    def test_verify_fails_if_append_only_trigger_is_missing(self):
+        self.inbox.stage(activity(1))
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER activity_sse_events_no_delete")
+        report = self.inbox.verify()
+        self.assertFalse(report["valid"])
+        self.assertIn("activity_sse_events_no_delete", report["missing_append_only_triggers"])
 
     def test_delivery_payload_mismatch_invalidates_integrity_report(self):
         self.inbox.stage(activity(1))
