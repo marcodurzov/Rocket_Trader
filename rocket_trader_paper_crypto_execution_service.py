@@ -11,7 +11,10 @@ orders during startup.
 
 from __future__ import annotations
 
+import os
+import sqlite3
 import threading
+from pathlib import Path
 from typing import Any, Dict
 
 
@@ -26,6 +29,57 @@ class PaperCryptoExecutionService:
     persistent journal and immutable event-ledger paths used by the host.
     Readiness is process-local and starts closed after every process restart.
     """
+
+    @classmethod
+    def from_existing_storage(
+        cls,
+        *,
+        db_path: str,
+        event_ledger_path: str,
+        api_key: str | None = None,
+        api_secret: str | None = None,
+        client: Any = None,
+    ) -> "PaperCryptoExecutionService":
+        """Build the service only from pre-existing durable journal files.
+
+        This prevents a path typo or lost volume from silently creating a new
+        empty journal and making startup recovery appear successful.
+        """
+        if os.getenv("ALPACA_PAPER", "").strip().lower() != "true":
+            raise PaperExecutionStartupError("ALPACA_PAPER must be exactly true.")
+        if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() == "true":
+            raise PaperExecutionStartupError("LIVE mode is prohibited.")
+        journal = Path(db_path).expanduser()
+        events = Path(event_ledger_path).expanduser()
+        if not journal.is_file() or not events.is_file():
+            raise PaperExecutionStartupError(
+                "Existing durable journal and event-ledger files are required; empty state will not be initialized."
+            )
+        try:
+            with sqlite3.connect(journal.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+                found = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                    ("crypto_paper_order_journal",),
+                ).fetchone()
+        except sqlite3.Error as exc:
+            raise PaperExecutionStartupError(
+                "Existing execution journal cannot be opened read-only."
+            ) from exc
+        if found is None:
+            raise PaperExecutionStartupError(
+                "Existing execution journal is missing its order table."
+            )
+
+        from rocket_trader_crypto_paper_execution import AlpacaCryptoPaperExecutionAdapter
+
+        adapter = AlpacaCryptoPaperExecutionAdapter(
+            api_key=api_key,
+            api_secret=api_secret,
+            db_path=str(journal),
+            client=client,
+            event_ledger_path=str(events),
+        )
+        return cls(adapter)
 
     def __init__(self, adapter: Any) -> None:
         required = ("verify_account", "recover_journaled_orders", "submit")
