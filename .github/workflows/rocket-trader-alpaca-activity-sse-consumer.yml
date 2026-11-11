@@ -1,0 +1,32 @@
+name: Rocket Trader - Durable Paper Activity SSE Consumer Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
+      - "rocket_trader_alpaca_activity_sse_consumer_test.py"
+      - ".github/workflows/rocket-trader-alpaca-activity-sse-consumer.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
+      - "rocket_trader_alpaca_activity_sse_consumer_test.py"
+      - ".github/workflows/rocket-trader-alpaca-activity-sse-consumer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  durable-activity-sse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile rocket_trader_alpaca_activity_sse_consumer.py rocket_trader_alpaca_activity_sse_consumer_test.py
+      - name: Run offline durable SSE tests
+        run: python -m unittest -v rocket_trader_alpaca_activity_sse_consumer_test.py
