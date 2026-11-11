@@ -23,9 +23,9 @@ on:
         default: "10"
         type: string
       feed:
-        description: Alpaca market-data feed
+        description: Free historical SIP (end 15+ minutes old); IEX for recent/live data
         required: true
-        default: "IEX"
+        default: "SIP"
         type: choice
         options:
           - IEX
