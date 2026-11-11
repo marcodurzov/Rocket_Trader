@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`  
+**Latest audited code baseline SHA:** `775186e104a485bbc07b50a5dcc807723aced240`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -303,3 +303,27 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Alpha Vantage is a secondary candidate, but its adjusted daily endpoint is premium and pricing/entitlement economics are not yet established.
 - Do not purchase or start any paid subscription automatically. The user's authorization to develop the repository does not authorize recurring vendor charges.
 - Next: implement Tiingo as an optional provider behind `TIINGO_API_TOKEN`, add mocked contract tests and a provider-parity report; live validation requires the user to add a token securely and separately approve any paid plan. Keep Yahoo and IEX histories separate; no series splicing. Re-check licensing if Rocket Trader is ever redistributed or offered as a service.
+
+
+### PR #105 — provider evaluation handoff record
+- Merge commit: `b43c8f67676f264639fe85f12d614eff7becd8c0`.
+- Preserved official Tiingo and Alpha Vantage history, pricing, licensing and no-spend decision. See section 10.10.
+
+### PR #106 — optional Tiingo adjusted EOD adapter
+- Merge commit: `775186e104a485bbc07b50a5dcc807723aced240`.
+- Added `TIINGO` as an optional source to the multi-year equity research runner and workflow. It requests Tiingo adjusted OHLCV fields (`adjOpen`, `adjHigh`, `adjLow`, `adjClose`, `adjVolume`) with the API token read only from `TIINGO_API_TOKEN`.
+- Uses the same strict requested-history, minimum row count, weekday coverage, calendar gap and staleness checks. A short/free-plan history cannot silently qualify for a ten-year run; no source splicing or fallback.
+- Fixed inaccurate Yahoo metadata: the executed yfinance request uses `repair=False`; the report had claimed `repair=True`. Metadata now accurately says `repair=False`.
+- PR CI: 19 regression tests passed, including Tiingo request/auth/adjusted fields, token requirement, short-history rejection and provider metadata. Workflow ID `42954001467`; offline self-test and regression suite succeeded. Real 10-year data run was correctly skipped on pull_request.
+- Post-merge main run `42954130155` is currently running the real ten-year research pipeline; do not treat it as a result until completed and artifacts reviewed.
+- No Tiingo account, token or subscription has been created/purchased. The adapter is mocked-test validated only; live provider behavior and licensed coverage remain unverified. No vendor spend authorized.
+- No strategy candidate approval, Paper approval or order permission changed.
+
+**Next actions after PR #106**
+1. Monitor main workflow `42954130155`; inspect full logs/artifact and determine whether Yahoo/IEX remains the only completed 10-year retrieval or whether the current default research run changes anything. The Tiingo adapter is not selected by default.
+2. For real Tiingo validation, user must independently choose an eligible plan and configure `TIINGO_API_TOKEN` as a GitHub secret; do not request or expose token in chat.
+3. If Tiingo is configured, run the exact same universe/period separately and compare all common dates, adjustment conventions, missing sessions, dividends/splits, cumulative returns and per-symbol divergences. Never merge price series across vendors.
+4. Continue accounting reconciliation observation on a deployed Paper host; the repo's CI does not replace actual broker-account evidence.
+5. Continue costs and regime OOS validation. Current strategy approval remains zero.
+
+**Progress estimate remains 46%.** This is infrastructure/research-source capability; no new alpha, verified Tiingo history, Paper evidence or strategy approval has been established.
