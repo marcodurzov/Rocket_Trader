@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from rocket_trader_equity_multiyear_research_v0_3 import (
+    EquityResearchError,
     bootstrap_q05_relative,
     bootstrap_relative_pvalue,
     holm_adjust,
