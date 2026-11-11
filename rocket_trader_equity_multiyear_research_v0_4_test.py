@@ -22,7 +22,6 @@ from rocket_trader_equity_multiyear_research_v0_4 import (
     fetch_tiingo_daily_bars,
     source_metadata,
     normalize_frame,
-    strategy_positions,
 )
 
 
