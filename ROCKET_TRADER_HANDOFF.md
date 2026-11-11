@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#148 merged; adapter reconciliation now ingests broker fill activities)  
+**Last updated:** 2026-11-11 (PRs #141–#150 merged; crypto SELL reservations now account for open orders)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `7a1e9ceeb3a979ef5142a9348dd1c0a51e412ae0` (PR #148 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
-**Current progress estimate:** **52%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Latest main HEAD before this Handoff refresh:** `e7e26ee89c80568dc50ef05cc423e30027fc6735` (PR #150 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Current progress estimate:** **53%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **52%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 52% profitable, nor does it mean a 52% probability of success.
+Current estimate: **53%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 53% profitable, nor does it mean a 53% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
@@ -912,3 +912,20 @@ Next actions:
 - Important remaining gap: the adapter exposes the reconciliation path, but no persistent recovery worker currently guarantees it is called automatically at every restart/ambiguous state. Pagination checkpoints and correction/bust handling are not implemented.
 
 **Progress estimate:** 52% (engineering/evidence maturity only). The event ledger is now used by the adapter and broker fills can be reconciled when the explicit reconciliation path is invoked. Full unattended recovery, fee attribution, partial-exit automation, durable worker scheduling, live Paper API validation and strategy edge remain unproven.
+
+
+### PR #150 — prevent overlapping crypto SELL orders
+- Merged to main: `e7e26ee89c80568dc50ef05cc423e30027fc6735`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/150
+- Before accepting a new SELL, the adapter queries Alpaca open SELL orders for the same crypto symbol using `GetOrdersRequest(status=OPEN, side=SELL, symbols=[symbol], limit=500)`.
+- Reserves each open broker order's unfilled remainder (`qty - filled_qty`) against current broker-held position quantity. This prevents the adapter from submitting a second SELL against quantity already committed to a resting/partially-filled SELL.
+- Fails closed if the open-order query fails, is malformed/truncated, or lacks quantity/order ID data.
+- Uses SQLite `BEGIN IMMEDIATE` around local SELL reservation checks and PREPARED journal insertion, so two adapter instances sharing the same local journal cannot both reserve the same quantity.
+- A local PREPARED/unknown/stale SELL order absent from the broker open-order snapshot blocks further SELLs until reconciled. Unknown state is not assumed released.
+- Confirmed terminal states release the unfilled reservation; broker position remains the source of current owned quantity. Partial terminal fills rely on broker position state having caught up.
+- Enforces separate SQLite files for mutable order journal and immutable event ledger to avoid cross-database lock hazards.
+- Initial CI run `43014743048` exposed three test-fixture/assertion issues (accepted-order fill quantity, expected incomplete activity, and error-text matching). These were corrected; final PR run `43014828610`: success, 43 offline tests passed. Post-merge main run `43014917712`: success.
+- No Paper or Live API calls or orders were performed by this PR.
+- Boundary: this protects concurrent SELL reservations made through Rocket Trader and rechecks broker open orders immediately before submission. It cannot atomically serialize a separate external client placing an order at exactly the same instant. A confirmed terminal partial fill also depends on broker position data being current; any discrepancy must remain blocked and be reconciled.
+
+**Progress estimate:** 53% (engineering/evidence maturity only). The adapter now accounts for broker open SELL orders and serializes local reservation checks. Full recovery scheduling, partial-exit remainder automation, correction/bust ingestion, fee attribution, empirical costs and strategy edge remain unproven.
