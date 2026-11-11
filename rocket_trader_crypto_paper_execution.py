@@ -117,6 +117,16 @@ class AlpacaCryptoPaperExecutionAdapter:
             or f"{self.db_path}.events.sqlite3"
         )
         self.event_ledger = event_ledger or ExecutionEventLedger(ledger_path)
+        try:
+            integrity = self.event_ledger.verify_chain()
+        except Exception as exc:
+            raise CryptoPaperExecutionError(
+                "Execution event ledger cannot be verified; crypto orders are blocked."
+            ) from exc
+        if not isinstance(integrity, dict) or not integrity.get("valid"):
+            raise CryptoPaperExecutionError(
+                "Execution event ledger integrity check failed; crypto orders are blocked."
+            )
 
         if client is None:
             key = api_key or os.getenv("ALPACA_API_KEY")
