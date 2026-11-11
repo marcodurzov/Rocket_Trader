@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `60059a41379b274ae16a8b20426bbcf96178ae7`  
+**Latest audited code baseline SHA:** `0812a0c4f9cf6bf10aa6e356bebc3fdb9657d889`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -471,3 +471,33 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Tiingo token remains absent. No Tiingo request; no vendor subscription; no strategy/Paper approval or orders.
 
 **Next diagnostic improvement:** include previous-session and current-session provider adjustment factors around each largest factor step, so the audit makes the before/after factor change explicit. Then compare it against the official ex-date cash amount divided by previous raw close. Do not attribute provider fault until this calculation and raw bars are checked.
+
+
+### PR #106 — optional Tiingo adjusted EOD source
+- Merge commit: `775186e104a485bbc07b50a5dcc807723aced240`.
+- Adds `TIINGO` as optional research-only provider to the ten-year equity research runner. Uses adjusted OHLCV fields and Token authorization. Requires `TIINGO_API_TOKEN`; no embedded credentials. Default source unchanged; no silent fallback or source splicing; insufficient history fails closed.
+- Mocked contract, missing-token, short-history and provider-metadata tests passed. No live Tiingo validation because no token/eligible plan configured. No subscription purchased.
+- Corrected Yahoo metadata to reflect actual `repair=False` request.
+
+### 10.11 Ten-year equity research result — 2026-11-11
+- Workflow `42954130155` passed. Artifact `13826686266` was downloaded and inspected.
+- Yahoo adjusted daily history: 8 ETFs (DIA, EEM, EFA, GLD, IWM, QQQ, SPY, TLT), 2,511 bars per symbol; approximate weekday coverage 96.32%, max calendar gap 4 days. Weekday denominator includes US market holidays; this is not true exchange-session coverage.
+- Multiple-testing family: 73 hypotheses; Holm significant 0; pre-screen passes 0. No candidate promotion, Paper approval or orders.
+- Cross-sectional top-1 126-day momentum underperformed equal-weight buy-and-hold over full sample: CAGR 7.65% vs 11.53%, Sharpe 0.48 vs 0.87, max drawdown -35.0% vs -27.0%. Final holdout excess statistically inconclusive (raw bootstrap p=0.399, Holm p=1.0, 5th-percentile bootstrap excess -31.56 pp).
+- Costs remain placeholders (5 bps/side, 2x stress, 0 commission), not measured execution costs.
+
+### 10.12 Ten-year Alpaca IEX vs Yahoo crosscheck — 2026-11-11
+- Workflow `42955879451` completed SUCCESS at code commit `60059a41379b274ae16a8b20426bbcf96178ae7`. Artifact `13825994525`, SHA-256 `1fe86b053ab4e09916f0f2d002dea162241481773487524b40342d20e247eddd`, downloaded and inspected.
+- Request was 10 years, 8 ETFs, Alpaca feed IEX with `Adjustment.ALL`, Yahoo `auto_adjust=True; actions=True; repair=False`. No errors, but Alpaca IEX returned only 1,582–1,583 sessions starting 2020-07-27; Yahoo returned 2,513 sessions. Thus IEX coverage on Yahoo's 10-year sessions was only ~62.95% (not a full decade). This independently confirms the account's IEX history is not sufficient for a ten-year strategy backtest.
+- All 8 symbols failed the minimum source-coverage diagnostic; 0/8 passed all gates. On the common period daily return correlation was high (0.99835–0.99975) and p95 absolute daily-return differences 4.69–9.97 bps, but there were notable outliers: maximum daily-return differences 31.5–116.7 bps. Cumulative return differences on common periods: DIA +5.47 bps, EEM +8.82, EFA +1.22, GLD +3.29, IWM -0.75, QQQ +89.98, SPY +218.89, TLT +26.02. These are data-provider differences, not trading P&L.
+- No Tiingo comparison was requested/run (`tiingo_comparison_requested=false`, 0 symbols). This run does not validate the newly added Tiingo adapter.
+- Research cost assumptions remain unvalidated; fill validation false; candidate promotion false; Paper approval false; orders enabled false; submitted 0.
+- Do not treat high correlation as sufficient: coverage gate failed for every ETF, and outlier/cumulative differences need investigation. Do not use IEX as 10-year source; do not splice IEX/Yahoo.
+
+**Next actions**
+1. Replace approximate weekday denominator with authoritative exchange-session calendar and test holidays/closures.
+2. Investigate outlier dates and corporate actions for QQQ/SPY/TLT and validate adjusted-price conventions; retain raw per-provider series.
+3. Run Tiingo adapter against a licensed/eligible account only after a token is configured securely; compare Tiingo vs Yahoo and Alpaca only over common sessions, separately reporting coverage. No subscription/spend without explicit approval.
+4. Search for a suitable institutional/licensed historical dataset if Tiingo does not provide sufficient depth/quality; no assumption that IEX can substitute for SIP.
+5. Expand strategies only after data-quality remediation; keep the 0/73 negative research result and 0/8 source coverage failures as historical evidence.
+6. Continue fee/FX/corporate-action reconciliation, Paper cost collection after persistent deployment, and selector observe-only validation. No strategy approved; LIVE disabled.
