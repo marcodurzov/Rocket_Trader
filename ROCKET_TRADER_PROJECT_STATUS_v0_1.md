@@ -664,3 +664,6 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Research is curated, not an exhaustive internet crawl; preliminary and practitioner evidence is labeled. Public claims are not treated as independently audited performance.
 - No new strategy approval, no paid data subscription, no live deployment or orders. Progress remains 46%.
 - Next: hypothesis registry; source adjustment audit; wider point-in-time OOS tests; regime model comparison; adaptive selector validation; news/social incremental tests; Paper cost/accounting and fault validation.
+
+
+- 2026-11-10 follow-up: added specific dated r/algotrading threads on regime/HMM uncertainty, backtest-to-live execution failures, regime switching, strategy decay and overfitting. Evidence class: anecdotal only; no profitability claims accepted.
