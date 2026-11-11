@@ -20,6 +20,7 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     fetch_alpaca_corporate_actions,
     tiingo_audit_status,
     require_zero_budget_feed,
+    historical_request_end,
     resolve_tiingo_token,
     _rename_pair_result,
 )
@@ -330,6 +331,16 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         with self.assertRaisesRegex(CrosscheckError, "explicitly requested"):
             resolve_tiingo_token(True, None)
         self.assertEqual(resolve_tiingo_token(True, "starter-token"), "starter-token")
+
+    def test_historical_request_end_is_a_completed_safe_utc_boundary(self):
+        for now in (
+            pd.Timestamp("2026-11-11T00:05:00Z").to_pydatetime(),
+            pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime(),
+        ):
+            end = historical_request_end(now)
+            self.assertEqual(end.hour, 0)
+            self.assertEqual(end.minute, 0)
+            self.assertLessEqual(end, now - pd.Timedelta(minutes=15))
 
     def test_zero_budget_feed_allows_historical_sip_but_blocks_recent_sip(self):
         self.assertEqual(require_zero_budget_feed("iex"), "IEX")
