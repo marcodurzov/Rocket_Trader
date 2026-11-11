@@ -28,6 +28,7 @@ on:
       - "rocket_trader_currency.py"
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_alpaca_activity_stager.py"
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_cash_activity_bridge.py"
       - "rocket_trader_cash_activity_admin.py"
       - ".github/workflows/rocket-trader-paper-observer-container.yml"
@@ -81,5 +82,6 @@ jobs:
             /app/rocket_trader_currency.py \
             /app/rocket_trader_paper_reconciliation.py \
             /app/rocket_trader_alpaca_activity_stager.py \
+            /app/rocket_trader_alpaca_activity_sse_consumer.py \
             /app/rocket_trader_alpaca_cash_activity_bridge.py \
             /app/rocket_trader_cash_activity_admin.py
