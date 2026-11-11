@@ -128,7 +128,7 @@ The previous PR #94/#95 baseline was `a6f1b92136c041af0084bf28d7e686df0d444725`.
 
 ## 7. Next actions — ordered
 
-1. Resolve the ETF historical data-source limitation: IEX does not provide the requested full 10-year history for this account. SIP previously returned NOT_ENTITLED. Evaluate a properly licensed full-history source or entitlement upgrade only if economically justified; retain separate overlap-parity and full-period coverage gates. Investigate SPY/QQQ cumulative-return differences before treating providers as interchangeable. Never splice provider series or weaken coverage gates.
+1. Resolve the ETF historical data-source limitation: IEX does not provide the requested full 10-year history for this account. A prior SIP probe returned NOT_ENTITLED because it ended at current time; it did not test historical SIP. Re-run historical SIP with an end at least 15 minutes old before evaluating other sources; do not pay for real-time SIP. Investigate SPY/QQQ cumulative-return differences before treating providers as interchangeable. Never splice provider series or weaken coverage gates.
 2. Fix authoritative broker activity reconciliation so missed fills can be recovered idempotently from broker activities, with explicit handling for delayed fees, partial fills, corrections/busts and corporate actions.
 3. Collect enough Paper quote/fill observations to estimate spread/slippage/fees by asset, liquidity, session and order conditions, with minimum sample and confidence gates. Keep approval false until evidence supports it.
 4. Validate regime features, freshness, hysteresis, transitions and regime-conditioned performance using point-in-time history.
@@ -168,7 +168,7 @@ This section preserves material paths already explored, including failures and s
 - Research families and results are recorded in `RESEARCH_EXECUTION_TIMING_CORRECTION_2026-11-10.md` and `RESEARCH_HYPOTHESIS_PROGRAM.md`. Next research must be pre-registered; do not rerun the same indicators/parameters on the same holdout and call it new evidence.
 
 ### 10.3 Market data attempts and what was learned
-- Alpaca IEX daily history is not SIP/NBBO. It is the configured lower-coverage feed. SIP request previously returned `NOT_ENTITLED`; do not keep retrying SIP unless entitlement changes.
+- Alpaca IEX daily history is not SIP/NBBO. It is the configured lower-coverage feed. The previous `NOT_ENTITLED` response came from a recent request ending at current time; historical SIP ending 15+ minutes earlier is a separate free Basic-plan path and still needs a read-only Paper-account test.
 - The initial 10-year Yahoo/Alpaca comparison workflow (run `42920786498`, artifact `13812205814`) failed for all eight ETFs because Yahoo `repair=True` raised `ValueError: output array is read-only`. Logs exposed a mismatch between docs and executed code.
 - PR #96 changed the actual provider call to `repair=False` and added a regression test. PR CI run `42922818287` passed all 6 offline tests.
 - Post-merge audit run `42922974687`, artifact `13812508089`, successfully retrieved all eight symbols with no provider errors. However, Yahoo returned 2,512 sessions while Alpaca IEX returned 1,582; overlap was 1,581 sessions (2020-07-27 to 2026-11-09). Yahoo common-session coverage was 62.94%, IEX 99.94%, and **0/8** passed the full 10-year coverage gate.
@@ -498,7 +498,7 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 1. Replace approximate weekday denominator with authoritative exchange-session calendar and test holidays/closures.
 2. Investigate outlier dates and corporate actions for QQQ/SPY/TLT and validate adjusted-price conventions; retain raw per-provider series.
 3. Run Tiingo adapter against a licensed/eligible account only after a token is configured securely; compare Tiingo vs Yahoo and Alpaca only over common sessions, separately reporting coverage. No subscription/spend without explicit approval.
-4. Search for a suitable institutional/licensed historical dataset if Tiingo does not provide sufficient depth/quality; no assumption that IEX can substitute for SIP.
+4. First validate Alpaca's free historical SIP path (end at least 15 minutes old). Only investigate another historical vendor if that read-only Paper test fails; do not assume IEX can substitute for consolidated SIP.
 5. Expand strategies only after data-quality remediation; keep the 0/73 negative research result and 0/8 source coverage failures as historical evidence.
 6. Continue fee/FX/corporate-action reconciliation, Paper cost collection after persistent deployment, and selector observe-only validation. No strategy approved; LIVE disabled.
 
@@ -580,7 +580,7 @@ Crosscheck run `42957082760` (code commit `ca0450287284af014e68bd5e31d05e641b8d1
 - Do not use Alpaca IEX daily bars as a substitute for SIP/consolidated prices in full-market backtests or closing-price validation. The official IEX/SIP coverage difference explains why the IEX series is a diagnostic reference only, not a complete market benchmark.
 - Do not blindly treat Yahoo adjusted history as corporate-action ground truth either: the TLT capture missed an issuer-confirmed distribution event. Re-query after vendor updates, compare official issuer events, and preserve raw and adjusted series separately.
 - No source is currently certified as a 10-year institutional-grade truth set. Tiingo is integrated but not live-tested; no Tiingo token/plan was used in this artifact.
-- Next: re-run TLT after the 2026-11-02 event has propagated; inspect QQQ 2022-09-19 factor step against official Invesco distribution records; compare SIP only if entitlement is available, otherwise test Tiingo after explicit credential/plan approval. No vendor subscription without explicit approval; never splice sources.
+- Next: re-run TLT after the 2026-11-02 event has propagated; inspect QQQ 2022-09-19 factor step against official Invesco distribution records; compare historical SIP using a request end at least 15 minutes old. The prior recent-SIP 403 does not establish historical ineligibility. No vendor subscription without explicit approval; never splice sources.
 
 
 
@@ -1106,7 +1106,7 @@ Next actions:
   - ETF Alpaca/Yahoo cross-check: weekly Sunday.
   - Crypto multi-year research v0.1, v0.2, v0.3: weekly Sunday.
   - Equity multi-year research v0.1, v0.2, v0.3, v0.4: weekly Sunday.
-  - SIP entitlement probe: weekly Monday.
+  - IEX recent/live market-data health probe: weekly Monday. Historical SIP entitlement is checked separately by the 10-year cross-check.
   - Traditional research v0.2: weekly Sunday.
 - The schedules are research/audit jobs, not a continuous trading service. The Activity SSE consumer workflow is push/PR test CI only; it is not scheduled and the Compose consumer is not running on a known persistent host.
 - GitHub scheduled workflows are not a reliable always-on runtime: they can be delayed during load and jobs may be dropped; public-repository scheduled workflows can also be automatically disabled after 60 days without repository activity. Minimum supported schedule interval is five minutes, but that does not create a real-time guarantee.
@@ -1184,7 +1184,7 @@ Next actions:
 - Equity research v0.1–v0.4 now reject SIP in code and CLI. Their GitHub Actions workflows no longer offer SIP.
 - Public equity research v0.4 no longer offers Tiingo as a primary source and no longer receives `TIINGO_API_TOKEN`.
 - The public ETF cross-check workflow does not inject Tiingo credentials and does not opt in. Its optional Tiingo comparison is disabled unless a local/programmatic caller explicitly sets `include_tiingo` and supplies a token; the zero-cost Starter comparison is limited to five years. No Tiingo account was created and no Tiingo request was made.
-- The scheduled entitlement probe is now an IEX-only health probe. Its successful run `43080158991` returned IEX `AVAILABLE` (5 bars) and marked SIP `DISABLED_BY_ZERO_BUDGET_POLICY`, `request_made=false`. The self-test asserts that the broker client was called only for IEX.
+- The scheduled entitlement probe is now an IEX-only health probe. Its successful run `43080158991` returned IEX `AVAILABLE` (5 bars); SIP was intentionally not queried because this workflow checks the recent/live free feed. Historical SIP is separately allowed only with a 15-minute-safe end.
 - Repository audit identified the four ETF research workflows, the ETF cross-check workflow and the entitlement probe as the relevant SIP/Tiingo workflow surfaces. Those public paths have now been hardened.
 - Post-merge workflow runs for the IEX probe, ETF cross-check and research versions 0.1–0.4 all completed successfully: `43080158991`, `43080158893`, `43080158810`, `43080158982`, `43080158898`, and `43080158764`.
 
