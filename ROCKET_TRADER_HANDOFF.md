@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `6a2cfd760d707da9eb8a1ba1f640e8db834a9aab`  
+**Latest audited code baseline SHA:** `6ac4caa90de52ad1d1faefedbe301997b2360480`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -407,3 +407,15 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - No Tiingo source evidence, no empirical cost validation, no strategy approval, no Paper deployment evidence and no orders.
 
 **Current next best research action:** investigate per-symbol corporate-action/adjustment divergence (especially SPY, QQQ and TLT) using vendor corporate-action records and event-level normalized prices. Do not choose one provider as truth or splice price series until a documented reconciliation exists.
+
+
+### PR #113 — date-level adjustment divergence diagnostics
+- Merge commit: `6ac4caa90de52ad1d1faefedbe301997b2360480`.
+- Adds the ten largest absolute daily-return divergences per symbol with exact session date, Yahoo return, Alpaca return and signed Alpaca-minus-Yahoo bps.
+- Adds the ten largest normalized adjusted-close path divergences, anchored at the first common session.
+- Regression test simulates an adjustment step and verifies the exact session is surfaced. PR CI `42955368774`: all 10 cross-check tests passed; live audit skipped on pull_request by design.
+- These dates are diagnostic leads only. No corporate-action attribution, automatic correction, source preference or series splicing is performed.
+- Post-merge live audit `42955455037` and Paper runtime suite `42955454994` were running at handoff update. Inspect their results and artifact before recording the actual outlier sessions.
+- Current best investigation focus based on prior run: SPY (+218.90 bps cumulative Alpaca-minus-Yahoo divergence), QQQ (+89.98 bps), TLT (+26.01 bps). No Tiingo token; no Tiingo data has been fetched.
+
+**Progress remains 46%.** This improves diagnostics and reproducibility; it does not resolve the source discrepancy or create strategy edge.
