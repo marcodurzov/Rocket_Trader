@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Offline tests for independent adjusted-close source comparison."""
 import unittest
+import json
 import sys
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     fetch_yahoo_adjustment_fields,
     compare_adjustment_factors,
     fetch_tiingo_history,
+    fetch_alpaca_corporate_actions,
     _rename_pair_result,
 )
 
@@ -125,6 +127,11 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             "QQQ", raw, yahoo_adjusted, raw, alpaca_adjusted,
             min_common_sessions=5,
             yahoo_dividends=dividends,
+            alpaca_corporate_actions=[{
+                "action_type": "cash_dividend", "symbol": "QQQ",
+                "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+                "process_date": str(self.dates[4].date()), "special": False,
+            }],
         )
         self.assertAlmostEqual(result["max_abs_raw_normalized_close_difference_pct"], 0.0)
         self.assertAlmostEqual(result["mean_abs_raw_daily_return_difference_bps"], 0.0)
@@ -138,11 +145,55 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertAlmostEqual(step["alpaca_adjustment_factor"], 0.90)
         self.assertAlmostEqual(step["alpaca_to_yahoo_factor_ratio"], 1.0)
         self.assertAlmostEqual(step["yahoo_dividend_cash_on_session"], 0.51856)
+        self.assertAlmostEqual(step["alpaca_cash_dividend_total_on_session"], 0.51856)
+        self.assertAlmostEqual(step["yahoo_minus_alpaca_cash_dividend_on_session"], 0.0)
+        self.assertEqual(step["alpaca_corporate_actions_on_session"][0]["action_type"], "cash_dividend")
         self.assertAlmostEqual(
             step["expected_cash_dividend_adjustment_bps_vs_previous_yahoo_raw_close"],
             0.51856 / raw.iloc[3] * 10000.0,
             places=4,
         )
+
+
+    def test_alpaca_corporate_actions_fetches_and_paginates_cash_dividends(self):
+        calls = []
+        payloads = [
+            {
+                "cash_dividends": [{
+                    "id": "ca-1", "symbol": "QQQ", "ex_date": "2022-09-19",
+                    "rate": "0.51856", "special": False, "process_date": "2022-09-19",
+                }],
+                "next_page_token": "page-2",
+            },
+            {
+                "cash_dividends": [{
+                    "id": "ca-2", "symbol": "TLT", "ex_date": "2026-11-02",
+                    "rate": "0.343177", "special": False, "process_date": "2026-11-02",
+                }],
+                "next_page_token": None,
+            },
+        ]
+        class FakeResponse:
+            status = 200
+            def __init__(self, payload): self.payload = payload
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return json.dumps(self.payload).encode("utf-8")
+        def fake_opener(request, timeout):
+            calls.append(request)
+            return FakeResponse(payloads[len(calls) - 1])
+        start = pd.Timestamp("2016-11-10", tz="UTC").to_pydatetime()
+        end = pd.Timestamp("2026-11-10", tz="UTC").to_pydatetime()
+        events = fetch_alpaca_corporate_actions(
+            ["QQQ", "TLT"], start, end, "key", "secret", opener=fake_opener
+        )
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]["action_type"], "cash_dividend")
+        self.assertEqual(events[0]["rate"], "0.51856")
+        self.assertIn("symbols=QQQ%2CTLT", calls[0].full_url)
+        self.assertIn("page_token=page-2", calls[1].full_url)
+        self.assertEqual(calls[0].get_header("Apca-api-key-id"), "key")
+        self.assertEqual(calls[0].get_header("Apca-api-secret-key"), "secret")
 
     def test_yahoo_adjustment_fields_fetch_raw_and_adjusted_close_separately(self):
         calls = {}
