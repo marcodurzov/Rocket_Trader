@@ -314,6 +314,10 @@ class DurableActivitySSEInbox:
                 "SELECT event_id FROM activity_sse_cursor WHERE singleton=1"
             ).fetchone()
             refs = {str(row["ref_id"]) for row in rows}
+            activity_hashes = {str(row["ref_id"]): str(row["payload_hash"]) for row in rows}
+            latest_delivery_row = conn.execute(
+                "SELECT event_id FROM activity_sse_deliveries ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
         previous_hash = self.GENESIS_HASH
         expected_sequence = 1
         for row in rows:
@@ -335,14 +339,29 @@ class DurableActivitySSEInbox:
         delivery_refs = {str(row["ref_id"]) for row in deliveries}
         cursor = str(cursor_row["event_id"]) if cursor_row else None
         delivery_ids = {str(row["event_id"]) for row in deliveries}
+        delivery_mismatches = sum(
+            1 for row in deliveries
+            if activity_hashes.get(str(row["ref_id"])) != str(row["payload_hash"])
+        )
+        latest_delivery = str(latest_delivery_row["event_id"]) if latest_delivery_row else None
+        cursor_is_latest = cursor == latest_delivery if cursor is not None else latest_delivery is None
         orphan_previous = sum(
             1 for row in rows if row["previous_id"] and row["previous_id"] not in refs
         )
+        integrity_valid = (
+            delivery_mismatches == 0
+            and cursor_is_latest
+            and (cursor is None or cursor in delivery_ids)
+            and delivery_refs.issubset(refs)
+        )
         return {
-            "valid": True, "activity_count": len(rows), "delivery_count": len(deliveries),
+            "valid": integrity_valid, "activity_count": len(rows), "delivery_count": len(deliveries),
             "cursor": cursor, "cursor_has_delivery": cursor in delivery_ids if cursor else False,
+            "cursor_is_latest_delivery": cursor_is_latest,
+            "delivery_payload_mismatch_count": delivery_mismatches,
             "orphan_previous_id_count": orphan_previous,
             "unreferenced_delivery_count": len(delivery_refs - refs),
+            "reason": None if integrity_valid else "delivery_or_cursor_integrity_failure",
         }
 
     def list_events(self, *, limit: int = 1000) -> list[Dict[str, Any]]:
