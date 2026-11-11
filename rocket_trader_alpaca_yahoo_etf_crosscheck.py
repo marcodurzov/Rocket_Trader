@@ -285,9 +285,31 @@ def fetch_yahoo_adjustment_fields(
     )
     if frame is None or frame.empty or "Close" not in frame.columns or "Adj Close" not in frame.columns:
         raise CrosscheckError(f"Yahoo raw/adjusted close fields missing for {symbol}")
+    action_index = pd.to_datetime(frame.index, utc=True, errors="coerce")
+    if action_index.isna().any():
+        raise CrosscheckError(f"Yahoo returned invalid action dates for {symbol}")
+    action_dates = action_index.date
+    dividends = pd.Series(
+        pd.to_numeric(frame.get("Dividends", 0.0), errors="coerce").fillna(0.0).to_numpy()
+        if isinstance(frame.get("Dividends", 0.0), pd.Series)
+        else np.zeros(len(frame)),
+        index=action_dates,
+        dtype=float,
+    )
+    splits = pd.Series(
+        pd.to_numeric(frame.get("Stock Splits", 0.0), errors="coerce").fillna(0.0).to_numpy()
+        if isinstance(frame.get("Stock Splits", 0.0), pd.Series)
+        else np.zeros(len(frame)),
+        index=action_dates,
+        dtype=float,
+    )
+    dividends = dividends[~dividends.index.duplicated(keep="last")]
+    splits = splits[~splits.index.duplicated(keep="last")]
     return {
         "raw_close": _close_series(frame["Close"], "Yahoo raw"),
         "adjusted_close": _close_series(frame["Adj Close"], "Yahoo adjusted"),
+        "dividends": dividends,
+        "splits": splits,
     }
 
 
@@ -330,6 +352,8 @@ def compare_adjustment_factors(
     alpaca_adjusted_close: Any,
     *,
     min_common_sessions: int = 1000,
+    yahoo_dividends: Any = None,
+    yahoo_splits: Any = None,
 ) -> Dict[str, Any]:
     """Separate raw-price divergence from provider adjustment-factor divergence."""
     frames = [
@@ -351,6 +375,28 @@ def compare_adjustment_factors(
         factor_ratio / factor_ratio.iloc[0] - 1.0
     ) * 100.0
     factor_step_change_bps = relative_factor_divergence_pct.diff() * 100.0
+
+    def action_series(values: Any) -> pd.Series:
+        if values is None:
+            return pd.Series(0.0, index=common.index, dtype=float)
+        if isinstance(values, pd.DataFrame):
+            if values.shape[1] != 1:
+                raise CrosscheckError(f"{symbol}: ambiguous Yahoo action series")
+            values = values.iloc[:, 0]
+        if not isinstance(values, pd.Series):
+            values = pd.Series(values)
+        action_index = pd.to_datetime(values.index, utc=True, errors="coerce")
+        if action_index.isna().any():
+            raise CrosscheckError(f"{symbol}: invalid Yahoo action timestamps")
+        normalized = pd.Series(
+            pd.to_numeric(values.to_numpy(), errors="coerce"),
+            index=action_index.date,
+        ).replace([np.inf, -np.inf], np.nan)
+        normalized = normalized[~normalized.index.duplicated(keep="last")]
+        return normalized.reindex(common.index).fillna(0.0).astype(float)
+
+    dividend_events = action_series(yahoo_dividends)
+    split_events = action_series(yahoo_splits)
 
     raw_returns = pd.concat([
         common["yahoo_raw"].pct_change().rename("yahoo"),
@@ -377,6 +423,14 @@ def compare_adjustment_factors(
         previous_factor_ratio = (
             float(factor_ratio.iloc[position - 1]) if position > 0 else None
         )
+        previous_yahoo_raw = (
+            float(common["yahoo_raw"].iloc[position - 1]) if position > 0 else None
+        )
+        previous_alpaca_raw = (
+            float(common["alpaca_raw"].iloc[position - 1]) if position > 0 else None
+        )
+        dividend_cash = float(dividend_events.loc[session])
+        split_ratio = float(split_events.loc[session])
         top_steps.append({
             "session": str(session),
             "previous_session": str(previous_session) if previous_session is not None else None,
@@ -388,6 +442,19 @@ def compare_adjustment_factors(
             ),
             "previous_alpaca_to_yahoo_factor_ratio": (
                 round(previous_factor_ratio, 10) if previous_factor_ratio is not None else None
+            ),
+            "previous_yahoo_raw_close": (
+                round(previous_yahoo_raw, 8) if previous_yahoo_raw is not None else None
+            ),
+            "previous_alpaca_raw_close": (
+                round(previous_alpaca_raw, 8) if previous_alpaca_raw is not None else None
+            ),
+            "yahoo_dividend_cash_on_session": round(dividend_cash, 8),
+            "yahoo_split_ratio_on_session": round(split_ratio, 8),
+            "expected_cash_dividend_adjustment_bps_vs_previous_yahoo_raw_close": (
+                round(dividend_cash / previous_yahoo_raw * 10000.0, 4)
+                if dividend_cash > 0 and previous_yahoo_raw and previous_yahoo_raw > 0
+                else None
             ),
             "yahoo_adjustment_factor": round(float(yahoo_factor.loc[session]), 10),
             "alpaca_adjustment_factor": round(float(alpaca_factor.loc[session]), 10),
@@ -484,6 +551,8 @@ def run_audit(
                 yahoo_fields["adjusted_close"],
                 alpaca_raw,
                 alpaca,
+                yahoo_dividends=yahoo_fields.get("dividends"),
+                yahoo_splits=yahoo_fields.get("splits"),
             )
             results.append(result)
             if token:

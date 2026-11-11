@@ -120,9 +120,11 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         alpaca_factor = pd.Series([0.91] * 4 + [0.90] * 4, index=self.dates)
         yahoo_adjusted = raw * yahoo_factor
         alpaca_adjusted = raw * alpaca_factor
+        dividends = pd.Series([0.0, 0.0, 0.0, 0.0, 0.51856, 0.0, 0.0, 0.0], index=self.dates)
         result = compare_adjustment_factors(
             "QQQ", raw, yahoo_adjusted, raw, alpaca_adjusted,
             min_common_sessions=5,
+            yahoo_dividends=dividends,
         )
         self.assertAlmostEqual(result["max_abs_raw_normalized_close_difference_pct"], 0.0)
         self.assertAlmostEqual(result["mean_abs_raw_daily_return_difference_bps"], 0.0)
@@ -135,6 +137,12 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertAlmostEqual(step["yahoo_adjustment_factor"], 0.90)
         self.assertAlmostEqual(step["alpaca_adjustment_factor"], 0.90)
         self.assertAlmostEqual(step["alpaca_to_yahoo_factor_ratio"], 1.0)
+        self.assertAlmostEqual(step["yahoo_dividend_cash_on_session"], 0.51856)
+        self.assertAlmostEqual(
+            step["expected_cash_dividend_adjustment_bps_vs_previous_yahoo_raw_close"],
+            0.51856 / raw.iloc[3] * 10000.0,
+            places=4,
+        )
 
     def test_yahoo_adjustment_fields_fetch_raw_and_adjusted_close_separately(self):
         calls = {}
@@ -142,7 +150,8 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             def history(self, **kwargs):
                 calls.update(kwargs)
                 return pd.DataFrame(
-                    {"Close": [100.0, 101.0, 102.0], "Adj Close": [99.0, 100.0, 101.0]},
+                    {"Close": [100.0, 101.0, 102.0], "Adj Close": [99.0, 100.0, 101.0],
+                     "Dividends": [0.0, 0.25, 0.0], "Stock Splits": [0.0, 0.0, 2.0]},
                     index=pd.date_range("2024-01-02", periods=3, freq="B", tz="UTC"),
                 )
         fake_yfinance = SimpleNamespace(Ticker=lambda symbol: FakeTicker())
@@ -154,6 +163,8 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             )
         self.assertEqual(result["raw_close"].iloc[0], 100.0)
         self.assertEqual(result["adjusted_close"].iloc[0], 99.0)
+        self.assertEqual(result["dividends"].iloc[1], 0.25)
+        self.assertEqual(result["splits"].iloc[2], 2.0)
         self.assertFalse(calls["auto_adjust"])
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["actions"])
