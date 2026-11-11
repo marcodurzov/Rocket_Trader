@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-10 (historical continuity ledger expanded)  
+**Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main SHA at this handoff update:** `2073c0ddf51986b47d576a2d6f22831a3bae64dd`  
+**Latest main SHA at this handoff update:** `81be6e8e1fea127641b760a469ede4f7a56cdff9`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -115,8 +115,8 @@ The system must:
 
 ## 6. Latest known work and immediate blocker
 
-### Main as last verified
-`a6f1b92136c041af0084bf28d7e686df0d444725`.
+### Historical baseline (superseded)
+The previous PR #94/#95 baseline was `a6f1b92136c041af0084bf28d7e686df0d444725`. The current main SHA is recorded in the header. PRs #96–#100 and the 2026-11-11 update are appended below; do not use the historical SHA as current.
 
 - PR #94: regime observer health separates process liveness from market-data readiness and exposes safe-cash/exposure.
 - PR #95: actual ETF history crosscheck now triggers on relevant pushes to main, as well as weekly schedule/manual dispatch.
@@ -215,3 +215,31 @@ For each meaningful change, append a dated entry to this Handoff (and synchroniz
 10. Progress percentage with rationale; documentation-only work does not increase it.
 
 Never overwrite the historical truth. Correct stale summaries by explicitly noting the correction and retaining the original failure/result in this ledger. The Handoff is append-oriented; keep prior evidence and mark superseded conclusions rather than deleting them.
+
+
+### 2026-11-11 continuation — PRs #99 and #100
+
+**PR #99 — historical continuity ledger**
+- Merge commit: `ce738f2f0443e7c352c2fa10fc73857f3c3f067e`.
+- Expanded this handoff with the historical experiment/decision ledger: Jefe Maestro transfer boundaries, superseded close-to-close timing, corrected ETF/crypto momentum and mean-reversion results, Yahoo/IEX/SIP history, Paper execution smoke tests, delayed fees/JNLC handling, runtime/news lessons and open hypotheses.
+- Corrected `MARKET_DATA_SOURCE_AUDIT.md` to document Yahoo `repair=False` and the actual 0/8 full-coverage outcome.
+- Documentation-only; no progress percentage increase.
+
+**PR #100 — regime observer timestamp alignment**
+- Merge commit: `81be6e8e1fea127641b760a469ede4f7a56cdff9`.
+- Root cause: cross-asset return series were previously paired by array position. Missing minute bars in one symbol could cause returns from different UTC times to be correlated, contaminating correlation/stress/regime features.
+- Fix: normalize timestamps to UTC instants, intersect exact timestamps across the whole universe, require at least 60 common bars and 95% coverage per symbol, reject common-series gaps over 180 seconds and reject stale/unaligned data. Persist aligned-count/coverage/gap diagnostics.
+- Regression tests: one missing bar is aligned correctly; material cross-symbol gaps fail closed; shared multi-minute gaps fail closed.
+- CI evidence: regime observer suite 22 tests passed; news-event assessment suite 9 passed. Runtime/accounting/container checks also passed: 156 tests across the runtime/accounting suites, Compose configuration valid, Docker Paper observer image built and contents verified.
+- This is input-alignment correctness only. It does not prove regime predictive power, profitability, persistent deployment or order readiness.
+- Observer remains read-only, zero approved candidates, 100% cash / abstain, no orders.
+
+**Current continuation point after PR #100**
+1. Investigate historical source parity/adjustment divergence and full-history data options without relaxing coverage.
+2. Close broker activity-to-ledger reconciliation gaps: delayed fees, partial fills, corrections/busts, unlinked regulatory fees and restart recovery.
+3. Validate regime feature stability and predictive usefulness on archived point-in-time data, including hysteresis/transition behavior and matched baselines.
+4. Continue empirical Paper cost telemetry only after persistent host deployment; no representative fill sample exists.
+5. Maintain the observe-only selector; integrate recommendations only after research acceptance gates pass.
+6. Preserve the existing negative research results; pre-register new hypotheses and do not rerun the same family/holdout as if it were new.
+
+**Progress estimate remains 46%.** The timestamp bug fix and expanded tests materially improve data integrity, but no new strategy edge, empirical costs or deployed forward evidence has been demonstrated.
