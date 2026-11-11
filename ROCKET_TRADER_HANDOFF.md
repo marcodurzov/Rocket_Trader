@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#165 merged; Paper FILL reconciliation verified; CFEE window filtering hardened; startup gate added; Activity SSE probe added)  
+**Last updated:** 2026-11-11 (PRs #141–#168 merged; Paper Activity SSE crypto fills confirmed; durable consumer and Compose service prepared)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `7d92fd7aaa352087552129d02c6e4c4bee24b3fd` (PR #165 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `31c68fd37b684a915754ff9f14f5f250034096c1` (PR #168 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)
 **Current progress estimate:** **55%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1037,3 +1037,30 @@ Next actions:
 - No new orders or account mutations were made. LIVE remains prohibited.
 
 **Progress estimate:** 55% (engineering/evidence maturity only). The SSE capability is not yet confirmed against the Paper account, and no correction/bust ingestion or P&L adjustment is enabled.
+
+
+### Paper audit run #43042768582 — Activity SSE crypto evidence confirmed
+- Manual workflow run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/43042768582
+- Artifact ID: `13866211467`; both `paper-activity-report.json` and `paper-activity-sse-probe.json` inspected.
+- Account preflight: `ACTIVE_USD_CASH_ONLY_NO_SHORT`; audit status `SUCCESS`.
+- The two known BTC/USD smoke orders both matched the Alpaca FILL activities: BUY `0.000133206 BTC`; SELL `0.000132872 BTC`.
+- Activity SSE returned HTTP 200 and six events: 2 TRD, 2 CFEE, 2 JNLC. Both TRD events were BTC/USD fills with order IDs and client order IDs matching the known smoke BUY/SELL. `crypto_trade_event_count=2`, `dropped_message_comment_count=0`, `duplicate_ref_id_count=0`, `event_ordering_anomaly_count=0`, `invalid_event_count=0`, `invalid_frame_count=0`, `orphan_previous_id_count=0`.
+- No `trade_correct` or `trade_bust` events were observed in this short historical window. This confirms crypto fill delivery, not correction/bust behavior.
+- One in-window BTC/USD CFEE was complete: qty `-0.000000334 BTC`, net amount `0 USD`. One in-window unclassified CFEE was complete: net amount `-0.03 USD`. Both remain `UNALLOCATED`; neither includes documented order linkage. Four out-of-window fee records were excluded from the active interval. No order-level fee attribution or net cost is claimed.
+
+### PR #167 — durable Paper Activity SSE inbox
+- Merged: `8e309da4d5f8de88e25838762d780c41fc510811`; PR https://github.com/marcodurzov/Rocket_Trader/pull/167.
+- Adds a Paper-only reconnectable SSE consumer. Initial bootstrap uses `since`; subsequent connections use persisted `since_id`.
+- Each activity, delivery idempotency record and cursor update commit in a single SQLite transaction. Immutable activity/delivery tables have update/delete triggers; activities are SHA-256 chained. Stable `ref_id` fingerprints exclude publication `event_id`, allowing safe duplicate publication IDs without double-staging the same activity. Conflicting payloads fail closed.
+- Reconnects after disconnects, read timeout, dropped-message comments and internal-server-error comments. The cursor advances only after durable staging.
+- `previous_id` is preserved; corrections/busts are not applied to positions/cash/P&L. No broker order methods are called.
+- PR CI `43043343957` passed 21 tests; post-merge CI `43043417104` succeeded.
+
+### PR #168 — persistent Paper Activity SSE Compose service
+- Merged: `31c68fd37b684a915754ff9f14f5f250034096c1`; PR https://github.com/marcodurzov/Rocket_Trader/pull/168.
+- Adds a separate `rocket-trader-alpaca-activity-sse` container using the existing named persistent volume and a dedicated SQLite inbox. Explicitly sets `ALPACA_PAPER=true`, `ALPACA_LIVE_ENABLED=false`, and `ROCKET_TRADER_EXECUTION_MODE=PAPER`.
+- Adds the consumer to the observer image, a local hash-chain/cursor healthcheck, and safe reconnect logs. CI validated Compose syntax, built the Docker image and compiled the consumer inside the image. Runtime tests also passed.
+- The service is **prepared but not deployed**. It requires operator access to the actual host, the existing Paper credentials in a private `.env`, and a deliberately selected `ACTIVITY_SSE_BOOTSTRAP_SINCE`. A GitHub runner is not a persistent host.
+- No new orders or account mutations were made by either PR.
+
+**Progress estimate:** 56% (engineering/evidence maturity only). Crypto fill Activity SSE and durable replay primitives are now confirmed/implemented; host deployment and real restart/replay validation, correction/bust behavior, fee allocation, calibrated net costs, and strategy out-of-sample edge remain open.

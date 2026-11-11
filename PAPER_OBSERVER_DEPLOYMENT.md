@@ -225,3 +225,17 @@ docker compose -f docker-compose.paper-observer.yml logs -f rocket-trader-alpaca
 The container health check verifies the local hash chain and cursor without contacting Alpaca. Confirm the container is healthy and inspect logs for `STREAM_ENDED_OR_RECONNECTING` / `RECONNECTING` records. Back up the shared volume before upgrading or changing the inbox schema.
 
 **Not deployed by GitHub CI:** these files prepare the service configuration only. A host operator must deploy it on the actual persistent server and verify that the named volume survives container recreation. Do not use a disposable GitHub Actions runner as the persistent event consumer.
+
+
+## 12. Deployment status after PR #168
+
+The repository now includes the optional `rocket-trader-alpaca-activity-sse` Compose service. PR #168 passed Compose validation, Docker image build/package verification, the durable consumer test workflow and the existing Paper observer runtime test workflow.
+
+The service is not running until deployed on the actual persistent host. After deployment:
+1. Confirm `.env` contains the existing Paper API credentials and `ACTIVITY_SSE_BOOTSTRAP_SINCE` is set to a timestamp no later than the first activity that must be captured.
+2. Build and start only `rocket-trader-alpaca-activity-sse` initially.
+3. Verify container health and reconnect logs.
+4. Restart/recreate the container once and verify the SQLite cursor resumes using `since_id`, with no duplicate canonical activities.
+5. Preserve the SQLite database and its WAL files together during backup; stop the service or use SQLite's backup API for consistent backups.
+
+Do not enable any downstream P&L/position application until correction/bust semantics and fee allocation are separately validated.

@@ -767,3 +767,27 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - PR CI `43038829544` passed 32 offline tests. Post-merge CI `43038939488` pending final conclusion. The Paper endpoint job remains manual-only.
 - Next: user dispatches the updated read-only Paper activity audit once. Inspect both `paper-activity-report.json` and `paper-activity-sse-probe.json`. Only after actual crypto TRD/correction evidence is confirmed should cursor ingestion or accounting reversal logic be designed.
 - Progress remains **55%** (engineering/evidence maturity, not profitability).
+
+
+---
+
+## 2026-11-11 — Paper Activity SSE confirmed and durable service prepared
+
+### Real Paper evidence — run 43042768582
+- Account preflight: `ACTIVE_USD_CASH_ONLY_NO_SHORT`; 2/2 BTC/USD smoke order FILLs matched.
+- Activity SSE HTTP 200 returned six events: 2 TRD, 2 CFEE, 2 JNLC. Both TRD fills were BTC/USD and matched the known BUY and SELL broker/client order IDs.
+- No dropped messages, duplicate refs, event-order anomalies, malformed events/frames or orphan previous IDs. No corrections/busts observed in this small window.
+- One in-window CFEE: `-0.000000334 BTC` with `0 USD`; one unclassified CFEE: `-0.03 USD`. Both complete but unallocated. Four out-of-window CFEE records excluded. No order-level attribution is established.
+
+### PR #167 — durable Activity SSE inbox
+- Reconnectable Paper-only consumer with atomic SQLite event/delivery/cursor transaction, immutable evidence tables, SHA-256 chain, stable-ref idempotency, conflict detection, dropped-message replay and `since_id` recovery.
+- Corrections and busts are staged only, not financially applied.
+- PR CI 21 offline tests passed; post-merge CI succeeded.
+
+### PR #168 — Compose deployment preparation
+- Separate Paper-only Activity SSE service on the shared persistent Docker volume, dedicated DB, Docker image packaging, healthcheck, and reconnect logs.
+- Compose config validation, Docker image build/package verification, and observer runtime tests passed on the PR.
+- Not deployed. Actual host access and private Paper credentials remain an operator deployment step.
+- No broker orders or account configuration changes.
+
+**Progress: 56%** (engineering/evidence maturity, not profitability).
