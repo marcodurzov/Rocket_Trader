@@ -144,8 +144,9 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     )
     if dates.empty:
         raise EquityResearchError("Cannot assess empty daily history.")
-    start = pd.Timestamp(dates.iloc[0], tz="UTC")
-    end = pd.Timestamp(dates.iloc[-1], tz="UTC")
+    # exchange_calendars expects timezone-naive session labels (not UTC instants).
+    start = pd.Timestamp(dates.iloc[0]).normalize()
+    end = pd.Timestamp(dates.iloc[-1]).normalize()
     try:
         calendar = xcals.get_calendar("XNYS")
         sessions = calendar.sessions_in_range(start, end)
