@@ -188,4 +188,4 @@ if not startup["ready"]:
 # Only after start() succeeds may the host pass a validated intent to service.submit(intent).
 ```
 
-If recovery is missing, malformed, unresolved or failed, `start()` raises and the gate remains closed. A submission exception also closes the process-local gate; restart and recover again before retrying. `stop()` closes the gate without a broker action. No continuous loop, order strategy, production host, or autonomous trading path is deployed by this module. It is an integration primitive that must be used by the eventual execution process.
+If recovery is missing, malformed, unresolved or failed, `start()` raises and the gate remains closed. A submission exception also closes the process-local gate; run `service.start()` again to perform a fresh recovery pass (or restart the process and call `start()` again) before retrying. `stop()` closes the gate without a broker action. No continuous loop, order strategy, production host, or autonomous trading path is deployed by this module. It is an integration primitive that must be used by the eventual execution process.
