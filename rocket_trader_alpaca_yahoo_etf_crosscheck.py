@@ -344,6 +344,102 @@ def fetch_alpaca_raw_history(
     return _close_series(frame["close"], "Alpaca raw")
 
 
+
+def fetch_alpaca_corporate_actions(
+    symbols: Iterable[str],
+    start: datetime,
+    end: datetime,
+    api_key: str,
+    secret_key: str,
+    *,
+    opener=urlopen,
+) -> List[Dict[str, Any]]:
+    """Fetch issuer-action records from Alpaca's corporate-actions market-data API."""
+    if not api_key or not secret_key:
+        raise CrosscheckError("Alpaca API credentials are required for corporate actions")
+    symbol_list = sorted({str(item).strip().upper() for item in symbols if str(item).strip()})
+    if not symbol_list:
+        return []
+    if start.tzinfo is None or start.utcoffset() is None or end.tzinfo is None or end.utcoffset() is None:
+        raise CrosscheckError("Corporate-action date range must be timezone-aware")
+    # API filters by process_date, not ex_date; pad both ends to include delayed processing.
+    query_start = (start.date() - timedelta(days=60)).isoformat()
+    query_end = (end.date() + timedelta(days=60)).isoformat()
+    params = {
+        "symbols": ",".join(symbol_list),
+        "start": query_start,
+        "end": query_end,
+        "limit": "1000",
+        "data_quality": "complete",
+        "region": "us",
+        "sort": "asc",
+    }
+    url = "https://data.alpaca.markets/v1/corporate-actions?" + urlencode(params)
+    headers = {
+        "APCA-API-KEY-ID": api_key,
+        "APCA-API-SECRET-KEY": secret_key,
+        "Accept": "application/json",
+    }
+    key_types = {
+        "cash_dividends": "cash_dividend",
+        "stock_dividends": "stock_dividend",
+        "forward_splits": "forward_split",
+        "reverse_splits": "reverse_split",
+        "unit_splits": "unit_split",
+        "spin_offs": "spin_off",
+        "capital_gains_distributions": "capital_gains_distribution",
+        "rights_distributions": "rights_distribution",
+        "cash_mergers": "cash_merger",
+        "stock_mergers": "stock_merger",
+        "stock_and_cash_mergers": "stock_and_cash_merger",
+        "redemptions": "redemption",
+        "name_changes": "name_change",
+        "worthless_removals": "worthless_removal",
+        "reorganizations": "reorganization",
+        "partial_calls": "partial_call",
+    }
+    events: List[Dict[str, Any]] = []
+    page_token = None
+    for page in range(10):
+        page_url = url
+        if page_token:
+            page_url += "&" + urlencode({"page_token": page_token})
+        request = Request(page_url, headers=headers)
+        try:
+            with opener(request, timeout=30) as response:
+                status = getattr(response, "status", 200)
+                if status != 200:
+                    raise CrosscheckError(f"Alpaca corporate actions returned HTTP {status}")
+                payload = json.loads(response.read().decode("utf-8"))
+        except CrosscheckError:
+            raise
+        except Exception as exc:
+            raise CrosscheckError(
+                f"Alpaca corporate actions failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise CrosscheckError("Alpaca corporate actions response was not an object")
+        for key, kind in key_types.items():
+            rows = payload.get(key, [])
+            if rows is None:
+                continue
+            if not isinstance(rows, list):
+                raise CrosscheckError(f"Alpaca corporate actions field {key} was not a list")
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise CrosscheckError(f"Alpaca corporate action in {key} was malformed")
+                event = dict(row)
+                event["action_type"] = kind
+                events.append(event)
+        page_token = payload.get("next_page_token")
+        if not page_token:
+            break
+    else:
+        raise CrosscheckError("Alpaca corporate actions pagination exceeded 10 pages")
+    return events
+
+
+
 def compare_adjustment_factors(
     symbol: str,
     yahoo_raw_close: Any,
@@ -354,6 +450,7 @@ def compare_adjustment_factors(
     min_common_sessions: int = 1000,
     yahoo_dividends: Any = None,
     yahoo_splits: Any = None,
+    alpaca_corporate_actions: Any = None,
 ) -> Dict[str, Any]:
     """Separate raw-price divergence from provider adjustment-factor divergence."""
     frames = [
@@ -431,6 +528,21 @@ def compare_adjustment_factors(
         )
         dividend_cash = float(dividend_events.loc[session])
         split_ratio = float(split_events.loc[session])
+        event_date = str(session)
+        previous_date = str(previous_session) if previous_session is not None else None
+        alpaca_events_current = [
+            event for event in (alpaca_corporate_actions or [])
+            if str(event.get("ex_date") or "") == event_date
+        ]
+        alpaca_events_previous = [
+            event for event in (alpaca_corporate_actions or [])
+            if previous_date is not None and str(event.get("ex_date") or "") == previous_date
+        ]
+        alpaca_cash_dividend = sum(
+            float(event.get("rate") or 0.0)
+            for event in alpaca_events_current
+            if event.get("action_type") == "cash_dividend"
+        )
         top_steps.append({
             "session": str(session),
             "previous_session": str(previous_session) if previous_session is not None else None,
@@ -451,6 +563,39 @@ def compare_adjustment_factors(
             ),
             "yahoo_dividend_cash_on_session": round(dividend_cash, 8),
             "yahoo_split_ratio_on_session": round(split_ratio, 8),
+            "alpaca_corporate_actions_on_session": [
+                {
+                    "action_type": event.get("action_type"),
+                    "symbol": event.get("symbol"),
+                    "ex_date": event.get("ex_date"),
+                    "rate": event.get("rate"),
+                    "long_term_rate": event.get("long_term_rate"),
+                    "short_term_rate": event.get("short_term_rate"),
+                    "special": event.get("special"),
+                    "sub_type": event.get("sub_type"),
+                    "process_date": event.get("process_date"),
+                    "payable_date": event.get("payable_date"),
+                    "currency": event.get("currency"),
+                }
+                for event in alpaca_events_current
+            ],
+            "alpaca_corporate_actions_on_previous_session": [
+                {
+                    "action_type": event.get("action_type"),
+                    "symbol": event.get("symbol"),
+                    "ex_date": event.get("ex_date"),
+                    "rate": event.get("rate"),
+                    "process_date": event.get("process_date"),
+                }
+                for event in alpaca_events_previous
+            ],
+            "alpaca_cash_dividend_total_on_session": (
+                round(alpaca_cash_dividend, 8) if alpaca_corporate_actions is not None else None
+            ),
+            "yahoo_minus_alpaca_cash_dividend_on_session": (
+                round(dividend_cash - alpaca_cash_dividend, 8)
+                if alpaca_corporate_actions is not None else None
+            ),
             "expected_cash_dividend_adjustment_bps_vs_previous_yahoo_raw_close": (
                 round(dividend_cash / previous_yahoo_raw * 10000.0, 4)
                 if dividend_cash > 0 and previous_yahoo_raw and previous_yahoo_raw > 0
@@ -513,6 +658,7 @@ def run_audit(
     tiingo_token: Optional[str] = None,
     yahoo_adjustment_loader=fetch_yahoo_adjustment_fields,
     alpaca_raw_loader=fetch_alpaca_raw_history,
+    alpaca_corporate_actions_loader=fetch_alpaca_corporate_actions,
 ) -> Dict[str, Any]:
     if years < 1 or years > 20:
         raise CrosscheckError("years must be between 1 and 20")
@@ -533,6 +679,16 @@ def run_audit(
     client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
 
     symbol_list = sorted({str(x).strip().upper() for x in symbols if str(x).strip()})
+    corporate_actions_error = None
+    corporate_action_events = None
+    try:
+        corporate_action_events = alpaca_corporate_actions_loader(
+            symbol_list, start, current, api_key, secret_key
+        )
+    except Exception as exc:
+        corporate_actions_error = {
+            "error_type": type(exc).__name__, "error": str(exc)
+        }
     results = []
     errors = []
     tiingo_results = []
@@ -553,6 +709,10 @@ def run_audit(
                 alpaca,
                 yahoo_dividends=yahoo_fields.get("dividends"),
                 yahoo_splits=yahoo_fields.get("splits"),
+                alpaca_corporate_actions=[
+                    event for event in (corporate_action_events or [])
+                    if str(event.get("symbol") or "").upper() == symbol
+                ] if corporate_action_events is not None else None,
             )
             results.append(result)
             if token:
@@ -586,7 +746,7 @@ def run_audit(
         )
     )
     return {
-        "ok": bool(results) and not errors and (not token or (len(tiingo_results) == len(symbol_list) and not tiingo_errors)),
+        "ok": bool(results) and not errors and corporate_actions_error is None and (not token or (len(tiingo_results) == len(symbol_list) and not tiingo_errors)),
         "pipeline": "rocket_trader_alpaca_yahoo_etf_crosscheck_v0_1",
         "mode": "DATA_AUDIT_ONLY",
         "period_start": start.isoformat(),
@@ -599,6 +759,10 @@ def run_audit(
         "price_series": "daily adjusted close",
         "results": results,
         "errors": errors,
+        "corporate_actions_requested": True,
+        "corporate_actions_complete": corporate_actions_error is None,
+        "corporate_actions_error": corporate_actions_error,
+        "corporate_actions_count": len(corporate_action_events or []),
         "tiingo_comparison_requested": bool(token),
         "tiingo_results": tiingo_results,
         "tiingo_errors": tiingo_errors,
@@ -606,7 +770,7 @@ def run_audit(
         "tiingo_all_diagnostic_gates_pass": tiingo_all_pass,
         "symbols_diagnostic_pass": sum(bool(x["diagnostic_pass"]) for x in results),
         "symbols_compared": len(results),
-        "all_diagnostic_gates_pass": bool(results) and not errors and all(x["diagnostic_pass"] for x in results) and tiingo_all_pass,
+        "all_diagnostic_gates_pass": bool(results) and not errors and corporate_actions_error is None and all(x["diagnostic_pass"] for x in results) and tiingo_all_pass,
         "research_cost_assumptions_validated": False,
         "research_cost_note": (
             "This price-history comparison does not validate historical bid/ask spread, "
