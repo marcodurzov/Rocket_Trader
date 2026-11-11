@@ -520,6 +520,7 @@ class CryptoPaperExecutionTests(unittest.TestCase):
 
     def test_adapter_reconcile_ingests_individual_fills(self):
         self.adapter.submit(self.buy())
+        self.client.orders["crypto-buy-001"].filled_qty = "0.0001"
         self.client.activities = [{
             "id": "adapter-fill-1",
             "activity_type": "FILL",
@@ -543,6 +544,7 @@ class CryptoPaperExecutionTests(unittest.TestCase):
 
     def test_adapter_reconcile_reports_missing_fill_activity_as_incomplete(self):
         self.adapter.submit(self.buy())
+        self.client.orders["crypto-buy-001"].filled_qty = "0.0001"
         result = self.adapter.reconcile("crypto-buy-001")
         self.assertEqual(
             result["activity_reconciliation"]["reconciliation_status"],
@@ -605,7 +607,7 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         order.status = "partially_filled"
         order.filled_qty = "0.0002"
         self.client.positions = [SimpleNamespace(symbol="BTC/USD", qty="0.0008")]
-        with self.assertRaisesRegex(CryptoPaperExecutionError, "unreserved broker-held"):
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "broker-held unreserved"):
             self.adapter.submit(CryptoOrderIntent(
                 client_order_id="sell-partial-second", symbol="BTC/USD",
                 side=Side.SELL, quantity="0.0004",
