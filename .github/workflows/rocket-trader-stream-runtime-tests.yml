@@ -45,6 +45,8 @@ on:
       - "rocket_trader_alpaca_fee_resolver.py"
       - "rocket_trader_fx_provider.py"
       - "rocket_trader_currency.py"
+      - "rocket_trader_paper_activity_reconciliation.py"
+      - "rocket_trader_paper_activity_reconciliation_test.py"
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_paper_reconciliation_test.py"
       - "rocket_trader_alpaca_activity_stager.py"
