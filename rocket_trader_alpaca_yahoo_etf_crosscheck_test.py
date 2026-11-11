@@ -13,6 +13,8 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     _close_series,
     compare_close_series,
     fetch_yahoo_history,
+    fetch_tiingo_history,
+    _rename_pair_result,
 )
 
 
@@ -86,6 +88,73 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["auto_adjust"])
         self.assertTrue(calls["actions"])
+
+    def test_tiingo_history_uses_adjusted_close_and_token_header(self):
+        calls = {}
+        payload = [
+            {"date": date.isoformat(), "adjClose": value, "close": value + 99}
+            for date, value in zip(self.dates, [100, 101, 102, 103, 104, 105, 106, 107])
+        ]
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self):
+                import json
+                return json.dumps(payload).encode("utf-8")
+        def fake_opener(request, timeout):
+            calls["authorization"] = request.get_header("Authorization")
+            calls["url"] = request.full_url
+            calls["timeout"] = timeout
+            return FakeResponse()
+        result = fetch_tiingo_history(
+            "SPY",
+            pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime(),
+            pd.Timestamp("2024-02-01", tz="UTC").to_pydatetime(),
+            "fixture-token",
+            opener=fake_opener,
+        )
+        self.assertEqual(len(result), 8)
+        self.assertEqual(result.iloc[0], 100.0)
+        self.assertEqual(calls["authorization"], "Token fixture-token")
+        self.assertEqual(calls["timeout"], 30)
+        self.assertIn("startDate=", calls["url"])
+        self.assertIn("endDate=", calls["url"])
+
+    def test_tiingo_history_requires_token_and_valid_adjusted_close(self):
+        with self.assertRaisesRegex(CrosscheckError, "TIINGO_API_TOKEN"):
+            fetch_tiingo_history(
+                "SPY",
+                pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime(),
+                pd.Timestamp("2024-02-01", tz="UTC").to_pydatetime(),
+                "",
+            )
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return b'[{"date":"2024-01-02","close":100}]'
+        with self.assertRaisesRegex(CrosscheckError, "malformed adjusted close"):
+            fetch_tiingo_history(
+                "SPY",
+                pd.Timestamp("2024-01-01", tz="UTC").to_pydatetime(),
+                pd.Timestamp("2024-02-01", tz="UTC").to_pydatetime(),
+                "fixture-token",
+                opener=lambda request, timeout: FakeResponse(),
+            )
+
+    def test_tiingo_pair_report_uses_true_provider_names_and_direction(self):
+        raw = compare_close_series("SPY", self.yahoo, self.yahoo * 1.01)
+        named = _rename_pair_result(raw, "YAHOO", "TIINGO")
+        self.assertEqual(named["comparison"], "TIINGO_VS_YAHOO")
+        self.assertIn("yahoo_sessions", named)
+        self.assertIn("tiingo_sessions", named)
+        self.assertIn("tiingo_coverage_on_common", named)
+        self.assertAlmostEqual(
+            named["right_minus_left_cumulative_return_difference_bps"],
+            raw["cumulative_return_difference_bps"],
+        )
+
     def test_duplicate_session_keeps_last_observation(self):
         idx = [self.dates[0], self.dates[0], self.dates[1]]
         series = pd.Series([100.0, 101.0, 102.0], index=idx)
