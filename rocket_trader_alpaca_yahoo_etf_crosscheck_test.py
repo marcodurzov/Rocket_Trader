@@ -100,7 +100,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         )
         self.assertEqual(
             result["history_window_assessment"],
-            "ALPACA_HISTORY_STARTS_LATER_THAN_YAHOO",
+            "RIGHT_SOURCE_STARTS_LATER_THAN_LEFT",
         )
         self.assertAlmostEqual(result["alpaca_overlap_session_completeness"], 1.0)
         self.assertAlmostEqual(result["yahoo_overlap_session_completeness"], 1.0)
