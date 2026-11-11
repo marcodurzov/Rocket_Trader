@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+import exchange_calendars as xcals
 from alpaca.data.enums import Adjustment, DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
@@ -31,7 +32,7 @@ VERSION = "0.4"
 DEFAULT_SYMBOLS = ("SPY", "QQQ", "IWM", "DIA", "TLT", "GLD", "EFA", "EEM")
 DEFAULT_YEARS = 10
 MIN_DAILY_BARS = 1800
-MIN_WEEKDAY_COVERAGE = 0.95
+MIN_EXCHANGE_SESSION_COVERAGE = 0.95
 MAX_GAP_DAYS = 7
 FEE_BPS_SIDE = 0.0
 HALF_SPREAD_BPS_SIDE = 2.5
@@ -129,25 +130,62 @@ def normalize_frame(frame: pd.DataFrame, symbol: str, min_rows: int = 1) -> pd.D
 
 
 def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
-    dates = pd.to_datetime(frame["timestamp"], utc=True).dt.tz_localize(None).dt.normalize().sort_values()
+    """Measure daily-bar completeness against actual XNYS trading sessions.
+
+    This intentionally replaces weekday counting: weekends and US exchange
+    holidays are not expected sessions and must not penalize valid datasets.
+    """
+    dates = (
+        pd.to_datetime(frame["timestamp"], utc=True)
+        .dt.tz_localize(None)
+        .dt.normalize()
+        .drop_duplicates()
+        .sort_values()
+    )
     if dates.empty:
         raise EquityResearchError("Cannot assess empty daily history.")
-    expected_weekdays = int(len(pd.bdate_range(dates.iloc[0], dates.iloc[-1])))
-    bars = int(dates.nunique())
-    missing = max(0, expected_weekdays - bars)
-    gaps = dates.diff().dt.days.dropna()
-    max_gap = int(gaps.max()) if not gaps.empty else 0
-    coverage = bars / expected_weekdays if expected_weekdays else 0.0
-    eligible = coverage >= MIN_WEEKDAY_COVERAGE and max_gap <= MAX_GAP_DAYS
+    # exchange_calendars expects timezone-naive session labels (not UTC instants).
+    start = pd.Timestamp(dates.iloc[0]).normalize()
+    end = pd.Timestamp(dates.iloc[-1]).normalize()
+    try:
+        calendar = xcals.get_calendar(
+            "XNYS",
+            start=start - pd.Timedelta(days=14),
+            end=end + pd.Timedelta(days=14),
+        )
+        sessions = calendar.sessions[
+            (calendar.sessions >= start) & (calendar.sessions <= end)
+        ]
+    except Exception as exc:
+        raise EquityResearchError(
+            f"Unable to calculate authoritative XNYS sessions: {type(exc).__name__}: {exc}"
+        ) from exc
+    session_dates = pd.DatetimeIndex(sessions)
+    if session_dates.tz is not None:
+        session_dates = session_dates.tz_convert("UTC").tz_localize(None)
+    session_dates = session_dates.normalize()
+    observed = pd.DatetimeIndex(dates)
+    expected_sessions = int(len(session_dates))
+    bars = int(len(observed.intersection(session_dates)))
+    missing = max(0, expected_sessions - bars)
+    missing_dates = session_dates.difference(observed)
+    observed_gaps = observed.to_series().diff().dt.days.dropna()
+    max_gap = int(observed_gaps.max()) if not observed_gaps.empty else 0
+    coverage = bars / expected_sessions if expected_sessions else 0.0
+    eligible = coverage >= MIN_EXCHANGE_SESSION_COVERAGE and max_gap <= MAX_GAP_DAYS
     return {
-        "expected_weekdays_approx": expected_weekdays,
+        "calendar": "XNYS",
+        "expected_exchange_sessions": expected_sessions,
         "daily_bars": bars,
-        "missing_weekday_bars_approx": missing,
-        "weekday_coverage_pct_approx": coverage,
+        "missing_exchange_sessions": missing,
+        "exchange_session_coverage_pct": coverage,
         "max_calendar_gap_days": max_gap,
-        "minimum_weekday_coverage_pct": MIN_WEEKDAY_COVERAGE,
+        "minimum_exchange_session_coverage_pct": MIN_EXCHANGE_SESSION_COVERAGE,
         "maximum_allowed_gap_days": MAX_GAP_DAYS,
         "eligible_for_strategy_evidence": eligible,
+        "first_missing_exchange_session": (
+            missing_dates[0].date().isoformat() if len(missing_dates) else None
+        ),
     }
 
 
@@ -210,8 +248,8 @@ def fetch_daily_bars(
         raise EquityResearchError(
             f"{clean}: only {len(combined)} daily bars; minimum {minimum_rows} "
             f"for {years} requested years. Returned range={first_seen}..{last_seen}; "
-            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
-            f"missing_weekdays_approx={quality['missing_weekday_bars_approx']}; "
+            f"exchange_session_coverage={quality['exchange_session_coverage_pct']:.2%}; "
+            f"missing_exchange_sessions={quality['missing_exchange_sessions']}; "
             f"max_calendar_gap_days={quality['max_calendar_gap_days']}. "
             "Do not treat this partial history as full-period evidence."
         )
@@ -274,7 +312,7 @@ def fetch_yahoo_daily_bars(
             f"{clean}: Yahoo returned only {len(normalized)} daily bars; "
             f"minimum {minimum_rows} for {years} requested years. "
             f"Returned range={first_seen.isoformat()}..{last_seen.isoformat()}; "
-            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
+            f"exchange_session_coverage={quality['exchange_session_coverage_pct']:.2%}; "
             f"max_calendar_gap_days={quality['max_calendar_gap_days']}."
         )
     if first_seen > pd.Timestamp(start_at).tz_convert("UTC") + pd.Timedelta(days=60):
@@ -363,7 +401,7 @@ def fetch_tiingo_daily_bars(
             f"{clean}: Tiingo returned only {len(normalized)} daily bars; "
             f"minimum {minimum_rows} for {years} years. "
             f"Returned range={first_seen.isoformat()}..{last_seen.isoformat()}; "
-            f"approx_weekday_coverage={quality['weekday_coverage_pct_approx']:.2%}; "
+            f"exchange_session_coverage={quality['exchange_session_coverage_pct']:.2%}; "
             f"max_calendar_gap_days={quality['max_calendar_gap_days']}."
         )
     if first_seen > pd.Timestamp(start_at).tz_convert("UTC") + pd.Timedelta(days=60):

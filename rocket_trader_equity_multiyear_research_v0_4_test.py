@@ -132,6 +132,29 @@ class EquityResearchV04Tests(unittest.TestCase):
         incomplete = frame.drop(index=range(0, len(frame), 10)).reset_index(drop=True)
         self.assertFalse(data_quality_metrics(incomplete)["eligible_for_strategy_evidence"])
 
+    def test_exchange_calendar_excludes_us_market_holidays(self):
+        frame = synthetic_frame(start="2024-07-01", periods=6)
+        frame = frame[frame["timestamp"].dt.day != 4].reset_index(drop=True)
+        metrics = data_quality_metrics(frame)
+        self.assertEqual(metrics["calendar"], "XNYS")
+        self.assertEqual(metrics["expected_exchange_sessions"], 5)
+        self.assertEqual(metrics["daily_bars"], 5)
+        self.assertEqual(metrics["missing_exchange_sessions"], 0)
+        self.assertAlmostEqual(metrics["exchange_session_coverage_pct"], 1.0)
+        self.assertTrue(metrics["eligible_for_strategy_evidence"])
+
+    def test_exchange_calendar_detects_missing_actual_session(self):
+        frame = synthetic_frame(start="2024-07-01", periods=6)
+        frame = frame[frame["timestamp"].dt.day != 4]
+        frame = frame[frame["timestamp"].dt.day != 2].reset_index(drop=True)
+        metrics = data_quality_metrics(frame)
+        self.assertEqual(metrics["expected_exchange_sessions"], 5)
+        self.assertEqual(metrics["daily_bars"], 4)
+        self.assertEqual(metrics["missing_exchange_sessions"], 1)
+        self.assertAlmostEqual(metrics["exchange_session_coverage_pct"], 0.8)
+        self.assertFalse(metrics["eligible_for_strategy_evidence"])
+        self.assertEqual(metrics["first_missing_exchange_session"], "2024-07-02")
+
     def test_10_year_fetch_requires_requested_history(self):
         frame = synthetic_frame()
         end = frame["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
@@ -152,7 +175,7 @@ class EquityResearchV04Tests(unittest.TestCase):
                 end=end, chunk_days=365,
             )
         self.assertIn("Returned range=", str(caught.exception))
-        self.assertIn("approx_weekday_coverage=", str(caught.exception))
+        self.assertIn("exchange_session_coverage=", str(caught.exception))
         self.assertIn("max_calendar_gap_days=", str(caught.exception))
 
     def test_yahoo_fetch_uses_adjusted_ohlc_and_requires_full_history(self):
