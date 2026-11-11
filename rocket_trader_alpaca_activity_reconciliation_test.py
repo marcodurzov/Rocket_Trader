@@ -231,5 +231,53 @@ class AlpacaActivityReconciliationTests(unittest.TestCase):
         with self.assertRaisesRegex(AlpacaActivityReconciliationError, "integrity check failed"):
             AlpacaAccountActivityReader(FakeActivityClient({None: []}), self.ledger)
 
+
+    def test_unclassifiable_account_wide_cfee_does_not_abort_fill_evidence(self):
+        fee = {
+            "id": "fee-unclassified", "activity_type": "CFEE", "symbol": "USD",
+            "net_amount": "-0.25", "currency": "USD",
+            "created_at": "2026-11-12T00:00:00Z",
+        }
+        result = self.reader({None: [fee]}).collect_crypto_fee_candidates(
+            symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
+        )
+        self.assertEqual(result["fee_activity_count"], 0)
+        self.assertEqual(result["unclassified_activity_count"], 1)
+        self.assertEqual(
+            result["unclassified_fee_activities"][0]["symbol_classification"],
+            "UNCLASSIFIED_SYMBOL",
+        )
+        events = self.ledger.list_events(aggregate_id="account-crypto-fees")
+        self.assertEqual(events[0]["event_type"], "CRYPTO_FEE_ACTIVITY_UNCLASSIFIED")
+        self.assertTrue(self.ledger.verify_chain()["valid"])
+
+    def test_other_crypto_pair_fee_is_preserved_but_not_misattributed(self):
+        fee = {
+            "id": "fee-eth", "activity_type": "CFEE", "symbol": "ETH/USD",
+            "net_amount": "-0.0001", "currency": "ETH",
+            "created_at": "2026-11-12T00:00:00Z",
+        }
+        result = self.reader({None: [fee]}).collect_crypto_fee_candidates(
+            symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
+        )
+        self.assertEqual(result["fee_activity_count"], 0)
+        self.assertEqual(result["other_symbol_activity_count"], 1)
+        self.assertEqual(
+            self.ledger.list_events(aggregate_id="account-crypto-fees")[0]["payload"]["symbol"],
+            "ETH/USD",
+        )
+
+    def test_incomplete_cfee_is_preserved_and_explicitly_flagged(self):
+        fee = {
+            "id": "fee-incomplete-fields", "activity_type": "CFEE", "symbol": "BTC/USD",
+            "net_amount": None, "currency": None,
+        }
+        result = self.reader({None: [fee]}).collect_crypto_fee_candidates(
+            symbol="BTC/USD", after="2026-11-11T00:00:00Z", until="2026-11-13T00:00:00Z",
+        )
+        self.assertEqual(result["fee_activity_count"], 1)
+        self.assertEqual(result["incomplete_activity_count"], 1)
+        self.assertEqual(result["fee_activities"][0]["record_status"], "INCOMPLETE_FIELDS")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
