@@ -189,3 +189,10 @@ if not startup["ready"]:
 ```
 
 If recovery is missing, malformed, unresolved or failed, `start()` raises and the gate remains closed. A submission exception also closes the process-local gate; run `service.start()` again to perform a fresh recovery pass (or restart the process and call `start()` again) before retrying. `stop()` closes the gate without a broker action. No continuous loop, order strategy, production host, or autonomous trading path is deployed by this module. It is an integration primitive that must be used by the eventual execution process.
+
+
+## 10. Read-only Activity SSE capability probe
+
+The manual workflow now also runs `alpaca_paper_activity_sse_probe.py` against the Paper Activity SSE endpoint using a finite historical window from `orders_after` through current UTC time. It records whether the account returns TRD, crypto-like symbols, CFEE/FEE, `trade_correct`, `trade_bust` or `previous_id` evidence.
+
+This is a diagnostic probe only. It does not create a persistent SSE consumer, save a replay cursor, modify the execution ledger, reverse fills, change positions or submit orders. A missing crypto event is not proof that Alpaca does not support crypto on this endpoint; it is simply an unconfirmed capability until compared with the known Paper order history or clarified by Alpaca support.

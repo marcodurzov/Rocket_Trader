@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#163 merged; Paper FILL reconciliation verified; CFEE window filtering hardened; fail-closed execution startup gate added)  
+**Last updated:** 2026-11-11 (PRs #141–#165 merged; Paper FILL reconciliation verified; CFEE window filtering hardened; startup gate added; Activity SSE probe added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `a12e69fe1f7fe18f0ed21f99cb4c347de26850fa` (PR #163 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `7d92fd7aaa352087552129d02c6e4c4bee24b3fd` (PR #165 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **55%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1023,3 +1023,17 @@ Next actions:
 - Boundary: this is **not a deployed service** and does not wire itself into the observe-only Compose stack. The low-level adapter remains callable by existing explicit workflows; any future autonomous execution host must use this gate and must not bypass it. No strategy is approved, no strategy-driven orders are enabled, and LIVE remains prohibited.
 
 **Progress estimate:** 55% (engineering/evidence maturity only). Startup recovery now has a tested integration primitive, but persistent host deployment, real Paper restart recovery against the same durable files, activity cursor/backfill/correction handling, empirically calibrated costs and validated strategy edge remain open.
+
+
+### PR #165 — bounded Paper Activity SSE capability probe
+- Merged to main: `7d92fd7aaa352087552129d02c6e4c4bee24b3fd`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/165
+- Official Alpaca documentation describes the Paper Activity SSE endpoint `/v2beta1/events/activities`, finite historical `since`/`until` queries, replay via `since_id`, stable `ref_id` deduplication, and `previous_id` references for corrections/cancellations. The documented TRD execution types include `fill`, `trade_correct` and `trade_bust`. The docs describe TRD as equity/options; crypto support is not yet established for this account.
+- Added `alpaca_paper_activity_sse_probe.py`: bounded, read-only historical request using the user's Paper API headers. It reports activity types, crypto-like TRD symbols, CFEE/FEE counts, correction/bust types, previous_id linkage, duplicates, event ordering anomalies, dropped-message comments and malformed frames.
+- The probe does not modify the execution event ledger, maintain/advance a cursor, apply corrections, mutate positions or submit/cancel/replace orders. Unsupported HTTP status and no-event cases are reported as evidence, not treated as proof that crypto is unsupported.
+- Integrated the probe into the existing manual-only Paper activity audit workflow. Its JSON is included in the artifact. The query starts at the configured order-window start and ends at the current UTC time, so it is a finite historical query, not a persistent stream.
+- PR CI run `43038829544`: success; 32 offline tests passed. Post-merge run `43038939488` is pending its final conclusion. The actual SSE call is skipped on PR/push CI.
+- **Next user action:** manually dispatch the read-only Paper activity audit on current main. That single run will validate the CFEE local-window fix and probe whether this Paper account returns crypto TRD/correction events from Activity SSE.
+- No new orders or account mutations were made. LIVE remains prohibited.
+
+**Progress estimate:** 55% (engineering/evidence maturity only). The SSE capability is not yet confirmed against the Paper account, and no correction/bust ingestion or P&L adjustment is enabled.
