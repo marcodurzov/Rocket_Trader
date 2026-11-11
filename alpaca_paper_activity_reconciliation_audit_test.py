@@ -6,6 +6,8 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -107,6 +109,24 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
         self.assertEqual(FakeAuditClient.instances, [])
         report = json.loads(open(self.report, encoding="utf-8").read())
         self.assertEqual(report["status"], "FAILED")
+
+    def test_safe_reconciliation_error_is_reported_without_sdk_details(self):
+        class InvalidActivityClient(FakeAuditClient):
+            def get(self, path, params):
+                if params["activity_types"] == "FILL":
+                    return [{"activity_type": "FILL"}]
+                return []
+
+        stderr = StringIO()
+        with patch.object(audit, "TradingClient", InvalidActivityClient):
+            with redirect_stderr(stderr):
+                result = audit.main()
+        self.assertEqual(result, 1)
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
+        self.assertEqual(report["error_type"], "AlpacaActivityReconciliationError")
+        self.assertEqual(report["error_message"], "Account activity is missing its immutable id.")
+        self.assertIn("Account activity is missing its immutable id.", stderr.getvalue())
+        self.assertNotIn("paper-secret", stderr.getvalue())
 
     def test_account_cash_only_policy_is_verified_read_only(self):
         class UnsafeAccountClient(FakeAuditClient):
