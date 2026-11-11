@@ -755,3 +755,34 @@ The historical research landscape and the systematic strategy program are now do
 - Explicitly transfers Jefe Maestro's research discipline (pre-registration, strict chronological OOS/prospective splits, immutable evidence, null controls, bootstrap/permutation inference, Holm correction) while preserving its negative results: FIX07 no validated advantage; FIX09 4,629 hypotheses / 227 nominal p<.05 / zero Holm survivors. Lottery null assumptions are not transferable to financial markets.
 - Documentation only. No new strategy/event signal approved; no code execution, live orders or profitability validation.
 - Next: expand machine-readable strategy registry; build event-study/experiment ledger; validate regime rotation against static and cash baselines; test news/social incremental OOS value; integrate selector/overlays in shadow mode only.
+
+
+## 2026-11-10 — Expanded research registry, experiment ledger and Alpaca Paper authorization
+
+The user explicitly authorized tests in their Alpaca **Paper** account, reported to have approximately USD 100,000 simulated equity. This is authorization for Paper-only testing, not live orders. The reported account value is not a risk budget. No Alpaca credentials were provided in chat and none should be requested or committed. The repository contains Paper connection/preflight/smoke workflows, but a repository workflow definition is not proof that the account is connected or that a run submitted orders. Direct account execution remains unverified until a Paper-only workflow run reports account mode, account status, order IDs, fills and reconciliation.
+
+Current safety boundary: research/backtests/shadow are allowed; Paper orders only through explicit Paper-only credentials, strict notional/exposure/daily-loss caps, cash-only and no-short checks, idempotency, durable journal, broker reconciliation and kill switch. Live trading remains prohibited without separate explicit authorization. No paid data or subscriptions are authorized.
+
+### Registry expansion branch
+
+Branch: `feat/adaptive-research-registry-v2`.
+
+Expanded `research/reference_strategy_registry_v0_1.json` from 6 to 24 sourced strategy/reference entries (6 original + 18 new), with structured family, applicable regimes, horizon, inputs, entry/exit/sizing hypothesis, execution assumptions, failure modes, evidence grade and test protocol. Added:
+- RSI(2), Bollinger mean reversion.
+- Distance/cointegration pairs and pairs reversal/momentum decomposition.
+- Volatility-managed exposure, calendar seasonality.
+- Post-earnings announcement drift.
+- Value, profitability/quality, low-volatility/defensive, 52-week high momentum.
+- Intraday reversal, opening-range breakout.
+- News/sentiment event hypothesis.
+- Risk parity allocation.
+- ML/meta-labeling and reinforcement learning as later-stage research only.
+- VWAP/TWAP as execution benchmarks, explicitly not alpha strategies.
+
+**Pairs constraint:** pairs trading normally requires a long and a short leg. The current cash-only/no-short policy means pairs are offline/simulation-only; they cannot be submitted to the existing Paper account unless a separate reviewed account-policy change is authorized. No such change has been made.
+
+Added `research/experiment_ledger_schema_v1.json` to require immutable experiment identity, code SHA, data fingerprint, point-in-time policy, split plan, executable timing, costs, benchmark set, multiple-testing family, confidence interval, adjusted p-value, decision and optional Paper order/fill/reconciliation records.
+
+Added `research/strategy_experiment_matrix_v1.json` with nine ordered tranches: corrected baselines; trend/breakout; mean reversion; pairs; allocation/risk overlays; calendar/events; intraday/execution; ML; Paper operational validation. The matrix proposes conservative pre-review Paper caps (USD 100/order, USD 500 gross exposure, USD 25 daily loss, max 3 positions) as a starting safety envelope only; these are not applied to the account and require runtime implementation/verification before any Paper order.
+
+The registry validator now requires structured evidence metadata and explicitly tests that pairs remain research-only and no strategy is automatically Paper-approved. PR/CI outcomes will be recorded after validation; no test result is claimed yet.

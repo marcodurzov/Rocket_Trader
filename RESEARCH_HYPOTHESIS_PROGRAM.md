@@ -188,3 +188,24 @@ User reaffirmed that the system must rotate among strategy families as regimes/o
 Jefe Maestro is a methodological reference only: strict production/research separation, pre-registration, chronological walk-forward and prospective validation, immutable evidence/fingerprints, null controls, bootstrap/permutation inference, family-wise correction and the distinction between descriptive patterns, prediction and economic utility. Its FIX07 and FIX09 negative findings are preserved as warnings about multiple testing; lottery null assumptions are not transferable to financial markets.
 
 No strategy or event signal is thereby approved. Adaptive selection must beat static/equal-weight/simple-rule and cash/buy-and-hold baselines out of sample after costs. News/social/LLM content remains evidence-only until point-in-time event studies establish incremental utility. Research specification is not implementation or profitability proof.
+
+
+## 2026-11-10 — Strategy taxonomy and pre-registered experiment sequence v0.2
+
+The machine-readable reference registry has been expanded to 24 entries. It is a practical research taxonomy, not a claim to enumerate every trading strategy. Newly catalogued families include RSI/Bollinger mean reversion, pairs and cointegration, volatility-managed exposure, calendar effects, post-earnings drift, value/quality/low-volatility, 52-week high momentum, intraday reversal, opening-range breakout, news sentiment, risk parity, ML/meta-labeling, RL and VWAP/TWAP execution benchmarking.
+
+External evidence is heterogeneous. For example, time-series momentum has published futures evidence (Moskowitz, Ooi & Pedersen, 2012), while broad technical-rule studies show that apparent in-sample effects can decay and be highly sensitive to transaction costs (Rink, 2023). A 2007 Bollinger-band study did not find consistent excess returns over buy-and-hold after costs for its tested rules. Pairs studies report historical results, but standard pairs positions are long/short and their economics are not transferable to a cash-only account. These papers generate hypotheses; none approves a Rocket Trader strategy.
+
+Primary reference links:
+- Time-series momentum: https://doi.org/10.1016/j.jfineco.2011.11.003
+- Technical-rule data-snooping and decay: https://doi.org/10.1007/s11408-023-00433-2
+- Bollinger-band rule test: https://doi.org/10.1080/17446540701206576
+- Pairs trading: https://doi.org/10.1093/rfs/hhj020
+- Pairs decomposition: https://doi.org/10.1287/mnsc.2017.2825
+- Volatility-managed portfolios: https://doi.org/10.1111/jofi.12513
+- Post-earnings drift: https://doi.org/10.1016/0304-405X(89)90021-2
+- Profitability factor: https://doi.org/10.1016/j.jfineco.2013.01.003
+
+The experiment matrix separates offline statistical discovery from Paper operational validation. A strategy only reaches Paper after pre-screening, untouched chronological holdout, multiple-testing correction, cost stress and risk approval. Paper measures order lifecycle and realized simulator execution; it does not establish long-run alpha. The reported USD 100,000 Paper balance is not a deployable risk budget.
+
+Pair strategies remain offline-only while the account is cash-only/no-short. No shorting, margin, options or live trading is authorized by the user's Paper permission.

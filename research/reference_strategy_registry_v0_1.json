@@ -6,108 +6,226 @@
     "successful_trader_returns_must_not_be_invented": true,
     "same_market_same_dates_same_costs_required": true,
     "no_reference_is_automatically_paper_approved": true,
-    "qualitative_references_cannot_create_quantitative_evidence": true
+    "qualitative_references_cannot_create_quantitative_evidence": true,
+    "paper_execution_requires_independent_pre_screen": true,
+    "live_trading_prohibited": true
   },
   "references": [
     {
       "id": "time_series_momentum_12m",
       "name": "Time-series momentum / trend following",
       "reference_type": "peer_reviewed_academic_and_institutional_research",
-      "authors": ["Tobias J. Moskowitz", "Yao Hua Ooi", "Lasse H. Pedersen"],
+      "authors": [
+        "Tobias J. Moskowitz",
+        "Yao Hua Ooi",
+        "Lasse H. Pedersen"
+      ],
       "organization": "AQR Capital Management / Journal of Financial Economics",
       "published_at": "2012-05-01",
       "source_url": "https://www.aqr.com/insights/research/journal-article/time-series-momentum",
       "original_scope": "58 liquid futures and forward contracts across equity indexes, currencies, commodities and sovereign bonds; return persistence over approximately 1 to 12 months with partial reversal at longer horizons.",
       "rule_hypothesis": "Measure each instrument's own trailing excess return over multiple lookbacks. Positive trend may support a long position; negative trend is cash/flat in Rocket Trader's initial long-only implementation.",
       "rocket_trader_adaptation": "Test long-only versions on US equities/ETFs and crypto spot separately. Do not copy futures short exposure, leverage, contract roll assumptions or published results into spot markets.",
-      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
       "quantitative_reference": true,
       "status": "RESEARCH_ONLY",
       "limitations": [
         "The original study is not a proof that the same rule works on SPY, QQQ or crypto spot.",
         "Its multi-month horizons are not directly comparable to intraday signals.",
         "All adaptations require new out-of-sample tests after costs."
-      ]
+      ],
+      "strategy_family": "time_series_momentum",
+      "market_regimes": [
+        "persistent_trend",
+        "high_dispersion",
+        "crisis_trend"
+      ],
+      "holding_horizon": "1-12 months",
+      "signal_inputs": [
+        "adjusted OHLCV",
+        "cross-asset returns",
+        "volatility"
+      ],
+      "entry_exit_sizing": "Predeclared 1/3/6/12-month own-asset returns; long or cash; volatility-scaled exposure with capped risk.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Whipsaw, crash after trend reversal, concentration, delayed signal, transaction costs.",
+      "evidence_grade": "A: peer-reviewed futures evidence; target-market transfer unproven.",
+      "test_protocol": "Chronological walk-forward, next-open, block bootstrap, multiple-testing correction, same-asset buy-and-hold and cash.",
+      "availability": "RESEARCH_ONLY"
     },
     {
       "id": "cross_sectional_momentum_3_12m",
       "name": "Cross-sectional stock momentum",
       "reference_type": "peer_reviewed_academic_research",
-      "authors": ["Narasimhan Jegadeesh", "Sheridan Titman"],
+      "authors": [
+        "Narasimhan Jegadeesh",
+        "Sheridan Titman"
+      ],
       "organization": "The Journal of Finance",
       "published_at": "1993-03-01",
       "source_url": "https://onlinelibrary.wiley.com/doi/full/10.1111/j.1540-6261.1993.tb04702.x",
       "original_scope": "US stock winner/loser portfolios with holding horizons in the 3-to-12-month range.",
       "rule_hypothesis": "Rank a point-in-time eligible equity universe by trailing relative performance, with a skip/reversal window tested separately. Compare top-ranked securities against the broad-market benchmark.",
       "rocket_trader_adaptation": "Long-only top-ranked basket; no shorting. Universe membership, delisted securities, corporate actions, survivorship bias, turnover, spread and borrow-free assumptions must be handled explicitly.",
-      "markets_to_test": ["us_equities_etfs"],
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
       "quantitative_reference": true,
       "status": "RESEARCH_ONLY",
       "limitations": [
         "The published long-short strategy cannot be copied as-is because Rocket Trader starts without short selling.",
         "Historical results may not survive current costs, universe changes or a different holding period.",
         "Do not rank today's constituents in historical periods unless point-in-time membership is reconstructed."
-      ]
+      ],
+      "strategy_family": "cross_sectional_momentum",
+      "market_regimes": [
+        "broad_or_dispersed_trend",
+        "risk_on"
+      ],
+      "holding_horizon": "3-12 months",
+      "signal_inputs": [
+        "point-in-time universe",
+        "adjusted returns",
+        "delistings",
+        "corporate actions"
+      ],
+      "entry_exit_sizing": "Rank eligible assets by 3-12 month returns with predeclared skip window; long-only top basket.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Momentum crashes, survivorship bias, universe drift, turnover, sector concentration.",
+      "evidence_grade": "A: peer-reviewed equities evidence; implementation-specific.",
+      "test_protocol": "Point-in-time universe, delisted names, next-open, turnover/cost stress, benchmark and factor controls.",
+      "availability": "RESEARCH_ONLY"
     },
     {
       "id": "trend_following_long_history",
       "name": "Long-history trend-following reference",
       "reference_type": "institutional_historical_research",
-      "authors": ["Brian K. Hurst", "Yao Hua Ooi", "Lasse H. Pedersen"],
+      "authors": [
+        "Brian K. Hurst",
+        "Yao Hua Ooi",
+        "Lasse H. Pedersen"
+      ],
       "organization": "AQR Capital Management",
       "published_at": "2017-10-31",
       "source_url": "https://www.aqr.com/insights/research/journal-article/a-century-of-evidence-on-trend-following-investing",
       "original_scope": "Historical trend-following analysis across multiple markets and long periods, extending back to the nineteenth century.",
       "rule_hypothesis": "Use diversified trend-following rules and risk scaling as a reference family; test robustness across market regimes rather than optimize one instrument.",
       "rocket_trader_adaptation": "Treat as a research design reference. Build separate long-only stock/ETF and crypto-spot variants; no futures, shorts or leverage.",
-      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
       "quantitative_reference": true,
       "status": "RESEARCH_ONLY",
       "limitations": [
         "Historical reconstructed performance is not a guarantee of future returns.",
         "The source includes markets and instruments not available in the initial Rocket Trader scope.",
         "Costs, execution and data quality must be re-estimated for each target market."
-      ]
+      ],
+      "strategy_family": "trend_following",
+      "market_regimes": [
+        "persistent_trend",
+        "macro_trend"
+      ],
+      "holding_horizon": "weeks to months",
+      "signal_inputs": [
+        "adjusted OHLCV",
+        "volatility",
+        "cross-asset data"
+      ],
+      "entry_exit_sizing": "Diversified trend signals with predeclared lookbacks and volatility scaling; long-only/cash adaptation.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Whipsaw, crowded exits, volatility spikes, long-only asymmetry.",
+      "evidence_grade": "B: institutional historical reconstruction; not directly transferable.",
+      "test_protocol": "Multiple regimes, rolling OOS, drawdown and tail analysis, risk-matched benchmarks.",
+      "availability": "RESEARCH_ONLY"
     },
     {
       "id": "buffett_long_horizon_value_quality",
       "name": "Long-horizon value, business quality and capital stewardship",
       "reference_type": "public_investor_primary_source_qualitative",
-      "authors": ["Warren E. Buffett", "Charlie Munger"],
+      "authors": [
+        "Warren E. Buffett",
+        "Charlie Munger"
+      ],
       "organization": "Berkshire Hathaway",
       "published_at": "1996-06-01",
       "source_url": "https://www.berkshirehathaway.com/1996ar/manual.html",
       "original_scope": "Long-term business ownership, intrinsic value, capital allocation and shareholder stewardship; not an intraday trading system.",
       "rule_hypothesis": "Use business quality, durable economics, valuation discipline and long-term capital allocation as a separate slow-horizon reference.",
       "rocket_trader_adaptation": "Do not use this qualitative reference as an intraday signal. It can inform a distinct long-horizon ETF/equity research sleeve only after reliable point-in-time fundamental data is available.",
-      "markets_to_test": ["us_equities_etfs"],
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
       "quantitative_reference": false,
       "status": "QUALITATIVE_REFERENCE_ONLY",
       "limitations": [
         "This is not a fully specified algorithmic rule set.",
         "Berkshire's historical results are not an achievable benchmark for a small automated account.",
         "Do not infer current positions from delayed public disclosures as if they were real-time orders."
-      ]
+      ],
+      "strategy_family": "fundamental_value_quality",
+      "market_regimes": [
+        "long_horizon",
+        "valuation_dispersion"
+      ],
+      "holding_horizon": "years",
+      "signal_inputs": [
+        "point-in-time financial statements",
+        "valuation",
+        "quality",
+        "delistings"
+      ],
+      "entry_exit_sizing": "Separate slow-horizon sleeve using point-in-time valuation and business quality; not intraday.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Stale accounting, value traps, survivorship, accounting restatements, data cost.",
+      "evidence_grade": "C: qualitative practitioner reference.",
+      "test_protocol": "Only when point-in-time fundamentals and survivorship-safe universe exist; benchmark factor exposures.",
+      "availability": "RESEARCH_ONLY"
     },
     {
       "id": "jesse_livermore_trend_principle",
       "name": "Jesse Livermore — trend and loss discipline",
       "reference_type": "historical_practitioner_qualitative",
-      "authors": ["Jesse Livermore"],
+      "authors": [
+        "Jesse Livermore"
+      ],
       "organization": "Historical practitioner reference, summarized in AQR research",
       "published_at": "2017-10-31",
       "source_url": "https://www.aqr.com/insights/research/journal-article/a-century-of-evidence-on-trend-following-investing",
       "original_scope": "Qualitative emphasis on assessing the broad market trend, cutting losses and letting profitable trends continue.",
       "rule_hypothesis": "Test explicit trend filters, predefined exits and risk limits as separate hypotheses.",
       "rocket_trader_adaptation": "Use only to formulate testable rules. Do not treat quotations, anecdotes or claimed historical returns as statistical evidence.",
-      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
       "quantitative_reference": false,
       "status": "QUALITATIVE_REFERENCE_ONLY",
       "limitations": [
         "No verified machine-readable trade ledger is supplied by this source.",
         "Anecdotal success cannot populate BenchmarkEvent records.",
         "Only independently tested quantitative rules may affect strategy selection."
-      ]
+      ],
+      "strategy_family": "practitioner_trend_discipline",
+      "market_regimes": [
+        "trend"
+      ],
+      "holding_horizon": "days to months",
+      "signal_inputs": [
+        "OHLCV",
+        "market breadth",
+        "volatility"
+      ],
+      "entry_exit_sizing": "Translate loss discipline and trend-following into explicit stop/exit hypotheses.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Anecdotal source, discretionary ambiguity, parameter mining.",
+      "evidence_grade": "C: qualitative practitioner reference.",
+      "test_protocol": "Test exact rules against simple trend/cash baselines; no performance inference from biography.",
+      "availability": "RESEARCH_ONLY"
     },
     {
       "id": "buy_and_hold_market_baseline",
@@ -120,13 +238,787 @@
       "original_scope": "Passive holding-period return of the same asset or broad-market proxy.",
       "rule_hypothesis": "Measure whether active strategies add net value over holding the same asset through the same dates.",
       "rocket_trader_adaptation": "Use as a mandatory benchmark for SPY/QQQ and as an asset-specific buy-and-hold comparator for crypto spot.",
-      "markets_to_test": ["us_equities_etfs", "crypto_spot"],
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
       "quantitative_reference": true,
       "status": "MANDATORY_BASELINE",
       "limitations": [
         "Use identical dates and include dividends/corporate actions where applicable.",
         "A risk-matched cash or volatility-matched baseline is also required when exposures differ."
-      ]
+      ],
+      "strategy_family": "passive_baseline",
+      "market_regimes": [
+        "all"
+      ],
+      "holding_horizon": "matched to candidate",
+      "signal_inputs": [
+        "total-return adjusted prices",
+        "dividends",
+        "corporate actions"
+      ],
+      "entry_exit_sizing": "Hold the same asset/universe over identical dates; compare net active return.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Benchmark mismatch, dividend omissions, exposure mismatch.",
+      "evidence_grade": "A: mandatory baseline.",
+      "test_protocol": "Same asset, dates, capital, currency, and total-return convention; include risk-matched cash.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "mean_reversion_rsi2",
+      "name": "Short-horizon RSI mean reversion",
+      "reference_type": "peer_reviewed_and_practitioner_indicator_research",
+      "authors": [
+        "J. Welles Wilder Jr."
+      ],
+      "organization": "New Concepts in Technical Trading Systems",
+      "published_at": "1978-01-01",
+      "source_url": "https://www.wiley.com/en-us/New+Concepts+in+Technical+Trading+Systems-p-9780894590276",
+      "original_scope": "RSI indicator reference; exact RSI(2) strategy is a separate Rocket Trader hypothesis.",
+      "rule_hypothesis": "Pre-register RSI(2)<10 entry with trend filter; exit by fixed horizon or RSI recovery; long-only/cash.",
+      "rocket_trader_adaptation": "Pre-register RSI(2)<10 entry with trend filter; exit by fixed horizon or RSI recovery; long-only/cash.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "RSI indicator is not proof of an edge.",
+        "Strong trends can keep RSI extreme; sparse trades and costs matter."
+      ],
+      "strategy_family": "mean_reversion_rsi",
+      "market_regimes": [
+        "range_bound",
+        "oversold_shock",
+        "low_trend_strength"
+      ],
+      "holding_horizon": "1-10 sessions",
+      "signal_inputs": [
+        "completed daily/intraday OHLCV",
+        "RSI(2)",
+        "200-day trend filter"
+      ],
+      "entry_exit_sizing": "Pre-register RSI(2)<10 entry with trend filter; exit by fixed horizon or RSI recovery; long-only/cash.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Catching falling knives, regime shifts, gap risk, low sample size, costs.",
+      "evidence_grade": "C: indicator/practitioner rule; specific adaptation unproven.",
+      "test_protocol": "Compare RSI threshold to unconditional and trend-filtered controls; next-open, nested walk-forward, Holm family.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "bollinger_band_reversion",
+      "name": "Bollinger-band mean reversion",
+      "reference_type": "peer_reviewed_technical_rule_study",
+      "authors": [
+        "C. Lento",
+        "N. Gradojevic",
+        "C. S. Wright"
+      ],
+      "organization": "Applied Financial Economics Letters",
+      "published_at": "2007-01-01",
+      "source_url": "https://doi.org/10.1080/17446540701206576",
+      "original_scope": "Study of Bollinger-band rules and transaction costs.",
+      "rule_hypothesis": "Test lower-band entry and middle-band exit as a fixed hypothesis; long-only.",
+      "rocket_trader_adaptation": "Test lower-band entry and middle-band exit as a fixed hypothesis; long-only.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Published study reports no consistent excess over buy-and-hold after costs for tested rules.",
+        "Band touches can signal trend continuation, not reversal."
+      ],
+      "strategy_family": "mean_reversion_bollinger",
+      "market_regimes": [
+        "range_bound",
+        "low_volatility",
+        "stable_spread"
+      ],
+      "holding_horizon": "1-20 sessions",
+      "signal_inputs": [
+        "OHLCV",
+        "20-period moving average",
+        "rolling standard deviation"
+      ],
+      "entry_exit_sizing": "Test lower-band entry and middle-band exit as a fixed hypothesis; long-only.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Trend persistence, volatility expansion, repeated entries, fees and slippage.",
+      "evidence_grade": "B: peer-reviewed rule study; outcome depends on market and period.",
+      "test_protocol": "Pre-register parameters; next-open; compare buy-and-hold/cash; report trades and net expectancy; multiple-test correction.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "pairs_statistical_arbitrage",
+      "name": "Cointegration / distance-based pairs trading",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Evan Gatev",
+        "William N. Goetzmann",
+        "K. Geert Rouwenhorst"
+      ],
+      "organization": "Review of Financial Studies",
+      "published_at": "2006-01-01",
+      "source_url": "https://doi.org/10.1093/rfs/hhj020",
+      "original_scope": "US equity pairs selected by historical distance; classic long-short relative-value strategy.",
+      "rule_hypothesis": "Research-only long/short spread: select pairs on train window, estimate hedge ratio, enter z-score divergence, exit convergence/stop/time stop. No live eligibility under current cash-only/no-short policy.",
+      "rocket_trader_adaptation": "Research-only long/short spread: select pairs on train window, estimate hedge ratio, enter z-score divergence, exit convergence/stop/time stop. No live eligibility under current cash-only/no-short policy.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Original strategy is long-short and depends on short availability/borrow.",
+        "Cointegration and economic relationships can break; structural breaks and corporate actions.",
+        "Pairs selection and universe survivorship can create bias."
+      ],
+      "strategy_family": "pairs_trading",
+      "market_regimes": [
+        "range_bound",
+        "relative_value_divergence",
+        "stable_correlation"
+      ],
+      "holding_horizon": "days to weeks",
+      "signal_inputs": [
+        "synchronized adjusted prices",
+        "point-in-time universe",
+        "borrow/short availability",
+        "spread and liquidity"
+      ],
+      "entry_exit_sizing": "Research-only long/short spread: select pairs on train window, estimate hedge ratio, enter z-score divergence, exit convergence/stop/time stop. No live eligibility under current cash-only/no-short policy.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Non-stationarity, legging risk, borrow costs, short restrictions, correlated news, parameter instability.",
+      "evidence_grade": "A: peer-reviewed strategy literature; target universe and execution unproven.",
+      "test_protocol": "Train/select/test chronologically; rolling cointegration stability; both legs executable; include borrow, fees, legging and gap risk; compare matched risk controls.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "pairs_reversal_momentum",
+      "name": "Pairs trading with short-term reversal and pairs momentum",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Huafeng Chen",
+        "Shaojun Chen",
+        "Zhuo Chen",
+        "Feng Li"
+      ],
+      "organization": "Management Science",
+      "published_at": "2017-09-25",
+      "source_url": "https://doi.org/10.1287/mnsc.2017.2825",
+      "original_scope": "Equity pairs results and decomposition into reversal and pairs momentum.",
+      "rule_hypothesis": "Decompose pair signal into reversal and industry/pairs momentum; only simulated until shorting and borrow data are supported.",
+      "rocket_trader_adaptation": "Decompose pair signal into reversal and industry/pairs momentum; only simulated until shorting and borrow data are supported.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Not a long-only strategy; cannot transfer published results directly.",
+        "Relative-value signals may be explained by industry momentum and short-term reversal."
+      ],
+      "strategy_family": "pairs_trading_decomposition",
+      "market_regimes": [
+        "relative_value",
+        "short_term_reversal"
+      ],
+      "holding_horizon": "days to weeks",
+      "signal_inputs": [
+        "synchronized returns",
+        "sector/industry mapping",
+        "spread",
+        "short borrow"
+      ],
+      "entry_exit_sizing": "Decompose pair signal into reversal and industry/pairs momentum; only simulated until shorting and borrow data are supported.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Leg risk, factor confounding, regime instability, borrow and transaction costs.",
+      "evidence_grade": "A: peer-reviewed study.",
+      "test_protocol": "Ablation tests; compare pair composite to each component and industry momentum; next-executable-bar OOS; costs and short constraints.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "volatility_managed_portfolio",
+      "name": "Volatility-managed exposure overlay",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Alan Moreira",
+        "Tyler Muir"
+      ],
+      "organization": "Journal of Finance",
+      "published_at": "2017-01-01",
+      "source_url": "https://doi.org/10.1111/jofi.12513",
+      "original_scope": "Volatility-managed portfolios across factor portfolios.",
+      "rule_hypothesis": "Scale a separately validated base strategy to a predeclared volatility target with hard caps and no leverage.",
+      "rocket_trader_adaptation": "Scale a separately validated base strategy to a predeclared volatility target with hard caps and no leverage.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Published factor results do not establish edge in Rocket Trader.",
+        "Volatility estimates lag and may rise after losses; scaling can amplify exposure if misimplemented."
+      ],
+      "strategy_family": "risk_overlay_volatility_target",
+      "market_regimes": [
+        "all"
+      ],
+      "holding_horizon": "daily to monthly rebalance",
+      "signal_inputs": [
+        "realized volatility",
+        "EWMA volatility",
+        "portfolio covariance"
+      ],
+      "entry_exit_sizing": "Scale a separately validated base strategy to a predeclared volatility target with hard caps and no leverage.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Volatility clustering, estimator lag, leverage creep, turnover, correlation spikes.",
+      "evidence_grade": "A: peer-reviewed overlay evidence; transfer unproven.",
+      "test_protocol": "Hold base signals fixed; compare unscaled vs scaled same dates; cap exposure; stress volatility spikes and costs.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "calendar_seasonality",
+      "name": "Calendar seasonality and turn-of-month effects",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Michael S. Rozeff",
+        "William R. Kinney Jr."
+      ],
+      "organization": "Journal of Financial Economics",
+      "published_at": "1976-01-01",
+      "source_url": "https://doi.org/10.1016/0304-405X(76)90009-7",
+      "original_scope": "Historical January seasonality in equity returns.",
+      "rule_hypothesis": "Pre-register a small number of calendar windows (turn-of-month, month-end, weekday) with no post-hoc date mining.",
+      "rocket_trader_adaptation": "Pre-register a small number of calendar windows (turn-of-month, month-end, weekday) with no post-hoc date mining.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Historical seasonality may decay and can be explained by changing market structure.",
+        "Multiple calendar slices create severe data-snooping risk."
+      ],
+      "strategy_family": "calendar_seasonality",
+      "market_regimes": [
+        "calendar_specific"
+      ],
+      "holding_horizon": "1-20 sessions",
+      "signal_inputs": [
+        "timestamped daily OHLCV",
+        "exchange calendar",
+        "dividend/corporate action calendar"
+      ],
+      "entry_exit_sizing": "Pre-register a small number of calendar windows (turn-of-month, month-end, weekday) with no post-hoc date mining.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Data snooping, changing tax/market structure, small effective sample, costs.",
+      "evidence_grade": "B: historical academic effect; modern persistence uncertain.",
+      "test_protocol": "Use many independent years, placebo dates, block bootstrap, Holm correction, prospective test.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "post_earnings_announcement_drift",
+      "name": "Post-earnings announcement drift",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Victor L. Bernard",
+        "Jacob K. Thomas"
+      ],
+      "organization": "Journal of Accounting and Economics",
+      "published_at": "1989-01-01",
+      "source_url": "https://doi.org/10.1016/0165-4101(89)90021-2",
+      "original_scope": "Drift after earnings surprises in equities.",
+      "rule_hypothesis": "Only use information available at event time; trade next executable session after a predeclared surprise threshold.",
+      "rocket_trader_adaptation": "Only use information available at event time; trade next executable session after a predeclared surprise threshold.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Requires point-in-time earnings and analyst expectations; not available in current baseline data.",
+        "Publication timestamps, after-hours gaps, revisions and survivorship matter."
+      ],
+      "strategy_family": "event_drift_earnings",
+      "market_regimes": [
+        "earnings_event",
+        "post_event_drift"
+      ],
+      "holding_horizon": "1-60 sessions",
+      "signal_inputs": [
+        "earnings timestamp",
+        "point-in-time consensus",
+        "surprise",
+        "adjusted OHLCV"
+      ],
+      "entry_exit_sizing": "Only use information available at event time; trade next executable session after a predeclared surprise threshold.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Look-ahead in estimates, gap risk, event leakage, data licensing, concentration.",
+      "evidence_grade": "A: established academic anomaly; implementation data absent.",
+      "test_protocol": "Point-in-time event study; after-hours/next-open execution; matched controls; event clustering; costs; OOS.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "value_factor",
+      "name": "Value factor / valuation spread",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Eugene F. Fama",
+        "Kenneth R. French"
+      ],
+      "organization": "Journal of Finance",
+      "published_at": "1992-01-01",
+      "source_url": "https://doi.org/10.1111/j.1540-6261.1992.tb04398.x",
+      "original_scope": "Cross-sectional relation between book-to-market and returns in US equities.",
+      "rule_hypothesis": "Long-only value-ranked basket with point-in-time fundamentals and conservative rebalancing.",
+      "rocket_trader_adaptation": "Long-only value-ranked basket with point-in-time fundamentals and conservative rebalancing.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Slow horizon; accounting and delisting data needed.",
+        "Long periods of underperformance and value traps; point-in-time data required."
+      ],
+      "strategy_family": "fundamental_value",
+      "market_regimes": [
+        "long_horizon",
+        "valuation_dispersion"
+      ],
+      "holding_horizon": "months to years",
+      "signal_inputs": [
+        "point-in-time financial statements",
+        "market cap",
+        "book equity",
+        "delistings"
+      ],
+      "entry_exit_sizing": "Long-only value-ranked basket with point-in-time fundamentals and conservative rebalancing.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Stale data, restatements, survivorship, sector bias, value traps.",
+      "evidence_grade": "A: peer-reviewed factor evidence; no target-specific proof.",
+      "test_protocol": "Point-in-time universe and accounting lags; factor-neutral and benchmark comparisons; realistic rebalance costs.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "profitability_quality_factor",
+      "name": "Profitability / quality factor",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Robert Novy-Marx"
+      ],
+      "organization": "Journal of Financial Economics",
+      "published_at": "2013-01-01",
+      "source_url": "https://doi.org/10.1016/j.jfineco.2013.01.003",
+      "original_scope": "Gross profitability and cross-sectional stock returns.",
+      "rule_hypothesis": "Long-only quality/profitability ranking with delayed accounting availability and capped concentration.",
+      "rocket_trader_adaptation": "Long-only quality/profitability ranking with delayed accounting availability and capped concentration.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Fundamental feed and historical point-in-time accounting unavailable in current pipeline.",
+        "Factor exposures and sector composition may explain results."
+      ],
+      "strategy_family": "fundamental_quality",
+      "market_regimes": [
+        "long_horizon",
+        "quality_dispersion"
+      ],
+      "holding_horizon": "months to years",
+      "signal_inputs": [
+        "point-in-time gross profits",
+        "assets",
+        "cash flow",
+        "delistings"
+      ],
+      "entry_exit_sizing": "Long-only quality/profitability ranking with delayed accounting availability and capped concentration.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Accounting restatements, sector effects, stale reports, crowding.",
+      "evidence_grade": "A: peer-reviewed factor evidence; implementation unvalidated.",
+      "test_protocol": "Point-in-time accounting, factor attribution, delisting returns, cost stress, rolling OOS.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "low_volatility_defensive",
+      "name": "Low-volatility / defensive equity selection",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Andrea Frazzini",
+        "Lasse H. Pedersen"
+      ],
+      "organization": "Journal of Financial Economics",
+      "published_at": "2014-01-01",
+      "source_url": "https://doi.org/10.1016/j.jfineco.2013.10.005",
+      "original_scope": "Betting-against-beta and leverage constraints.",
+      "rule_hypothesis": "Long-only low-beta/low-volatility ranking or defensive ETF rotation; no leverage or short leg.",
+      "rocket_trader_adaptation": "Long-only low-beta/low-volatility ranking or defensive ETF rotation; no leverage or short leg.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Original BAB uses long-short and leverage; adaptation must be long-only.",
+        "Sector concentration, rate sensitivity and crowded defensive trades."
+      ],
+      "strategy_family": "low_volatility_defensive",
+      "market_regimes": [
+        "risk_off",
+        "high_volatility",
+        "defensive_rotation"
+      ],
+      "holding_horizon": "1-12 months",
+      "signal_inputs": [
+        "point-in-time returns",
+        "beta",
+        "volatility",
+        "liquidity"
+      ],
+      "entry_exit_sizing": "Long-only low-beta/low-volatility ranking or defensive ETF rotation; no leverage or short leg.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Low-volatility traps, sector concentration, regime reversals, estimation error.",
+      "evidence_grade": "A: peer-reviewed factor literature; adaptation unproven.",
+      "test_protocol": "Compare risk-matched benchmark, beta/sector controls, next-open and turnover/cost stress.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "52_week_high_momentum",
+      "name": "52-week high / anchor momentum",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Jiehong George",
+        "Charles Hwang"
+      ],
+      "organization": "Journal of Finance",
+      "published_at": "2004-01-01",
+      "source_url": "https://doi.org/10.1111/j.1540-6261.2004.00695.x",
+      "original_scope": "52-week high as a reference point for cross-sectional momentum.",
+      "rule_hypothesis": "Rank distance to 52-week high; test incremental value beyond standard momentum only.",
+      "rocket_trader_adaptation": "Rank distance to 52-week high; test incremental value beyond standard momentum only.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "May overlap with ordinary momentum; no independent alpha assumed.",
+        "Requires point-in-time universe and adjusted high data."
+      ],
+      "strategy_family": "52_week_high_momentum",
+      "market_regimes": [
+        "trend",
+        "relative_strength"
+      ],
+      "holding_horizon": "1-6 months",
+      "signal_inputs": [
+        "point-in-time 52-week high",
+        "adjusted OHLCV",
+        "universe"
+      ],
+      "entry_exit_sizing": "Rank distance to 52-week high; test incremental value beyond standard momentum only.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Factor redundancy, survivorship, price adjustment errors, crowded signals.",
+      "evidence_grade": "A: peer-reviewed anomaly research.",
+      "test_protocol": "Nested OOS comparison with momentum baseline; feature ablation; costs; multiple testing.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "intraday_reversal",
+      "name": "Intraday cross-sectional reversal",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Steven L. Heston",
+        "Robert A. Korajczyk",
+        "Ronald F. Sadka"
+      ],
+      "organization": "Journal of Finance",
+      "published_at": "2010-01-01",
+      "source_url": "https://doi.org/10.1111/j.1540-6261.2010.01573.x",
+      "original_scope": "Intraday patterns in cross-sectional stock returns.",
+      "rule_hypothesis": "Test only with sufficiently granular point-in-time data; signal close to executable quotes and next event.",
+      "rocket_trader_adaptation": "Test only with sufficiently granular point-in-time data; signal close to executable quotes and next event.",
+      "markets_to_test": [
+        "us_equities_etfs"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Current IEX/daily research history is insufficient for robust intraday replication.",
+        "Spread, auction, microstructure noise and execution latency dominate."
+      ],
+      "strategy_family": "intraday_reversal",
+      "market_regimes": [
+        "intraday_liquidity",
+        "short_horizon_reversal"
+      ],
+      "holding_horizon": "minutes to one session",
+      "signal_inputs": [
+        "timestamped intraday trades/quotes",
+        "NBBO-quality spread",
+        "auction data"
+      ],
+      "entry_exit_sizing": "Test only with sufficiently granular point-in-time data; signal close to executable quotes and next event.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Microstructure noise, spread, latency, adverse selection, IEX representativeness.",
+      "evidence_grade": "B: academic intraday evidence; data currently insufficient.",
+      "test_protocol": "Use quote/trade bars, realistic execution simulator, out-of-sample days, no same-bar fills, compare VWAP and passive controls.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "opening_range_breakout",
+      "name": "Opening-range breakout",
+      "reference_type": "practitioner_rule_family",
+      "authors": "Donchian / Turtle-style breakout practitioners",
+      "organization": "Practitioner technical trading literature",
+      "published_at": null,
+      "source_url": "https://www.cmegroup.com/education/courses/trade-and-risk-management.html",
+      "original_scope": "Opening-range and channel breakouts are common rule families; exact parameters vary.",
+      "rule_hypothesis": "Pre-register opening range definition and breakout trigger; next executable quote, hard time exit; long-only.",
+      "rocket_trader_adaptation": "Pre-register opening range definition and breakout trigger; next executable quote, hard time exit; long-only.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Opening auctions and overnight gaps create execution risk.",
+        "Popular parameters are vulnerable to data snooping and spread costs."
+      ],
+      "strategy_family": "breakout_opening_range",
+      "market_regimes": [
+        "opening_volatility",
+        "trend_day"
+      ],
+      "holding_horizon": "intraday",
+      "signal_inputs": [
+        "intraday OHLCV",
+        "opening auction",
+        "spread",
+        "exchange calendar"
+      ],
+      "entry_exit_sizing": "Pre-register opening range definition and breakout trigger; next executable quote, hard time exit; long-only.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "False breaks, gap slippage, volatility expansion, time-of-day effects.",
+      "evidence_grade": "C: practitioner family; specific rule requires independent test.",
+      "test_protocol": "Use intraday data with auction coverage; day-level chronological OOS; placebo windows; costs and missed fills.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "sentiment_news_event",
+      "name": "News sentiment / information diffusion",
+      "reference_type": "peer_reviewed_academic_research",
+      "authors": [
+        "Paul C. Tetlock"
+      ],
+      "organization": "Journal of Finance",
+      "published_at": "2007-01-01",
+      "source_url": "https://doi.org/10.1111/j.1540-6261.2007.01232.x",
+      "original_scope": "Media pessimism and stock market activity/returns.",
+      "rule_hypothesis": "Use event classification/sentiment only as a candidate feature or risk overlay; raw LLM output cannot trade.",
+      "rocket_trader_adaptation": "Use event classification/sentiment only as a candidate feature or risk overlay; raw LLM output cannot trade.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Modern NLP/social feeds differ from historical newspaper data.",
+        "Timestamp, syndication, bot/manipulation and source independence risks."
+      ],
+      "strategy_family": "event_sentiment_overlay",
+      "market_regimes": [
+        "macro_event",
+        "geopolitical_shock",
+        "issuer_event",
+        "sentiment_extreme"
+      ],
+      "holding_horizon": "minutes to weeks, event-specific",
+      "signal_inputs": [
+        "original article timestamp",
+        "first-seen timestamp",
+        "publisher",
+        "source-group",
+        "asset mapping",
+        "market data"
+      ],
+      "entry_exit_sizing": "Use event classification/sentiment only as a candidate feature or risk overlay; raw LLM output cannot trade.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Look-ahead, source duplication, manipulation, semantic drift, low incremental value.",
+      "evidence_grade": "B: peer-reviewed media-sentiment evidence; modern feed transfer unproven.",
+      "test_protocol": "Point-in-time event study; deduplicate; placebo timestamps; structured event/price baseline; incremental OOS after costs.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "risk_parity_allocation",
+      "name": "Risk parity / equal risk contribution allocation",
+      "reference_type": "institutional_portfolio_methodology",
+      "authors": "Various institutional researchers",
+      "organization": "Portfolio construction methodology",
+      "published_at": null,
+      "source_url": "https://www.bridgewater.com/research-and-insights",
+      "original_scope": "Allocate portfolio risk across assets rather than equal dollars.",
+      "rule_hypothesis": "Compare equal-weight, inverse-volatility and equal-risk-contribution with long-only capped weights.",
+      "rocket_trader_adaptation": "Compare equal-weight, inverse-volatility and equal-risk-contribution with long-only capped weights.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Risk parity can become bond/low-volatility concentrated.",
+        "Covariance estimates unstable; leverage is excluded."
+      ],
+      "strategy_family": "portfolio_risk_allocation",
+      "market_regimes": [
+        "multi_asset",
+        "correlation_dispersion"
+      ],
+      "holding_horizon": "monthly to quarterly",
+      "signal_inputs": [
+        "point-in-time covariance",
+        "volatility",
+        "liquidity",
+        "asset constraints"
+      ],
+      "entry_exit_sizing": "Compare equal-weight, inverse-volatility and equal-risk-contribution with long-only capped weights.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Correlation spikes, covariance lag, concentration, turnover, no leverage.",
+      "evidence_grade": "B: established portfolio construction methodology; no alpha claim.",
+      "test_protocol": "Same strategy signals, compare allocation only; risk-matched benchmarks; covariance stress; cost and concentration tests.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "machine_learning_meta_label",
+      "name": "Machine learning / meta-labeling",
+      "reference_type": "research_methodology",
+      "authors": "Marcos López de Prado; Campbell Harvey et al.",
+      "organization": "Advances in Financial Machine Learning / Research on factor proliferation",
+      "published_at": "2018-01-01",
+      "source_url": "https://www.cambridge.org/core/books/advances-in-financial-machine-learning/",
+      "original_scope": "ML can model nonlinear interactions but increases overfitting and leakage risk.",
+      "rule_hypothesis": "Use only as a meta-filter on independently validated baseline signals; never start with unconstrained black-box search.",
+      "rocket_trader_adaptation": "Use only as a meta-filter on independently validated baseline signals; never start with unconstrained black-box search.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "Requires larger clean point-in-time datasets and nested validation.",
+        "Feature leakage, regime drift, hyperparameter search and low effective sample."
+      ],
+      "strategy_family": "machine_learning_meta_label",
+      "market_regimes": [
+        "only_after_baselines"
+      ],
+      "holding_horizon": "depends on target",
+      "signal_inputs": [
+        "point-in-time features",
+        "labels",
+        "purged timestamps",
+        "embargo"
+      ],
+      "entry_exit_sizing": "Use only as a meta-filter on independently validated baseline signals; never start with unconstrained black-box search.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Leakage, overfit, nonstationarity, label overlap, multiple testing.",
+      "evidence_grade": "C: methodological reference, not evidence of alpha.",
+      "test_protocol": "Nested purged walk-forward, embargo, pre-registration, feature ablation, calibrated probabilities, untouched final holdout; benchmark simple model.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "vwap_execution_benchmark",
+      "name": "VWAP/TWAP execution benchmark (not alpha)",
+      "reference_type": "market_execution_methodology",
+      "authors": [
+        "Institutional execution literature"
+      ],
+      "organization": "Execution benchmark family",
+      "published_at": null,
+      "source_url": "https://www.sec.gov/marketstructure",
+      "original_scope": "Execution scheduling benchmark, not directional prediction.",
+      "rule_hypothesis": "Evaluate implementation shortfall against VWAP/TWAP and arrival price; do not create directional signals.",
+      "rocket_trader_adaptation": "Evaluate implementation shortfall against VWAP/TWAP and arrival price; do not create directional signals.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": false,
+      "status": "QUALITATIVE_REFERENCE_ONLY",
+      "limitations": [
+        "Needs reliable intraday volume/quote data.",
+        "VWAP benchmark is not proof of alpha and may be gamed by participation assumptions."
+      ],
+      "strategy_family": "execution_only",
+      "market_regimes": [
+        "all"
+      ],
+      "holding_horizon": "intraday execution",
+      "signal_inputs": [
+        "intraday volume",
+        "quotes",
+        "spread",
+        "order size"
+      ],
+      "entry_exit_sizing": "Evaluate implementation shortfall against VWAP/TWAP and arrival price; do not create directional signals.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Market impact, adverse selection, volume forecast error, latency.",
+      "evidence_grade": "C: execution reference only.",
+      "test_protocol": "Paper fill analysis with actual quotes; no alpha claim; compare arrival-price shortfall and participation.",
+      "availability": "RESEARCH_ONLY"
+    },
+    {
+      "id": "reinforcement_learning",
+      "name": "Reinforcement learning policy research",
+      "reference_type": "research_methodology",
+      "authors": "Academic RL literature",
+      "organization": "Research-only frontier",
+      "published_at": null,
+      "source_url": "https://arxiv.org/abs/1911.00667",
+      "original_scope": "Sequential decision learning under uncertain state and reward.",
+      "rule_hypothesis": "Shadow-only after validated simple strategies; constrained action space and explicit cash action.",
+      "rocket_trader_adaptation": "Shadow-only after validated simple strategies; constrained action space and explicit cash action.",
+      "markets_to_test": [
+        "us_equities_etfs",
+        "crypto_spot"
+      ],
+      "quantitative_reference": true,
+      "status": "RESEARCH_ONLY",
+      "limitations": [
+        "No-go until baselines, environment realism and data quality are established.",
+        "Reward hacking, simulator overfit, nonstationarity and poor reproducibility."
+      ],
+      "strategy_family": "reinforcement_learning",
+      "market_regimes": [
+        "only_after_baselines"
+      ],
+      "holding_horizon": "depends on policy",
+      "signal_inputs": [
+        "point-in-time states",
+        "realistic fills",
+        "transaction costs",
+        "robust environment"
+      ],
+      "entry_exit_sizing": "Shadow-only after validated simple strategies; constrained action space and explicit cash action.",
+      "execution_assumptions": "Signal computed only from completed data; orders at next executable bar/open; include spread, fees, slippage, latency, partial fills, rejects, corporate actions and cash constraints. No look-ahead.",
+      "failure_modes": "Simulator exploitation, distribution shift, hidden look-ahead, unstable training.",
+      "evidence_grade": "D: exploratory method only.",
+      "test_protocol": "Do not promote without multiple market environments, walk-forward, independent seeds, stress tests, and Paper comparison.",
+      "availability": "RESEARCH_ONLY"
     }
-  ]
+  ],
+  "registry_version": "0.2.0",
+  "last_reviewed": "2026-11-10",
+  "coverage_note": "Practical strategy taxonomy, not an exhaustive list of every strategy ever proposed. New entries are hypotheses or references, not approvals. Availability constraints are explicit."
 }
