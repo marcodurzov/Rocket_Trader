@@ -515,3 +515,15 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - No Tiingo token, subscription, strategy approval, Paper approval or orders.
 
 **Next:** compare these events with official issuer distribution amounts and prior raw closes, then inspect remaining adjustment-factor and raw-return outlier dates. Do not choose a source or splice history until the data lineage is reconciled.
+
+
+### PR #124 — event-level cash distribution evidence
+- Merge commit: `ca0450287284af014e68bd5e31d05e641b8d110d`.
+- Yahoo raw/adjusted fetch now preserves `Dividends` and `Stock Splits` action fields.
+- Each top adjustment-factor step includes prior Yahoo/Alpaca raw closes, Yahoo cash distribution and split ratio on the event date, and an approximate cash adjustment scale in bps (distribution / previous Yahoo raw close × 10,000).
+- This allows comparison of observed factor changes with the issuer's distribution amount. It is diagnostic only; it does not adjust prices or attribute fault.
+- PR CI `42956965526`: compile and all 12 cross-check tests passed; live data step skipped on pull_request by design. The first test run failed only because the assertion precision was tighter than the report's four-decimal rounding; this was corrected and the rerun passed.
+- Post-merge live audit has not yet appeared at this handoff update; inspect the next main push run before recording issuer action comparison.
+- No Tiingo token, subscription, strategy approval, Paper approval or orders.
+
+**Progress remains 46%.** This improves audit evidence; no strategy edge or live operational evidence is added.
