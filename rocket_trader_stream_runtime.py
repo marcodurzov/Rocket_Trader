@@ -471,6 +471,40 @@ class AlpacaPaperObserverRuntime:
                 raise RuntimeStorageError(
                     "Activity stager must remain read-only with ledger posting disabled."
                 )
+            staged_fill_count = sum(
+                int(count) for key, count in report.get("counts", {}).items()
+                if str(key).startswith("FILL:") and int(count) > 0
+            )
+            if staged_fill_count:
+                if self.fill_ledger_bridge is None:
+                    trade_reconciliation = {
+                        "status": "MISSING_FILL_LEDGER_BRIDGE",
+                        "healthy": False,
+                        "staged_fill_activities": staged_fill_count,
+                        "missing_inbox_fills": staged_fill_count,
+                        "ledger_posting_enabled": False,
+                        "orders_enabled": False,
+                    }
+                else:
+                    from rocket_trader_paper_activity_reconciliation import (
+                        reconcile_staged_fill_activities,
+                    )
+                    trade_reconciliation = reconcile_staged_fill_activities(
+                        self.activity_stager.db_path,
+                        self.fill_ledger_bridge.db_path,
+                    )
+                report["trade_fill_reconciliation"] = trade_reconciliation
+                if not trade_reconciliation.get("healthy", False):
+                    self.recorder.heartbeat(
+                        "account_activity", "ERROR",
+                        last_event_at=_utc_now(),
+                        last_error=(
+                            "Broker FILL activities do not fully reconcile to the "
+                            "fee/FX-aware ledger inbox: "
+                            + str(trade_reconciliation.get("status"))
+                        ),
+                    )
+                    return report
             blocked = report.get("blocked_activity_types", [])
             pending_capital = {
                 key: count for key, count in report.get("counts", {}).items()
