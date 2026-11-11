@@ -191,11 +191,18 @@ def main() -> int:
         )
         report["fees"] = fee_result["fee_activities"]
         report["fee_activity_count"] = fee_result["fee_activity_count"]
-        report["fee_evidence_status"] = (
-            "UNALLOCATED_CANDIDATES"
-            if fee_result["fee_activity_count"]
-            else "NO_RECORDS_FEES_UNKNOWN"
-        )
+        report["other_symbol_fee_activity_count"] = fee_result["other_symbol_activity_count"]
+        report["unclassified_fee_activity_count"] = fee_result["unclassified_activity_count"]
+        report["incomplete_fee_activity_count"] = fee_result["incomplete_activity_count"]
+        report["unclassified_fee_activities"] = fee_result["unclassified_fee_activities"]
+        if fee_result["fee_activity_count"]:
+            report["fee_evidence_status"] = "UNALLOCATED_CANDIDATES"
+        elif fee_result["unclassified_activity_count"] or fee_result["incomplete_activity_count"]:
+            report["fee_evidence_status"] = "UNCLASSIFIED_OR_INCOMPLETE_RECORDS"
+        elif fee_result["other_symbol_activity_count"]:
+            report["fee_evidence_status"] = "OTHER_SYMBOL_RECORDS_ONLY_FEES_UNKNOWN"
+        else:
+            report["fee_evidence_status"] = "NO_RECORDS_FEES_UNKNOWN"
         report["symbol"] = symbol
         report["order_count"] = len(orders)
         report["matched_order_count"] = matched
