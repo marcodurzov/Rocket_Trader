@@ -457,6 +457,13 @@ def research(
 
 
 def self_test() -> Dict[str, Any]:
+    assert require_zero_budget_feed("IEX") == "IEX"
+    try:
+        require_zero_budget_feed("SIP")
+    except EquityResearchError:
+        pass
+    else:
+        raise AssertionError("SIP must be blocked by the zero-budget guard")
     rng = np.random.default_rng(20261109)
     n = 1500
     dates = pd.bdate_range("2020-01-01", periods=n, tz="UTC")
