@@ -1079,3 +1079,17 @@ Next actions:
 - This healthcheck validates local DB integrity, not upstream API connectivity. Connection failures are logged as `RECONNECTING`; operators must inspect container logs.
 
 **Progress estimate:** 56% (engineering/evidence maturity only). The persistent service is implemented, packaged and CI-validated but has not been deployed on a user-controlled host or tested through a real process/container restart against a persistent volume.
+
+
+## 2026-11-11 — User confirms no known persistent deployment host; zero-budget policy
+
+- User confirms the only known platform in use is GitHub for source/workflows and Alpaca for brokerage/API and the USD 100,000 simulated Paper account. User does not know of, and has not identified, any VPS, cloud host or persistent deployment platform.
+- **Operational conclusion:** no persistent host is currently evidenced. Treat Rocket Trader as a GitHub-hosted repository with GitHub Actions workflows and Alpaca Paper integration, not as a deployed always-on trading service. GitHub Actions runners are ephemeral and must not be represented as a persistent production host.
+- Clarification: Alpaca is the broker/API and Paper trading environment; it is not the compute host for Rocket Trader's long-running processes. A persistent runtime may be needed later for continuous collection/recovery/execution, but it is not a prerequisite for continuing offline research, CI, bounded Paper audits or other workflows that fit GitHub Actions limits.
+- **New governing budget rule, explicitly confirmed by user:** target **USD 0** recurring and setup cost wherever technically and operationally viable. Prefer free tiers and existing GitHub/Alpaca capabilities. If no free option meets reliability, security, persistence, runtime and usage requirements, choose the lowest-cost viable option and present the exact cost, limitations and free alternatives before any commitment. No paid hosting, data subscription, API plan, domain, or other service may be activated without explicit user approval. Do not assume a free tier is suitable without checking its current limits and terms.
+- No new broker account, provider account, paid service or deployment host is authorized merely by the general development authorization. Research and recommend options first; ask before creating accounts, accepting paid terms or incurring charges.
+- User reiterates full authorization to continue Rocket Trader development and Alpaca Paper testing. Existing safety boundary remains: Paper only; no LIVE trading or real-money orders; no leverage, margin, shorting, options or account-policy changes. Existing smoke-order cap and workflow controls remain unchanged.
+- **Immediate next step:** inventory current GitHub Actions workflows, Docker/GHCR publication, Compose requirements and Alpaca Paper integration to determine which parts can remain on free GitHub Actions and which genuinely require an always-on host. Compare zero-cost options (including self-hosting on hardware the user already owns, if available) before proposing paid infrastructure. Do not ask the user to buy a server at this stage.
+- No deployment was performed and no new broker order was submitted as part of this clarification.
+
+**Progress estimate:** remains **56%** (engineering/evidence maturity, not profitability). The user's deployment uncertainty is now resolved as a documented absence of a known host; it does not itself increase implementation or validation maturity.
