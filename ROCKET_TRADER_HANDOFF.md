@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#143 merged; append-only execution evidence ledger and expanded crypto lifecycle tests)  
+**Last updated:** 2026-11-11 (PRs #141–#143 and #145 merged; adapter now writes and verifies append-only order evidence)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `d9332710721b2e7655cdd8199bf43a5952e5b723` (PR #143 merged; runtime strategy code baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
-**Current progress estimate:** **49%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Latest main HEAD before this Handoff refresh:** `d8ff9e49e3e360567ae14acdacf617eedc7c6e11` (PR #145 merged; runtime strategy code baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Current progress estimate:** **50%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **49%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 46% profitable, nor does it mean a 46% probability of success.
+Current estimate: **50%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 46% profitable, nor does it mean a 46% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
@@ -860,7 +860,27 @@ Next actions:
 
 ### Current engineering status and next steps
 - Progress estimate moves from 48% to **49%** for the merged event-ledger capability and verified offline lifecycle coverage. This is engineering/evidence maturity only.
-- The append-only event ledger remains separate from the mutable order journal. Next implementation milestone is a carefully tested integration that records PREPARED, submission, broker updates, fills, cancel/fill races, fees and reconciliation without allowing a ledger-write failure to cause an unsafe duplicate order.
+- PR #145 has now integrated the append-only event ledger into the Paper crypto adapter. The adapter writes deterministic `ORDER_PREPARED`, `BROKER_ORDER_DISCOVERED` and `ORDER_STATE_OBSERVED` events; verifies the hash chain on startup; and fails closed if the ledger is unavailable or corrupt. A write-ahead event is recorded before any broker submission. The mutable order journal is persisted before broker-state events; if the latter write fails after broker acceptance, retry reconciles the broker order instead of resubmitting.
 - Alpaca's current public documentation distinguishes order snapshots from account activity evidence: trade activities can contain individual fill records, while crypto fee activity is a separate activity type; the newer Activity SSE includes execution details such as commission. Do not infer fees from gross/net quantity deltas alone. Source documentation: https://docs.alpaca.markets/us/docs/activity-sse and https://docs.alpaca.markets/us/docs/account-activities.
 - Before implementing fee recovery, verify the exact supported Paper API endpoint and SDK access path, pagination, activity identifiers, fee currency/amount and delayed-posting behavior. Missing activity or fee evidence must remain UNKNOWN, not zero.
 - Next sequence: (1) integrate the append-only event ledger with the adapter using write-ahead/unknown-state semantics; (2) add broker activity/fee reconciliation and idempotent fill ingestion; (3) add partial-exit remainder recovery with strict ownership checks; (4) prove restart recovery on a deterministic fake broker; (5) only then consider a separate, explicitly gated Paper operational test. Keep order cap USD 10 and Live disabled.
+
+
+### PR #145 — append-only order evidence integrated into Paper crypto adapter
+- Merged to main: `d8ff9e49e3e360567ae14acdacf617eedc7c6e11`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/145
+- Adapter now creates a separate event database by default at `<order-journal-path>.events.sqlite3`; override with constructor `event_ledger_path` or `ROCKET_TRADER_EXECUTION_EVENT_LEDGER_DB`.
+- Startup verifies the full event hash chain and blocks adapter initialization if the ledger is corrupt or unavailable.
+- Before a new order, writes deterministic `ORDER_PREPARED` evidence. If that write fails, no mutable journal row is inserted and no broker order is submitted.
+- After broker responses, persists mutable order state then appends deterministic `ORDER_STATE_OBSERVED` events. A failure in the latter step leaves the mutable journal as the no-resubmit guard; a retry must query the broker and reconcile rather than place a second order.
+- `order_events(client_order_id)` exposes the local immutable event history.
+- PR CI run `43013593248`: success; 30 offline adapter tests passed. Post-merge run `43013673531` was queued/in progress when this note was written; update after conclusion.
+- No Paper/Live orders or account changes were made by this PR.
+- Limits: this records order intent and broker order snapshots, not individual account-activity fills/crypto fees/corrections. It does not yet implement automatic partial-exit remainder recovery. Both SQLite files must reside on persistent storage. Hash chaining is not a signed external audit anchor.
+
+**Next implementation sequence**
+1. Build an authoritative Paper activity/fill reader using a verified supported API path; preserve activity IDs, order IDs, execution IDs, event timestamps, per-fill quantity/price, commission/crypto-fee amount and currency, corrections/busts, and pagination cursors.
+2. Ingest each fill/fee as its own idempotent append-only event. Do not estimate fees from gross/net quantity differences; delayed or missing fee records remain UNKNOWN until reconciled.
+3. Reconstruct cumulative order execution from individual fills and reconcile against broker order snapshots and current positions.
+4. Implement safe partial-exit remainder recovery with broker-owned quantity checks, open-order reservations and fill/cancel race handling.
+5. Test process restart at every state boundary with deterministic broker fakes before any further Paper smoke.
