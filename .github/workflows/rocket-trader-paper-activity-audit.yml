@@ -7,6 +7,8 @@ on:
     paths:
       - "alpaca_paper_activity_reconciliation_audit.py"
       - "alpaca_paper_activity_reconciliation_audit_test.py"
+      - "alpaca_paper_activity_sse_probe_test.py"
+      - "alpaca_paper_activity_sse_probe.py"
       - ".github/workflows/rocket-trader-paper-activity-audit.yml"
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_execution_event_ledger.py"
@@ -16,6 +18,8 @@ on:
     paths:
       - "alpaca_paper_activity_reconciliation_audit.py"
       - "alpaca_paper_activity_reconciliation_audit_test.py"
+      - "alpaca_paper_activity_sse_probe.py"
+      - "alpaca_paper_activity_sse_probe_test.py"
       - ".github/workflows/rocket-trader-paper-activity-audit.yml"
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_execution_event_ledger.py"
@@ -66,8 +70,8 @@ jobs:
         run: pip install "alpaca-py>=0.43,<1.0"
       - name: Compile and run offline activity tests
         run: |
-          python -m py_compile alpaca_paper_activity_reconciliation_audit.py
-          python -m unittest -v alpaca_paper_activity_reconciliation_audit_test.py rocket_trader_alpaca_activity_reconciliation_test.py
+          python -m py_compile alpaca_paper_activity_reconciliation_audit.py alpaca_paper_activity_sse_probe.py
+          python -m unittest -v alpaca_paper_activity_reconciliation_audit_test.py alpaca_paper_activity_sse_probe_test.py rocket_trader_alpaca_activity_reconciliation_test.py
 
   paper-activity-audit:
     if: github.event_name == 'workflow_dispatch'
@@ -85,6 +89,8 @@ jobs:
       AUDIT_FEES_UNTIL: ${{ inputs.fees_until }}
       ROCKET_TRADER_ACTIVITY_REPORT: paper-activity-report.json
       ROCKET_TRADER_ACTIVITY_AUDIT_DB: paper-activity-evidence.sqlite3
+      ACTIVITY_SSE_SINCE: ${{ inputs.orders_after }}
+      ACTIVITY_SSE_REPORT: paper-activity-sse-probe.json
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,6 +102,9 @@ jobs:
         run: pip install "alpaca-py>=0.43,<1.0"
       - name: Read-only Paper order, fill and fee activity reconciliation
         run: python alpaca_paper_activity_reconciliation_audit.py
+      - name: Read-only Paper Activity SSE compatibility probe
+        if: always()
+        run: python alpaca_paper_activity_sse_probe.py
       - name: Preserve read-only audit evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -104,5 +113,6 @@ jobs:
           path: |
             paper-activity-report.json
             paper-activity-evidence.sqlite3
+            paper-activity-sse-probe.json
           if-no-files-found: ignore
           retention-days: 14
