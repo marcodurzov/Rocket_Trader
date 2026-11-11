@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `6ac4caa90de52ad1d1faefedbe301997b2360480`  
+**Latest audited code baseline SHA:** `60059a41379b274ae16a8b20426bbcf96178ae7`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -439,3 +439,21 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - Runtime suite `42955454994` passed all modules. CI does not establish actual Paper host operation.
 
 **Immediate next action:** extend the audit to capture the raw/unadjusted close, adjusted close and per-session adjustment factor around each flagged date; add a separate corporate-action/event comparison when provider APIs expose records. Do not normalize away discrepancies or change research source until reconciled.
+
+
+### PR #115 — raw-price vs adjustment-factor reconciliation
+- Merge commit: `60059a41379b274ae16a8b20426bbcf96178ae7`.
+- Adds Yahoo raw `Close` + adjusted `Adj Close` fetch (`auto_adjust=False`, `actions=True`, `repair=False`), Alpaca raw `Adjustment.RAW` fetch, and compares them with the existing adjusted series.
+- Computes per-provider adjustment factors (adjusted/raw), normalized relative factor divergence, largest factor-step dates, raw-price return differences and normalized raw-price path divergence.
+- This is designed to separate raw underlying price mismatches from corporate-action adjustment differences. It does not assign a cause or auto-correct data.
+- PR CI run `42955793577`: compile and all 12 cross-check tests passed; live audit skipped on pull_request by design.
+- No post-merge workflow run was returned for merge SHA at the time of this handoff update; verify Actions and run the full read-only audit before relying on live adjustment-factor findings.
+- No Tiingo token, subscription, strategy approval, Paper approval or orders changed.
+
+**Next steps**
+1. Verify post-merge live audit; if no automatic run was triggered, dispatch the existing audit workflow only if a supported dispatch mechanism is available, otherwise use the next scheduled run. Do not claim live raw/adjusted parity before it runs.
+2. Inspect the new adjustment-factor step dates for QQQ 2024-12-23/24 and SPY 2025-04-09/10; compare to official distribution/ex-date records. The QQQ 2024-12-23 $0.83466 distribution is a possible lead but too small by itself to explain the observed ~1% opposite-signed daily return differences.
+3. Keep provider histories separate and do not loosen the 95% coverage gate.
+4. Continue strategy edge, empirical cost and persistent Paper deployment work only after the data lineage blocker is understood.
+
+**Progress remains 46%.** This adds an attribution diagnostic, not a resolution or strategy edge.
