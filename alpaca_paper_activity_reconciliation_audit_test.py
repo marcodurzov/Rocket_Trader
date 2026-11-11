@@ -144,5 +144,33 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
         self.assertEqual(report.get("order_count", 0), 0)
 
 
+    def test_account_wide_unclassifiable_cfee_does_not_fail_matched_order_audit(self):
+        class AccountWideFeeClient(FakeAuditClient):
+            def get(self, path, params):
+                if params["activity_types"] == "CFEE":
+                    return [{
+                        "id": "fee-account-wide-unclassified",
+                        "activity_type": "CFEE",
+                        "symbol": "USD",
+                        "net_amount": "-0.25",
+                        "currency": "USD",
+                        "created_at": "2026-11-12T00:00:00Z",
+                    }]
+                return super().get(path, params)
+
+        with patch.object(audit, "TradingClient", AccountWideFeeClient):
+            result = audit.main()
+        self.assertEqual(result, 0)
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "SUCCESS")
+        self.assertEqual(report["matched_order_count"], 1)
+        self.assertEqual(report["unclassified_fee_activity_count"], 1)
+        self.assertEqual(report["fee_evidence_status"], "UNCLASSIFIED_OR_INCOMPLETE_RECORDS")
+        self.assertEqual(
+            report["unclassified_fee_activities"][0]["activity_id"],
+            "fee-account-wide-unclassified",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
