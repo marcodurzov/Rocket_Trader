@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main SHA at this handoff update:** `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`  
+**Latest audited code baseline SHA:** `7601ec2b5e1cb66d351703eb1de9d6f1347dd311`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -277,3 +277,29 @@ Never overwrite the historical truth. Correct stale summaries by explicitly noti
 7. Preserve zero approved strategy candidates until robust net OOS edge, costs and operations pass.
 
 **Progress remains 46%.** This PR closes an important accounting observability gap, but live broker evidence, persistent deployment, representative costs and strategy edge remain absent.
+
+
+### PR #104 — historical handoff synchronization
+- Merge commit: `53a7fc3b4f7c8fd4530a1818e1fd9d31700e5dc1`.
+- Recorded PR #103's broker fill activity reconciliation and its exact tests/limits.
+- Documentation-only; no progress increase.
+
+### 10.10 Historical ETF data vendor evaluation — 2026-11-11
+The goal is a defensible 10-year adjusted daily ETF dataset with provenance and a second independent source, not merely a feed that returns ten calendar years.
+
+**Observed provider constraints**
+- Alpaca IEX: available history in this account starts 2020-07-27 for the tested ETF universe; not a full 10-year source. IEX is not SIP/NBBO.
+- Alpaca SIP: prior request returned `NOT_ENTITLED`. Do not retry unless account entitlement changes.
+- Yahoo Finance: 10-year adjusted history retrieved after setting `repair=False`, but the live overlap audit showed nontrivial cumulative differences from Alpaca IEX (especially SPY); research-only and not yet independently corroborated.
+
+**Official alternatives researched**
+- Tiingo EOD documents adjusted and raw OHLCV, dividends and splits, with its adjusted price methodology following CRSP conventions: https://www.tiingo.com/documentation/end-of-day
+- Tiingo current individual pricing lists Starter at $0 with 5 years of history and Power at $30/month ($300/year) with 15+ years; API quota is up to 100,000 requests/day on Power. License shown is internal use only: https://www.tiingo.com/pricing and https://www.tiingo.com/about/pricing
+- Tiingo product page advertises broad EOD coverage and long historical depth, but the plan-specific history cap still applies: https://www.tiingo.com/products/end-of-day-stock-price-data
+- Alpha Vantage documents 25+ years for daily adjusted data, but `TIME_SERIES_DAILY_ADJUSTED` is a premium API function; free usage is limited to 25 requests/day: https://www.alphavantage.co/documentation/ and https://www.alphavantage.co/premium/ and https://www.alphavantage.co/support/
+
+**Current conclusion**
+- Best candidate to evaluate for a licensed 10-year EOD cross-check is Tiingo Power, because its stated 15+ year history and published individual price are clear. It is not yet selected, subscribed, or live-tested.
+- Alpha Vantage is a secondary candidate, but its adjusted daily endpoint is premium and pricing/entitlement economics are not yet established.
+- Do not purchase or start any paid subscription automatically. The user's authorization to develop the repository does not authorize recurring vendor charges.
+- Next: implement Tiingo as an optional provider behind `TIINGO_API_TOKEN`, add mocked contract tests and a provider-parity report; live validation requires the user to add a token securely and separately approve any paid plan. Keep Yahoo and IEX histories separate; no series splicing. Re-check licensing if Rocket Trader is ever redistributed or offered as a service.
