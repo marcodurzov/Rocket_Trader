@@ -76,6 +76,16 @@ class AlpacaAccountActivityReader:
             raise AlpacaActivityReconciliationError("An append-only execution event ledger is required.")
         if not isinstance(max_pages, int) or max_pages < 1 or max_pages > 100:
             raise AlpacaActivityReconciliationError("max_pages must be from 1 to 100.")
+        try:
+            integrity = event_ledger.verify_chain()
+        except Exception as exc:
+            raise AlpacaActivityReconciliationError(
+                "Execution event ledger cannot be verified; activity ingestion is blocked."
+            ) from exc
+        if not isinstance(integrity, dict) or not integrity.get("valid"):
+            raise AlpacaActivityReconciliationError(
+                "Execution event ledger integrity check failed; activity ingestion is blocked."
+            )
         self.client = client
         self.event_ledger = event_ledger
         self.max_pages = max_pages
