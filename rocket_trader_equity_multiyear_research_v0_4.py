@@ -449,7 +449,7 @@ def fetch_tiingo_daily_bars(
     return normalized
 
 
-def source_metadata(source: str, feed_name: str = "IEX") -> Dict[str, str]:
+def source_metadata(source: str, feed_name: str = "SIP") -> Dict[str, str]:
     clean = str(source).strip().upper()
     if clean == "YAHOO":
         return {
