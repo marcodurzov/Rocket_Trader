@@ -165,6 +165,8 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         step = result["largest_adjustment_factor_step_changes"][0]
         self.assertEqual(step["yahoo_dividend_cash_on_session"], 0.0)
         self.assertAlmostEqual(step["alpaca_cash_dividend_total_on_session"], 0.343177)
+        self.assertEqual(step["alpaca_cash_dividend_event_count"], 1)
+        self.assertEqual(step["alpaca_cash_dividend_total_status"], "SINGLE_EVENT")
         self.assertAlmostEqual(
             step["yahoo_minus_alpaca_cash_dividend_on_session"], -0.343177
         )
@@ -232,6 +234,37 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
                 ["TLT"], start, end, "key", "secret",
                 opener=lambda request, timeout: FakeResponse(),
             )
+
+    def test_multiple_alpaca_cash_dividend_records_are_not_summed_without_review(self):
+        raw = self.yahoo.copy()
+        yahoo_factor = pd.Series([1.0] * 8, index=self.dates)
+        alpaca_factor = pd.Series([0.995] * 4 + [1.0] * 4, index=self.dates)
+        result = compare_adjustment_factors(
+            "QQQ", raw, raw * yahoo_factor, raw, raw * alpaca_factor,
+            min_common_sessions=5,
+            yahoo_dividends=pd.Series([0.0] * 8, index=self.dates),
+            alpaca_corporate_actions=[
+                {
+                    "id": "ca-1", "action_type": "cash_dividend", "symbol": "QQQ",
+                    "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+                    "process_date": "2022-09-23",
+                },
+                {
+                    "id": "ca-2", "action_type": "cash_dividend", "symbol": "QQQ",
+                    "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+                    "process_date": "2022-10-31",
+                },
+            ],
+        )
+        step = result["largest_adjustment_factor_step_changes"][0]
+        self.assertEqual(step["alpaca_cash_dividend_event_count"], 2)
+        self.assertEqual(step["alpaca_cash_dividend_event_ids"], ["ca-1", "ca-2"])
+        self.assertEqual(
+            step["alpaca_cash_dividend_total_status"],
+            "MULTIPLE_RECORDS_REQUIRES_REVIEW",
+        )
+        self.assertIsNone(step["alpaca_cash_dividend_total_on_session"])
+        self.assertIsNone(step["yahoo_minus_alpaca_cash_dividend_on_session"])
 
     def test_yahoo_adjustment_fields_fetch_raw_and_adjusted_close_separately(self):
         calls = {}

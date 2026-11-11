@@ -541,11 +541,24 @@ def compare_adjustment_factors(
             event for event in (alpaca_corporate_actions or [])
             if previous_date is not None and str(event.get("ex_date") or "") == previous_date
         ]
-        alpaca_cash_dividend = sum(
-            float(event.get("rate") or 0.0)
-            for event in alpaca_events_current
+        alpaca_cash_dividend_events = [
+            event for event in alpaca_events_current
             if event.get("action_type") == "cash_dividend"
-        )
+        ]
+        alpaca_cash_dividend_event_count = len(alpaca_cash_dividend_events)
+        if alpaca_cash_dividend_event_count == 0:
+            alpaca_cash_dividend = 0.0
+            alpaca_cash_dividend_total_status = "NO_EVENT"
+        elif alpaca_cash_dividend_event_count == 1:
+            alpaca_cash_dividend = float(
+                alpaca_cash_dividend_events[0].get("rate") or 0.0
+            )
+            alpaca_cash_dividend_total_status = "SINGLE_EVENT"
+        else:
+            # Multiple same-symbol/ex-date records may be duplicate versions or
+            # distinct issuer actions. Never sum them without resolving identity.
+            alpaca_cash_dividend = None
+            alpaca_cash_dividend_total_status = "MULTIPLE_RECORDS_REQUIRES_REVIEW"
         top_steps.append({
             "session": str(session),
             "previous_session": str(previous_session) if previous_session is not None else None,
@@ -568,6 +581,10 @@ def compare_adjustment_factors(
             "yahoo_split_ratio_on_session": round(split_ratio, 8),
             "alpaca_corporate_actions_on_session": [
                 {
+                    "id": event.get("id"),
+                    "cusip": event.get("cusip"),
+                    "isin": event.get("isin"),
+                    "record_date": event.get("record_date"),
                     "action_type": event.get("action_type"),
                     "symbol": event.get("symbol"),
                     "ex_date": event.get("ex_date"),
@@ -584,6 +601,10 @@ def compare_adjustment_factors(
             ],
             "alpaca_corporate_actions_on_previous_session": [
                 {
+                    "id": event.get("id"),
+                    "cusip": event.get("cusip"),
+                    "isin": event.get("isin"),
+                    "record_date": event.get("record_date"),
                     "action_type": event.get("action_type"),
                     "symbol": event.get("symbol"),
                     "ex_date": event.get("ex_date"),
@@ -592,12 +613,23 @@ def compare_adjustment_factors(
                 }
                 for event in alpaca_events_previous
             ],
+            "alpaca_cash_dividend_event_count": alpaca_cash_dividend_event_count,
+            "alpaca_cash_dividend_event_ids": [
+                event.get("id") for event in alpaca_cash_dividend_events
+            ],
+            "alpaca_cash_dividend_total_status": (
+                alpaca_cash_dividend_total_status
+                if alpaca_corporate_actions is not None else "NOT_AVAILABLE"
+            ),
             "alpaca_cash_dividend_total_on_session": (
-                round(alpaca_cash_dividend, 8) if alpaca_corporate_actions is not None else None
+                round(alpaca_cash_dividend, 8)
+                if alpaca_corporate_actions is not None and alpaca_cash_dividend is not None
+                else None
             ),
             "yahoo_minus_alpaca_cash_dividend_on_session": (
                 round(dividend_cash - alpaca_cash_dividend, 8)
-                if alpaca_corporate_actions is not None else None
+                if alpaca_corporate_actions is not None and alpaca_cash_dividend is not None
+                else None
             ),
             "expected_cash_dividend_adjustment_bps_vs_previous_yahoo_raw_close": (
                 round(dividend_cash / previous_yahoo_raw * 10000.0, 4)
