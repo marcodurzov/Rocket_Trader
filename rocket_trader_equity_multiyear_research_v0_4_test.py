@@ -175,7 +175,7 @@ class EquityResearchV04Tests(unittest.TestCase):
                 end=end, chunk_days=365,
             )
         self.assertIn("Returned range=", str(caught.exception))
-        self.assertIn("approx_weekday_coverage=", str(caught.exception))
+        self.assertIn("exchange_session_coverage=", str(caught.exception))
         self.assertIn("max_calendar_gap_days=", str(caught.exception))
 
     def test_yahoo_fetch_uses_adjusted_ohlc_and_requires_full_history(self):
