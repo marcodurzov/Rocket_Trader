@@ -313,5 +313,74 @@ class CryptoPaperExecutionTests(unittest.TestCase):
         self.assertEqual(self.client.submit_count, 0)
 
 
+
+    def test_restart_reconciles_existing_order_without_resubmitting(self):
+        first = self.adapter.submit(self.buy())
+        restarted = AlpacaCryptoPaperExecutionAdapter(
+            db_path=self.db, client=self.client
+        )
+        second = restarted.submit(self.buy())
+        self.assertTrue(first["accepted"])
+        self.assertTrue(second["duplicate_prevented"])
+        self.assertEqual(second["order_id"], first["order_id"])
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_unknown_broker_status_is_preserved_not_assumed_terminal(self):
+        self.adapter.submit(self.buy())
+        order = self.client.orders["crypto-buy-001"]
+        order.status = "suspended"
+        order.filled_qty = "0.00004"
+        order.filled_avg_price = "50000"
+        result = self.adapter.reconcile("crypto-buy-001")
+        self.assertEqual(result["status"], "suspended")
+        self.assertEqual(result["filled_qty"], "0.00004")
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_partial_fill_is_preserved_when_remainder_is_canceled(self):
+        self.adapter.submit(self.buy())
+        order = self.client.orders["crypto-buy-001"]
+        order.status = "partially_filled"
+        order.filled_qty = "0.00004"
+        order.filled_avg_price = "50000"
+        result = self.adapter.cancel("crypto-buy-001")
+        self.assertEqual(result["status"], "canceled")
+        self.assertEqual(result["filled_qty"], "0.00004")
+        self.assertEqual(self.client.cancel_count, 1)
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_fill_during_cancel_race_is_reconciled_as_filled(self):
+        self.adapter.submit(self.buy())
+        order = self.client.orders["crypto-buy-001"]
+        order.status = "partially_filled"
+        order.filled_qty = "0.00004"
+        order.filled_avg_price = "50000"
+
+        def fill_on_cancel(order_id):
+            self.client.cancel_count += 1
+            order.status = "filled"
+            order.filled_qty = "0.0001"
+            return order
+
+        self.client.cancel_order_by_id = fill_on_cancel
+        result = self.adapter.cancel("crypto-buy-001")
+        self.assertEqual(result["status"], "filled")
+        self.assertEqual(result["filled_qty"], "0.0001")
+        self.assertEqual(self.client.submit_count, 1)
+
+    def test_unknown_submission_result_blocks_retry_after_adapter_restart(self):
+        class TimeoutClient(FakeCryptoClient):
+            def submit_order(self, order_data):
+                self.submit_count += 1
+                raise TimeoutError("simulated network timeout without broker acceptance")
+
+        client = TimeoutClient()
+        first_adapter = AlpacaCryptoPaperExecutionAdapter(db_path=self.db, client=client)
+        with self.assertRaises(CryptoPaperExecutionError):
+            first_adapter.submit(self.buy("crypto-restart-unknown"))
+        restarted = AlpacaCryptoPaperExecutionAdapter(db_path=self.db, client=client)
+        with self.assertRaisesRegex(CryptoPaperExecutionError, "absent at broker"):
+            restarted.submit(self.buy("crypto-restart-unknown"))
+        self.assertEqual(client.submit_count, 1)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
