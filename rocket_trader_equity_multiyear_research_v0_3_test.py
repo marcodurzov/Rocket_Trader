@@ -66,10 +66,17 @@ class FakeYahooTicker:
 
 class EquityResearchV03Tests(unittest.TestCase):
 
-    def test_zero_budget_feed_allows_iex_and_rejects_sip(self):
+    def test_zero_budget_feed_allows_historical_sip_but_blocks_recent_sip(self):
         self.assertEqual(require_zero_budget_feed("iex"), "IEX")
-        with self.assertRaisesRegex(EquityResearchError, "zero-budget policy"):
-            require_zero_budget_feed("SIP")
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        self.assertEqual(
+            require_zero_budget_feed("SIP", end_time=now - timedelta(minutes=16), now=now),
+            "SIP",
+        )
+        with self.assertRaisesRegex(EquityResearchError, "at least 15 minutes ago"):
+            require_zero_budget_feed("SIP", end_time=now - timedelta(minutes=14), now=now)
+        with self.assertRaisesRegex(EquityResearchError, "explicit timezone-aware"):
+            require_zero_budget_feed("SIP", now=now)
     def test_normalize_frame_tolerates_only_float_precision_ohlc_differences(self):
         frame = pd.DataFrame({
             "timestamp": pd.date_range("2024-01-01", periods=2, tz="UTC"),
