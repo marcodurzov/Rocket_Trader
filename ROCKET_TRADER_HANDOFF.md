@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11 (PR #139 merged; 24-family research registry, experiment ledger and gated Paper smoke)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `f22886f089be444a155f44042eff4cc4e267c591` (PR #139 merged; runtime strategy code baseline unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Latest main HEAD before this Handoff refresh:** `55aaac2804be6a00bf9d5c983dd49fe8438f6588` (PR #139 merged; runtime strategy code baseline unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
