@@ -431,3 +431,18 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - The job's green conclusion means data retrieval and report generation completed, **not** that the diagnostic gates passed. The report keeps candidate promotion, Paper approval and orders disabled; zero orders were submitted.
 - Interpretation: Alpaca IEX's available history is the binding 10-year limitation for this account. SIP entitlement was previously NOT_ENTITLED. Do not reduce the requested coverage threshold or splice Yahoo and IEX as if they were one homogeneous series.
 - Next: evaluate full-history source alternatives/entitlement economics and separately formalize (a) overlap parity and (b) full-period coverage. Investigate cumulative adjusted-return divergence, especially SPY, before strategy research uses any cross-source history.
+
+
+---
+
+## Historical continuity ledger added — 2026-11-10
+See `ROCKET_TRADER_HANDOFF.md` section 10 for the canonical experiment/decision history, including:
+- Jefe Maestro methodology transfer and explicitly excluded lottery-specific features.
+- Superseded close-to-close timing research and corrected next-open model.
+- Corrected ETF/crypto momentum and mean-reversion results (all 0 Holm-significant candidates).
+- IEX/SIP/Yahoo source limitations, Yahoo repair failure and subsequent corrected run.
+- BTC Paper execution smoke tests, simulator seed cash, unresolved/delayed fees and JNLC journal handling.
+- Lessons from fill ledger, quote/bar heartbeat isolation, market-data readiness, news provenance and observer-only deployment.
+- Mandatory append-only change-log template and rules for every future meaningful code or research change.
+
+The canonical Handoff was expanded to prevent repeating failed or superseded experiments. Documentation synchronization does not increase project completion percentage.
