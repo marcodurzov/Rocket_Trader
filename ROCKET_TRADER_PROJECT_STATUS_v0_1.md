@@ -791,3 +791,15 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - No broker orders or account configuration changes.
 
 **Progress: 56%** (engineering/evidence maturity, not profitability).
+
+
+---
+
+## 2026-11-11 — Activity SSE deployment hardening
+
+- PR #170 merged: publisher path filters now rebuild the observer image when the Activity SSE consumer source changes. GHCR image publication after PR #168 succeeded; PR #170 publication run `43044264217` succeeded.
+- PR #171 merged as `8bf6d6a2560806a4b2b2aa04c92f8576c571f094`. Healthcheck no longer initializes a missing DB. It opens an existing DB without creating a replacement, checks append-only triggers, hash chain, payload fingerprints, delivery consistency and cursor ordering.
+- PR #171 CI `43044388062` passed 26 offline tests; Compose validation, Docker build and in-image compilation succeeded in `43044387984`. Post-merge consumer tests `43044515041` passed; image publication `43044515119` was pending at note time.
+- Healthcheck covers local persistence integrity only, not API connectivity; reconnect errors are emitted to container logs.
+- **Deployment remains pending:** no server has been connected/deployed from this session. Actual durable-volume restart test is required before claiming persistent recovery works in production.
+- Progress remains **56%** (engineering/evidence maturity, not profitability).
