@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#146 merged; read-only Alpaca fill/fee activity reconciliation added)  
+**Last updated:** 2026-11-11 (PRs #141–#148 merged; adapter reconciliation now ingests broker fill activities)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `04fa7de66e81fd8617f7a7fd787b97abee5f70fa` (PR #146 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
-**Current progress estimate:** **51%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Latest main HEAD before this Handoff refresh:** `7a1e9ceeb3a979ef5142a9348dd1c0a51e412ae0` (PR #148 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)  
+**Current progress estimate:** **52%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **51%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 51% profitable, nor does it mean a 51% probability of success.
+Current estimate: **52%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 52% profitable, nor does it mean a 52% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
@@ -879,7 +879,7 @@ Next actions:
 - Limits: this records order intent and broker order snapshots, not individual account-activity fills/crypto fees/corrections. It does not yet implement automatic partial-exit remainder recovery. Both SQLite files must reside on persistent storage. Hash chaining is not a signed external audit anchor.
 
 **Next implementation sequence**
-1. Integrate the new read-only Paper activity reader with adapter reconciliation so broker fills are ingested automatically during restart/recovery, using broker order IDs and exact activity IDs.
+1. Wire adapter `reconcile()` into the persistent recovery worker/startup sequence so activity reconciliation runs after restart and on ambiguous/pending states.
 2. Add persistent activity pagination cursors/watermarks and correction/bust handling; delayed or missing fee records remain UNKNOWN.
 3. Match CFEE records to orders only where a documented, tested linkage exists. Otherwise preserve them as unallocated account-level costs; never infer a fee from gross/net quantity differences.
 4. Implement safe partial-exit remainder recovery with broker-owned quantity checks, open-order reservations and fill/cancel race handling.
@@ -896,6 +896,19 @@ Next actions:
 - Retrieves CFEE records over an explicit timezone-aware window and persists amount/currency as `CRYPTO_FEE_ACTIVITY_UNALLOCATED`. Does not allocate fee to an order because the documented non-trade fee schema does not guarantee an order_id; fee posting can be delayed. Missing fee evidence is never treated as zero.
 - Initial CI attempts exposed a test-fixture pagination bug: the fake client replayed page one instead of returning an empty terminal page. The fixture was corrected to return an empty page for unknown cursors. Final PR run `43014063435`: success, 14 tests passed. Post-merge main run `43014116074`: success, 14 tests passed.
 - No live or Paper API requests, orders, account configuration changes or paid services were involved.
-- Scope boundary: this reader is currently a separate reconciliation component. It is **not yet automatically invoked by the adapter/runtime**, does not yet checkpoint cursors persistently, and does not resolve corrections/busts or allocate delayed fees to individual orders.
+- Scope boundary at PR #146: the reader was a separate component. PR #148 now invokes it through the adapter's explicit `reconcile()` / `reconcile_order_activities()` path. It is not yet scheduled automatically at every process restart or by a persistent recovery worker; it does not yet checkpoint cursors persistently, resolve corrections/busts or allocate delayed fees to individual orders.
 
 **Progress estimate:** 51% (engineering/evidence maturity only). The new component establishes a supported read-only source for fill and crypto-fee activity, but the full recovery pipeline and runtime integration remain incomplete.
+
+
+### PR #148 — adapter-level broker fill and fee reconciliation
+- Merged to main: `7a1e9ceeb3a979ef5142a9348dd1c0a51e412ae0`.
+- PR: https://github.com/marcodurzov/Rocket_Trader/pull/148
+- Adapter `reconcile()` now retrieves the broker order snapshot, fetches individual FILL activities by broker order ID, ingests each fill into the append-only event ledger, and records an idempotent order-level reconciliation summary.
+- Incomplete activity history is returned explicitly when activity quantity does not yet match the broker order snapshot. Activity API outages are surfaced as reconciliation errors, not treated as zero fills.
+- Added `collect_crypto_fee_activities(symbol, after, until)` to retrieve CFEE records over an explicit timezone-aware window. They remain unallocated at account level.
+- PR CI run `43014290120`: success; 34 offline crypto adapter tests passed. Post-merge main run `43014362335` was pending/in progress when this note was written; update after conclusion.
+- No real Paper API request or order was performed by this PR.
+- Important remaining gap: the adapter exposes the reconciliation path, but no persistent recovery worker currently guarantees it is called automatically at every restart/ambiguous state. Pagination checkpoints and correction/bust handling are not implemented.
+
+**Progress estimate:** 52% (engineering/evidence maturity only). The event ledger is now used by the adapter and broker fills can be reconciled when the explicit reconciliation path is invoked. Full unattended recovery, fee attribution, partial-exit automation, durable worker scheduling, live Paper API validation and strategy edge remain unproven.
