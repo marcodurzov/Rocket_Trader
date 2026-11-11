@@ -289,7 +289,7 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 
 **Observed provider constraints**
 - Alpaca IEX: available history in this account starts 2020-07-27 for the tested ETF universe; not a full 10-year source. IEX is not SIP/NBBO.
-- Alpaca SIP: prior request returned `NOT_ENTITLED`. Do not retry unless account entitlement changes.
+- Alpaca SIP: the prior `NOT_ENTITLED` result came from a recent/latest query ending at `current`; it did not establish historical SIP entitlement. The read-only historical query must use an end at least 15 minutes old.
 - Yahoo Finance: 10-year adjusted history retrieved after setting `repair=False`, but the live overlap audit showed nontrivial cumulative differences from Alpaca IEX (especially SPY); research-only and not yet independently corroborated.
 
 **Official alternatives researched**
