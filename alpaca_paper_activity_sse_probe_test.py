@@ -86,6 +86,24 @@ class PaperActivitySSEProbeTests(unittest.TestCase):
         self.assertEqual(report["previous_id_event_count"], 2)
         self.assertEqual(report["fee_activity_counts"], {"CFEE": 1})
 
+    def test_stock_only_activity_is_not_misreported_as_crypto_support(self):
+        stock = event("01A", "stock-ref", symbol="AAPL")
+        report = summarize_events(
+            [stock], [], 0, since="2026-11-11T04:55:00Z",
+            until="2026-11-11T06:00:00Z",
+        )
+        self.assertEqual(report["status"], "NO_CRYPTO_TRADES")
+        self.assertEqual(report["crypto_trade_event_count"], 0)
+
+    def test_correction_with_missing_prior_ref_is_flagged_as_orphan(self):
+        correction = event("01B", "new-ref", "trade_correct", previous_id="not-in-window")
+        report = summarize_events(
+            [correction], [], 0, since="2026-11-11T04:55:00Z",
+            until="2026-11-11T06:00:00Z",
+        )
+        self.assertEqual(report["orphan_previous_id_count"], 1)
+        self.assertEqual(report["status"], "CRYPTO_EVENTS_FOUND")
+
     def test_duplicate_ref_ids_and_non_monotonic_event_ids_are_reported(self):
         events = [
             event("01B", "same-ref"),
