@@ -52,9 +52,11 @@ class FakeStockClient:
     def __init__(self, frame):
         self.frame = frame
         self.calls = 0
+        self.requests = []
 
     def get_stock_bars(self, request):
         self.calls += 1
+        self.requests.append(request)
         return FakeResponse(self.frame)
 
 
@@ -174,16 +176,28 @@ class EquityResearchV04Tests(unittest.TestCase):
         self.assertFalse(metrics["eligible_for_strategy_evidence"])
         self.assertEqual(metrics["first_missing_exchange_session"], "2024-07-02")
 
-    def test_10_year_fetch_requires_requested_history(self):
+    def test_10_year_fetch_requires_requested_history_and_uses_free_historical_sip(self):
         frame = synthetic_frame()
         end = frame["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
         client = FakeStockClient(frame)
         result = fetch_daily_bars(
-            "SPY", years=10, feed_name="IEX", client=client, end=end, chunk_days=365
+            "SPY", years=10, feed_name="SIP", client=client, end=end, chunk_days=365
         )
         self.assertGreaterEqual(len(result), 1800)
         self.assertEqual(result.iloc[0]["timestamp"], frame.iloc[0]["timestamp"])
         self.assertGreaterEqual(client.calls, 9)
+        self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
+
+    def test_recent_sip_is_rejected_before_any_market_data_request(self):
+        frame = synthetic_frame()
+        client = FakeStockClient(frame)
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        with self.assertRaisesRegex(EquityResearchError, "at least 15 minutes ago"):
+            fetch_daily_bars(
+                "SPY", years=3, feed_name="SIP", client=client,
+                end=now - timedelta(minutes=14), chunk_days=365,
+            )
+        self.assertEqual(client.calls, 0)
 
     def test_short_history_cannot_pass_as_ten_year_research(self):
         frame = synthetic_frame(start="2021-11-09", periods=1250)
