@@ -208,7 +208,7 @@ References:
 
 ## Equity research workflow zero-budget hardening (2026-11-11)
 
-- Applied the same free-feed guard to equity research v0.1, v0.2, v0.3 and v0.4: only Alpaca IEX is accepted by the code and CLI; SIP is rejected before any market-data request.
+- PR #179 initially applied an overly broad IEX-only guard to equity research v0.1–v0.4. PR #181 supersedes it: historical SIP is allowed only when the request end is at least 15 minutes old; IEX remains the recent/live option.
 - Removed SIP from all four GitHub Actions workflow selectors.
 - Removed Tiingo as a selectable primary source from public equity research v0.4 and removed the Tiingo token from that workflow's environment. The Tiingo fetcher remains covered by offline tests but is not reachable from public workflow selection.
 - The optional Tiingo comparison in the dedicated ETF cross-check remains local/programmatic only and requires explicit `--include-tiingo`; the public GitHub Actions workflow does not inject the token or opt in.
