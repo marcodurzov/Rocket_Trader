@@ -677,3 +677,25 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - PR audit workflow `42958291332` passed offline tests. Main runtime `42958406230` passed. Main crosscheck `42958406136` passed; artifact `13827124135` inspected.
 - Re-run still reports Yahoo dividend action = 0 and no Yahoo factor step for TLT on 2026-11-02, nine days after official iShares ex-distribution $0.343177; Alpaca factor step 41.7148 bps vs ~41.93 bps implied by official distribution/prior raw close. Persistent unresolved Yahoo corporate-action discrepancy.
 - Overall IEX/Yahoo gates false; no strategy promotion, Paper approval or orders. Tiingo not compared.
+
+
+---
+
+## 2026-11-11 — Paper activity diagnostics and journal recovery
+
+### PR #154 — safe audit diagnostics
+- Merged: `7aa7b8d5acaf0b5247c316842ec4824fb6f9c907`; PR CI `43020664640` and post-merge static CI `43031972951` succeeded.
+- The manual Paper audit run `43020228954` failed in the activity audit. Before PR #154, the CLI suppressed the safe validation detail. The fix reports safe internal validation text and bounded exception class/HTTP status metadata, never raw SDK exception text.
+- The failed-run artifact is `13853579473`; it predates the fix and does not identify the underlying cause. The actual Paper activity API failure remains pending a new manual dispatch.
+
+### PR #155 — explicit read-only journal recovery
+- Merged: `829e17343b7073e77ad1fd16ebc2611be2d88641`; PR CI `43032346333` succeeded. Post-merge CI `43032427138` pending at the time of this update.
+- Added `recover_journaled_orders()` to scan the execution journal, re-query broker state by client order ID, and reconcile FILL activity for every discovered broker order.
+- Missing broker orders, incomplete/mismatched fill activity and exceptions remain unresolved. The method never submits, cancels or replaces orders.
+- Four offline recovery tests cover successful zero-fill reconciliation, missing broker order, filled-order FILL matching and repeat-run idempotency.
+- This is an explicit recovery method only. Automatic process-startup invocation, continuous scheduling, durable activity cursors and correction/bust ingestion are not implemented.
+
+### Current verified boundary
+- Main HEAD: `829e17343b7073e77ad1fd16ebc2611be2d88641`.
+- Progress remains **54%**; no increase for a method that is not yet wired into a persistent runtime.
+- No strategy is approved, no autonomous strategy order execution is enabled, and LIVE remains prohibited.
