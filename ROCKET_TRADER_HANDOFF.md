@@ -582,3 +582,52 @@ Crosscheck run `42957082760` (code commit `ca0450287284af014e68bd5e31d05e641b8d1
 - No source is currently certified as a 10-year institutional-grade truth set. Tiingo is integrated but not live-tested; no Tiingo token/plan was used in this artifact.
 - Next: re-run TLT after the 2026-11-02 event has propagated; inspect QQQ 2022-09-19 factor step against official Invesco distribution records; compare SIP only if entitlement is available, otherwise test Tiingo after explicit credential/plan approval. No vendor subscription without explicit approval; never splice sources.
 
+
+
+---
+
+## 2026-11-10 — Trading research landscape review and adaptive architecture baseline
+
+The user explicitly asked whether Rocket Trader had already surveyed trading from its origins through 2026-11-10, including successful traders, historical cases, academic literature, books, public repositories, Reddit/forums, and advanced adaptive techniques. The honest answer is **no: that end-to-end survey had not been completed before this review**. Prior work covered selected quantitative/ML methods, not a systematic historical and comparative research program.
+
+A new canonical research document was added:
+- `TRADING_RESEARCH_LANDSCAPE_AND_ADAPTIVE_ARCHITECTURE.md`
+- Includes historical evolution, strategy families, regime estimation, adaptive meta-allocation, online learning/drift controls, news/social/geopolitical evidence handling, system-wide risk, historical failure cases, research standards, trader/institution benchmarks, open-source ecosystem, Reddit/books evidence hierarchy, prior Rocket Trader negative results, current gaps, workstreams, source links and working rules.
+- This is a curated evidence-weighted survey and design baseline, **not** an exhaustive crawl of the entire internet or proprietary trading literature. It labels preliminary/practitioner evidence and avoids treating anecdotal returns as audited.
+
+### Key conclusions carried into architecture
+1. Use a portfolio of independently tested strategy families, not one universal strategy or a large indicator pile.
+2. Estimate regime probabilities from trend, volatility, correlation, liquidity, macro, event and data-health dimensions; compare simple rules, HMM/Markov switching, change-point detection, clustering and online drift monitors.
+3. Meta-allocation must include abstention/cash, hysteresis, uncertainty, robust sizing and comparison against a static baseline.
+4. Monitor live drift separately from model training. Use frozen champion/challenger, shadow predictions, explicit promotion gates and rollback; no self-modifying model can promote itself.
+5. LLM/news/social data are evidence inputs only. Require provenance, timestamps, deduplication, corroboration and incremental OOS tests.
+6. Novel ideas may be tested in a quarantined bounded-risk research allocation only; no automatic promotion or real orders.
+7. Historical crises translate into concrete controls: crowding/correlation, liquidity stress, stale-data breakers, price collars, order caps, deployment canaries and independent kill switch.
+
+### Historical Rocket Trader results that must not be rerun blindly
+- Oct 2026 ML experiment: SPY AUC 0.740/ECE 0.014 and QQQ AUC 0.719/ECE 0.011 were calibration diagnostics only; SPY had zero trades, QQQ PF 0.77 in one configuration; research_pass remained false.
+- ETF v0.5: 97 hypotheses, Holm significant 0, pre-screen 0.
+- Crypto v0.4: 25 hypotheses, no pass; SOL coverage 77.1%, ineligible.
+- Actual v0.4 ten-year Yahoo report (run `42954130155`, artifact `13826686266`): eight ETFs, 2,511 sessions each, 73 hypotheses, Holm significant 0, pre-screen 0, no promotion/Paper approval/orders. Cross-sectional top-1 had +10.18 percentage points vs equal-weight in the final holdout, but bootstrap p=0.3985, Holm p=1.0 and 5th percentile excess -31.56 percentage points. Not significant.
+- That v0.4 artifact assumed 5 bps per side (2.5 spread + 2.5 slippage, zero commission); this is hypothetical, not empirically measured. The later XNYS calendar correction gives 100% Yahoo session coverage, superseding earlier weekday approximation. IEX remains short of full decade and dividend adjustment discrepancies (QQQ/TLT) require resolution.
+
+### Sources reviewed for this baseline
+Peer-reviewed/history: Lehoczky & Schervish (2018); Hurst/Ooi/Pedersen (2017); Bailey et al. (PBO); Arian et al. (CPCV/DSR comparison); Donnelly (optimal execution); Chen et al. (2026 technical/fundamental/momentum review); Khemka et al. (2026 ML forecasting review); 2025 RL survey; Bayesian online change-point/order-flow work; 2024 social sentiment aggregation and spillover studies.
+Primary incident evidence: Federal Reserve History (1987, LTCM), Khandani & Lo/NBER (2007 quant unwind), CFTC/SEC (2010 Flash Crash; 2012 Knight Capital).
+Open source: LEAN, NautilusTrader, vectorbt, backtesting.py, Freqtrade, FinRL, hftbacktest, zipline-reloaded and a curated trading-repository index. Reddit/forums are treated only as hypothesis/operational-issue discovery, never audited performance proof.
+The new research document contains the source links and evidence-status notes.
+
+### What this does NOT establish
+No new strategy is profitable or approved. The research review does not validate a regime classifier, adaptive selector, social signal, RL agent or production execution. No persistent user-host Paper deployment is verified. Tiingo adapter is mocked-only and no paid subscription is authorized. LIVE remains disabled.
+
+### Next actions
+1. Create a traceable hypothesis registry and source/evidence ledger from the research document.
+2. Resolve Yahoo/IEX corporate-action discrepancies; run Tiingo only after eligible plan/token is separately configured (no spend without approval).
+3. Expand point-in-time multi-asset historical tests and multiple walk-forward folds; preserve negative results.
+4. Validate regime estimation (HMM, change-point, volatility clustering, rules) for false transitions, detection delay and incremental OOS utility.
+5. Test adaptive meta-allocation vs static baseline with uncertainty, hysteresis, abstention and bounded exploration.
+6. Test official macro/news/social data for incremental causal value; no LLM direct allocation.
+7. Keep ML/RL sandbox-only until simpler baselines, costs and validation standards are robust.
+8. Continue Paper deployment/accounting/cost collection and operational fault testing.
+
+**Progress remains 46%.** The research blueprint is now documented; research implementation and empirical validation remain substantial work.
