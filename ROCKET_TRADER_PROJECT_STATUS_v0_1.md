@@ -483,3 +483,16 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - Official provider research: Tiingo Starter lists 5-year history free; Power lists 15+ years at $30/month or $300/year for individuals, with internal-use license. Tiingo documents adjusted OHLC and CRSP-style split/dividend adjustments. Alpha Vantage lists 25+ years adjusted daily but the adjusted endpoint is premium and free API quota is 25 requests/day.
 - No subscription or vendor expense authorized/performed. Tiingo is the best candidate for an optional provider adapter, subject to secure token configuration and separate approval for any paid plan.
 - Canonical Handoff contains source links, provider constraints and next actions. See section 10.10.
+
+
+---
+
+## 2026-11-11 — PR #106: optional Tiingo EOD source
+- Merged PR #106: https://github.com/marcodurzov/Rocket_Trader/pull/106
+- Main SHA: `775186e104a485bbc07b50a5dcc807723aced240`.
+- Added optional Tiingo adjusted daily OHLCV source and secure `TIINGO_API_TOKEN` environment input; no subscription or token configured.
+- Enforced full-history and data-quality gates; no silent short-history acceptance, source splicing or fallback.
+- Corrected Yahoo source metadata to match actual `repair=False`.
+- CI run `42954001467`: 19 regression tests passed; offline self-test passed. Pull-request live research step was skipped by design.
+- Post-merge actual research run `42954130155` is in progress; results pending.
+- Handoff updated with full evidence, limitations and next steps; progress stays 46%.
