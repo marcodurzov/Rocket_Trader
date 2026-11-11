@@ -16,6 +16,7 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     fetch_yahoo_adjustment_fields,
     compare_adjustment_factors,
     fetch_tiingo_history,
+    tiingo_audit_status,
     _rename_pair_result,
 )
 
@@ -222,6 +223,32 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
                 "fixture-token",
                 opener=lambda request, timeout: FakeResponse(),
             )
+
+    def test_tiingo_audit_is_not_requested_not_a_false_pass(self):
+        status = tiingo_audit_status(None, [], [], expected_symbols=8)
+        self.assertFalse(status["requested"])
+        self.assertEqual(status["status"], "NOT_REQUESTED")
+        self.assertIsNone(status["all_diagnostic_gates_pass"])
+
+    def test_tiingo_audit_fails_when_requested_but_incomplete(self):
+        status = tiingo_audit_status(
+            "configured-token", [], [], expected_symbols=8
+        )
+        self.assertTrue(status["requested"])
+        self.assertEqual(status["status"], "FAILED")
+        self.assertFalse(status["all_diagnostic_gates_pass"])
+
+    def test_tiingo_audit_passes_only_when_all_symbols_pass_both_pairs(self):
+        item = {
+            "tiingo_vs_yahoo": {"diagnostic_pass": True},
+            "tiingo_vs_alpaca": {"diagnostic_pass": True},
+        }
+        status = tiingo_audit_status(
+            "configured-token", [item] * 8, [], expected_symbols=8
+        )
+        self.assertTrue(status["requested"])
+        self.assertEqual(status["status"], "PASSED")
+        self.assertTrue(status["all_diagnostic_gates_pass"])
 
     def test_tiingo_pair_report_uses_true_provider_names_and_direction(self):
         raw = compare_close_series("SPY", self.yahoo, self.yahoo * 1.01)
