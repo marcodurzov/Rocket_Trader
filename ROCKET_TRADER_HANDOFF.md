@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-11  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest audited code baseline SHA:** `f408204044fcff449bd615301a0bf2503a4d1db0`  
+**Latest audited code baseline SHA:** `097dd10932ed7ed2e993a2b2110cb7f728450d8b`  
 **Current progress estimate:** **46%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -631,3 +631,18 @@ No new strategy is profitable or approved. The research review does not validate
 8. Continue Paper deployment/accounting/cost collection and operational fault testing.
 
 **Progress remains 46%.** The research blueprint is now documented; research implementation and empirical validation remain substantial work.
+
+
+### PR #131 — Tiingo comparison status is now tri-state
+- Merge commit / latest code SHA: `097dd10932ed7ed2e993a2b2110cb7f728450d8b`.
+- When no `TIINGO_API_TOKEN` is configured, report status is `NOT_REQUESTED` and `tiingo_all_diagnostic_gates_pass=null`, never `true`. It is `PASSED` only when all requested symbols pass both Tiingo-vs-Yahoo and Tiingo-vs-Alpaca; otherwise `FAILED`.
+- PR workflow `42958291332` passed compile + offline audit tests. Main runtime workflow `42958406230` passed. Main audit workflow `42958406136` passed and produced artifact `13827124135`.
+- Artifact explicitly says `tiingo_comparison_requested=false`, `tiingo_comparison_status=NOT_REQUESTED`, 0 symbols, `tiingo_all_diagnostic_gates_pass=null`. This is absence of evidence, not a Tiingo pass.
+- The post-merge audit re-queried TLT's 2026-11-02 distribution nine days after ex-date. Yahoo still returned dividend cash 0 and no adjustment-factor step; Alpaca relative factor step remained 41.7148 bps. Official iShares reports $0.343177, ~41.93 bps vs prior Yahoo raw close $81.84. The mismatch persisted; classify Yahoo corporate-action event as unresolved/likely missing or stale in that capture, not a proven cause. Source: https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf.
+- Overall IEX/Yahoo gates remain false; no strategy, Paper or LIVE gate changed.
+
+**Current priority**
+1. Do not treat Yahoo adjusted TLT history as verified until the official 2026-11-02 distribution is reflected and a re-query converges.
+2. Tiingo comparison remains blocked on a token/eligible plan; no credential or paid subscription configured.
+3. If Tiingo is tested later, compare all eight symbols against both Yahoo and Alpaca, require common-session coverage and preserve explicit status.
+4. Preserve raw-vs-adjusted event diagnostics; never auto-correct or splice provider histories.
