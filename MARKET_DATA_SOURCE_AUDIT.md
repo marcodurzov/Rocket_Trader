@@ -114,3 +114,15 @@ No Tiingo token or subscription is configured by this change. No provider is tre
 Each two-provider comparison now records the ten largest absolute daily-return differences with exact session date, Yahoo return, Alpaca return and signed Alpaca-minus-Yahoo basis-point difference. It also records the ten largest divergences between normalized adjusted-close paths after anchoring both sources at the first common session.
 
 These are investigation leads, not corporate-action attribution. A large one-day discrepancy can be caused by a split/dividend adjustment, symbol mapping, bad/missing bar or vendor correction; the report does not claim which cause applies. Follow-up must inspect provider corporate-action records and raw/unadjusted bars around each flagged session. Never auto-correct or splice the series from these diagnostics alone.
+
+
+## Raw-price vs adjusted-price factor reconciliation
+
+The audit now also requests Yahoo raw `Close` and adjusted `Adj Close` (with `auto_adjust=False`, `actions=True`, `repair=False`), plus Alpaca raw daily bars and the existing `Adjustment.ALL` series. On common sessions it computes each provider's adjustment factor (`adjusted_close / raw_close`), normalizes the relative factor ratio at the first common session, and reports the largest daily factor-step changes. It separately compares raw-price daily returns and normalized raw-price paths.
+
+This allows the investigation to distinguish:
+- raw underlying price disagreement between providers;
+- adjustment-factor divergence (dividend/split/capital-gain treatment or correction);
+- a mixture of both.
+
+The output still does not attribute a mismatch to a specific corporate action. Provider action records, ex-dates, amounts and timestamps must be checked independently. The raw and adjusted series are audit evidence only; never auto-repair, overwrite history, or splice providers from this output.
