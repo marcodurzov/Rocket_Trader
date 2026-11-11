@@ -6,6 +6,7 @@ on:
     paths:
       - "Dockerfile.paper-observer"
       - "docker-compose.paper-observer.yml"
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_stream_runtime.py"
       - "rocket_trader_realized_pnl_ledger.py"
       - "rocket_trader_paper_fill_ledger_bridge.py"
