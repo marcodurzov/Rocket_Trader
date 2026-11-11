@@ -551,3 +551,14 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - CI `42955368774`: 10 cross-check tests passed; live data skipped on PR.
 - Post-merge audit `42955455037` and runtime suite `42955454994` pending at update time.
 - No provider correction, Tiingo request, strategy approval or orders. Progress remains 46%.
+
+
+---
+
+## 2026-11-11 — PR #113 post-merge outlier dates
+- Live audit `42955455037` succeeded; artifact `13826901809`; 10 cross-check tests passed.
+- Largest daily return differences (Alpaca minus Yahoo): QQQ 2024-12-24 +99.46 bps / 2024-12-23 -96.26 bps; SPY 2025-04-09 -116.67 bps / 2025-04-10 +100.78 bps; EEM 2024-12-24 +52.14 bps; DIA 2024-12-23 -71.42 bps; EFA 2024-12-23 -77.85 bps; TLT 2026-11-02 +39.82 bps; GLD 2021-06-21 -31.50 bps; IWM 2026-06-26 -70.36 bps.
+- QQQ 2024-12-23 is a documented $0.83466 ex-dividend date (Tiingo history). This event is only a hypothesis for follow-up; amount does not fully explain observed ~1% differences. SPY outlier is 2025-04-09/10; its Q1 2025 ex-date was 2025-03-21. No cause assigned.
+- Opposite-signed adjacent-session outliers could indicate timing/adjustment mapping, but not proven.
+- Cumulative divergences: SPY +218.91 bps, QQQ +89.98 bps, TLT +26.02 bps. 0/8 pass full-period coverage due IEX 6.3-year limit. No Tiingo token configured.
+- Runtime suite `42955454994` passed. Progress remains 46%.
