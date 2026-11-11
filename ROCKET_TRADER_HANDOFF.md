@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#168 merged; Paper Activity SSE crypto fills confirmed; durable consumer and Compose service prepared)
+**Last updated:** 2026-11-11 (PRs #141–#171 merged; Paper Activity SSE crypto fills confirmed; durable consumer packaged; read-only healthcheck hardened)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `31c68fd37b684a915754ff9f14f5f250034096c1` (PR #168 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)
+**Latest main HEAD before this Handoff refresh:** `8bf6d6a2560806a4b2b2aa04c92f8576c571f094` (PR #171 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)
 **Current progress estimate:** **55%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1064,3 +1064,18 @@ Next actions:
 - No new orders or account mutations were made by either PR.
 
 **Progress estimate:** 56% (engineering/evidence maturity only). Crypto fill Activity SSE and durable replay primitives are now confirmed/implemented; host deployment and real restart/replay validation, correction/bust behavior, fee allocation, calibrated net costs, and strategy out-of-sample edge remain open.
+
+
+### PR #170 — keep the published image current
+- Merged: PR https://github.com/marcodurzov/Rocket_Trader/pull/170.
+- Added `rocket_trader_alpaca_activity_sse_consumer.py` to the Paper observer image publisher's path filters so a future consumer-only change triggers a new image build.
+- Post-PR #168 image publication run `43043958882` succeeded. PR #170 also triggered image publication run `43044264217`, which succeeded.
+
+### PR #171 — strictly read-only healthcheck
+- Merged: PR https://github.com/marcodurzov/Rocket_Trader/pull/171; merge SHA `8bf6d6a2560806a4b2b2aa04c92f8576c571f094`.
+- Corrected a healthcheck flaw: it previously constructed the inbox with schema initialization enabled, so a missing volume/path could create a fresh empty DB and falsely pass.
+- Healthcheck now opens an existing DB only, fails without creating a replacement if it is missing, and verifies hash chain, payload hashes, cursor/delivery integrity and all append-only triggers.
+- PR CI `43044388062`: 26 offline tests passed. Compose config validation, Docker image build and in-image module compilation passed in `43044387984`. Post-merge consumer tests `43044515041` succeeded; post-merge image publication `43044515119` was still running at this handoff edit.
+- This healthcheck validates local DB integrity, not upstream API connectivity. Connection failures are logged as `RECONNECTING`; operators must inspect container logs.
+
+**Progress estimate:** 56% (engineering/evidence maturity only). The persistent service is implemented, packaged and CI-validated but has not been deployed on a user-controlled host or tested through a real process/container restart against a persistent volume.
