@@ -585,3 +585,13 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - This strongly suggests dividend adjustment handling contributes to these two factor divergences, but does not prove which vendor is right or explain all discrepancies.
 - Raw price series still diverge: max normalized raw close difference QQQ 0.9620%, SPY 0.8381%, TLT 0.2633%; p95 absolute raw daily return difference 4.69–9.94 bps.
 - Tiingo token absent; no Tiingo comparison. No strategy approval or orders. Progress remains 46%.
+
+
+---
+
+## 2026-11-11 — PR #119 before/after adjustment-factor evidence
+- PR #119 merged: https://github.com/marcodurzov/Rocket_Trader/pull/119
+- Main SHA: `0c3c815437e747f82615b3900cc8cfc7d4ce0066`.
+- Each factor-step row now exposes previous-session and event-session Yahoo/Alpaca factors and ratios.
+- CI `42956145698`: all 12 cross-check tests passed; live audit skipped on PR.
+- Post-merge live audit not yet observed. No provider attribution, no orders or strategy approval. Progress 46%.
