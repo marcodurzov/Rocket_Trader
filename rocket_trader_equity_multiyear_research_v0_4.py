@@ -163,9 +163,8 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     bars = int(len(observed.intersection(session_dates)))
     missing = max(0, expected_sessions - bars)
     missing_dates = session_dates.difference(observed)
-    all_gaps = pd.DatetimeIndex(sorted(set(session_dates).union(set(observed))))
-    gaps = all_gaps.to_series().diff().dt.days.dropna()
-    max_gap = int(gaps.max()) if not gaps.empty else 0
+    observed_gaps = observed.to_series().diff().dt.days.dropna()
+    max_gap = int(observed_gaps.max()) if not observed_gaps.empty else 0
     coverage = bars / expected_sessions if expected_sessions else 0.0
     eligible = coverage >= MIN_WEEKDAY_COVERAGE and max_gap <= MAX_GAP_DAYS
     return {
