@@ -366,10 +366,32 @@ def compare_adjustment_factors(
     for session, _ in factor_step_change_bps.abs().sort_values(ascending=False).head(10).items():
         if pd.isna(factor_step_change_bps.loc[session]):
             continue
+        position = int(common.index.get_loc(session))
+        previous_session = common.index[position - 1] if position > 0 else None
+        previous_yahoo_factor = (
+            float(yahoo_factor.iloc[position - 1]) if position > 0 else None
+        )
+        previous_alpaca_factor = (
+            float(alpaca_factor.iloc[position - 1]) if position > 0 else None
+        )
+        previous_factor_ratio = (
+            float(factor_ratio.iloc[position - 1]) if position > 0 else None
+        )
         top_steps.append({
             "session": str(session),
+            "previous_session": str(previous_session) if previous_session is not None else None,
+            "previous_yahoo_adjustment_factor": (
+                round(previous_yahoo_factor, 10) if previous_yahoo_factor is not None else None
+            ),
+            "previous_alpaca_adjustment_factor": (
+                round(previous_alpaca_factor, 10) if previous_alpaca_factor is not None else None
+            ),
+            "previous_alpaca_to_yahoo_factor_ratio": (
+                round(previous_factor_ratio, 10) if previous_factor_ratio is not None else None
+            ),
             "yahoo_adjustment_factor": round(float(yahoo_factor.loc[session]), 10),
             "alpaca_adjustment_factor": round(float(alpaca_factor.loc[session]), 10),
+            "alpaca_to_yahoo_factor_ratio": round(float(factor_ratio.loc[session]), 10),
             "relative_adjustment_factor_divergence_pct": round(
                 float(relative_factor_divergence_pct.loc[session]), 6
             ),

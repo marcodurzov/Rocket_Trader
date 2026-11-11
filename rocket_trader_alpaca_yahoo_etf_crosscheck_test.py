@@ -127,10 +127,14 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertAlmostEqual(result["max_abs_raw_normalized_close_difference_pct"], 0.0)
         self.assertAlmostEqual(result["mean_abs_raw_daily_return_difference_bps"], 0.0)
         self.assertGreater(result["max_abs_relative_adjustment_factor_divergence_pct"], 0.0)
-        self.assertEqual(
-            result["largest_adjustment_factor_step_changes"][0]["session"],
-            str(self.dates[4].date()),
-        )
+        step = result["largest_adjustment_factor_step_changes"][0]
+        self.assertEqual(step["session"], str(self.dates[4].date()))
+        self.assertEqual(step["previous_session"], str(self.dates[3].date()))
+        self.assertAlmostEqual(step["previous_yahoo_adjustment_factor"], 0.90)
+        self.assertAlmostEqual(step["previous_alpaca_adjustment_factor"], 0.91)
+        self.assertAlmostEqual(step["yahoo_adjustment_factor"], 0.90)
+        self.assertAlmostEqual(step["alpaca_adjustment_factor"], 0.90)
+        self.assertAlmostEqual(step["alpaca_to_yahoo_factor_ratio"], 1.0)
 
     def test_yahoo_adjustment_fields_fetch_raw_and_adjusted_close_separately(self):
         calls = {}
