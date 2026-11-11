@@ -527,3 +527,14 @@ The goal is a defensible 10-year adjusted daily ETF dataset with provenance and 
 - No Tiingo token, subscription, strategy approval, Paper approval or orders.
 
 **Progress remains 46%.** This improves audit evidence; no strategy edge or live operational evidence is added.
+
+
+### PR #124 — post-merge cash-action audit results
+- Live audit `42957082760` completed successfully; artifact `13827412712`; all 12 cross-check tests passed. Tiingo token was absent; no Tiingo request was made.
+- **QQQ, 2022-09-19:** Yahoo reports dividend `0.519` on the event date. Previous Yahoo raw close (2022-09-16) was `289.3200`; implied cash adjustment scale is `17.9386 bps`. The Alpaca/Yahoo adjustment-factor ratio moved from `0.9982217537` on the prior session to `0.9999841026` on ex-date, a `+17.6809 bps` relative step. This is close to one cash distribution scale, but provider attribution is not yet clear: both Yahoo's action feed and its adjustment factor show an event, while the Alpaca factor moves differently. Investigate whether Alpaca applies an additional adjustment or its methodology differs.
+- **TLT, 2026-11-02:** Yahoo reports no dividend (`0.0`) for the date. Previous Yahoo raw close (2026-10-30) was `81.8400`. Alpaca/Yahoo factor ratio moved from `0.9958460599` to `1.0000000000`, a `+41.7148 bps` step. iShares official data lists a `$0.343177` cash distribution on the same ex-date. The cash amount relative to the prior close is approximately `41.93 bps`, close to the observed step. This is strong evidence Yahoo's action history/adjustment did not capture the same event as Alpaca; verify exact vendor history before deciding which feed to trust.
+- These findings support a concrete hypothesis that at least part of QQQ/TLT cumulative divergence comes from dividend-adjustment handling. They do not prove which vendor is universally correct and do not explain all raw-return outliers.
+- Source records: QQQ distribution history https://app.tiingo.com/qqq/dividends and https://stockanalysis.com/etf/qqq/dividend/; official TLT issuer distribution https://www.ishares.com/us/products/239454/ishares-1020-year-treasury-bond-etf.
+- The 95% full-period source coverage gate remains 0/8 due IEX's ~6.3-year available history vs 10 years requested. No source series was spliced. Candidate promotion, Paper approval and orders remain false.
+
+**Next research action:** compare each provider's factor against the issuer's cash amount and prior raw close; inspect QQQ for possible duplicate adjustment and TLT for the missing Yahoo event. Then inspect the remaining top raw-price outlier dates separately.
