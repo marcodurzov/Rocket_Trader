@@ -481,12 +481,18 @@ def research(
 
 def self_test() -> Dict[str, Any]:
     assert require_zero_budget_feed("IEX") == "IEX"
+    now = datetime.now(timezone.utc)
+    assert require_zero_budget_feed(
+        "SIP", end_time=historical_request_end(now), now=now
+    ) == "SIP"
     try:
-        require_zero_budget_feed("SIP")
+        require_zero_budget_feed(
+            "SIP", end_time=now - timedelta(minutes=10), now=now
+        )
     except EquityResearchError:
         pass
     else:
-        raise AssertionError("SIP must be blocked by the zero-budget guard")
+        raise AssertionError("recent SIP requests must be blocked on the free plan")
     rng = np.random.default_rng(20261109)
     n = 1500
     dates = pd.bdate_range("2020-01-01", periods=n, tz="UTC")
