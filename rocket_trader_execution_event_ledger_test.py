@@ -48,6 +48,34 @@ class ExecutionEventLedgerTests(unittest.TestCase):
         self.assertEqual(first["event_hash"], second["event_hash"])
         self.assertEqual(self.ledger.verify_chain()["event_count"], 1)
 
+
+    def test_default_timestamp_retry_remains_idempotent(self):
+        first = self.ledger.append_event(
+            event_id="evt-default-time", aggregate_id="run", event_type="STARTED",
+            payload={"source": "test"},
+        )
+        second = self.ledger.append_event(
+            event_id="evt-default-time", aggregate_id="run", event_type="STARTED",
+            payload={"source": "test"},
+        )
+        self.assertTrue(second["duplicate_prevented"])
+        self.assertEqual(first["occurred_at"], second["occurred_at"])
+        self.assertEqual(self.ledger.verify_chain()["event_count"], 1)
+
+    def test_concurrent_duplicate_appends_create_one_event(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def write_event(_):
+            return self.ledger.append_event(
+                event_id="evt-concurrent", aggregate_id="run", event_type="STARTED",
+                payload={"source": "parallel"},
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(write_event, range(8)))
+        self.assertEqual(sum(not item["duplicate_prevented"] for item in results), 1)
+        self.assertEqual(self.ledger.verify_chain()["event_count"], 1)
+
     def test_same_event_id_with_different_payload_is_rejected(self):
         self.append("evt-conflict")
         with self.assertRaisesRegex(ExecutionLedgerError, "different immutable"):
