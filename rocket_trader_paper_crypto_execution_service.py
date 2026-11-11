@@ -38,7 +38,6 @@ class PaperCryptoExecutionService:
         event_ledger_path: str,
         api_key: str | None = None,
         api_secret: str | None = None,
-        client: Any = None,
     ) -> "PaperCryptoExecutionService":
         """Build the service only from pre-existing durable journal files.
 
@@ -127,7 +126,6 @@ class PaperCryptoExecutionService:
             api_key=api_key,
             api_secret=api_secret,
             db_path=str(journal),
-            client=client,
             event_ledger_path=str(events),
         )
         return cls(adapter)
@@ -143,6 +141,22 @@ class PaperCryptoExecutionService:
         self._ready = False
         self._closed = False
         self._startup_report: Dict[str, Any] | None = None
+
+    @staticmethod
+    def _account_is_cash_only_paper(snapshot: Any) -> bool:
+        if not isinstance(snapshot, dict):
+            return False
+        return (
+            snapshot.get("mode") == "PAPER"
+            and snapshot.get("status") == "ACTIVE"
+            and snapshot.get("currency") == "USD"
+            and snapshot.get("crypto_status") == "ACTIVE"
+            and snapshot.get("trading_blocked") is False
+            and str(snapshot.get("multiplier")) == "1"
+            and str(snapshot.get("max_margin_multiplier")) == "1"
+            and snapshot.get("no_shorting") is True
+            and snapshot.get("max_options_trading_level") == 0
+        )
 
     @staticmethod
     def _recovery_is_complete(report: Any) -> bool:
@@ -174,8 +188,14 @@ class PaperCryptoExecutionService:
             self._ready = False
             self._startup_report = None
             try:
-                self.adapter.verify_account()
+                account_snapshot = self.adapter.verify_account()
+                if not self._account_is_cash_only_paper(account_snapshot):
+                    raise PaperExecutionStartupError(
+                        "Account preflight did not prove ACTIVE USD cash-only Paper configuration."
+                    )
                 recovery = self.adapter.recover_journaled_orders()
+            except PaperExecutionStartupError:
+                raise
             except Exception as exc:
                 raise PaperExecutionStartupError(
                     "Paper startup verification/recovery failed; new order intents remain blocked."
