@@ -166,7 +166,7 @@ Interpretation:
 - `REQUIRES_REVIEW` (exit code 2): one or more orders were missing at the broker or had incomplete/mismatched fill evidence. Keep new execution blocked.
 - Failure (exit code 1): preflight, persistent-state or broker reconciliation error. Do not initialize a replacement database to bypass it.
 
-This is currently an **explicit one-shot runner**, not a continuously scheduled service. It must be wired into the eventual persistent execution service's startup gate before autonomous order intents are enabled. No execution service is currently deployed by this repository workflow.
+This remains an **explicit one-shot runner**, not a continuously scheduled service. PR #163 adds a tested process-local startup-gate wrapper for a future execution host, but no persistent execution service currently instantiates that wrapper or is deployed by this repository workflow.
 
 
 ## 9. Fail-closed execution startup gate (not deployed)
