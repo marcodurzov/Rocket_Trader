@@ -1093,3 +1093,51 @@ Next actions:
 - No deployment was performed and no new broker order was submitted as part of this clarification.
 
 **Progress estimate:** remains **56%** (engineering/evidence maturity, not profitability). The user's deployment uncertainty is now resolved as a documented absence of a known host; it does not itself increase implementation or validation maturity.
+
+
+## 2026-11-11 — Free infrastructure and scheduled-workflow audit
+
+### Verified repository and cost facts
+
+- Repository visibility is **public**. This matters because GitHub documents standard GitHub-hosted Actions runners as free and unlimited for public repositories; larger runners are excluded from that free guarantee.
+- GitHub documents Container Registry image storage and bandwidth as currently free. The publish workflow pushes to GHCR, but package visibility was not independently verified in this audit; check that setting before relying on anonymous pulls. Re-check terms if repository/package visibility changes.
+- The existing workflows use standard `ubuntu-latest` runners; no larger runner label was found in the reviewed workflow inventory.
+- The repository currently contains 58 workflow files. Ten contain scheduled triggers:
+  - ETF Alpaca/Yahoo cross-check: weekly Sunday.
+  - Crypto multi-year research v0.1, v0.2, v0.3: weekly Sunday.
+  - Equity multi-year research v0.1, v0.2, v0.3, v0.4: weekly Sunday.
+  - SIP entitlement probe: weekly Monday.
+  - Traditional research v0.2: weekly Sunday.
+- The schedules are research/audit jobs, not a continuous trading service. The Activity SSE consumer workflow is push/PR test CI only; it is not scheduled and the Compose consumer is not running on a known persistent host.
+- GitHub scheduled workflows are not a reliable always-on runtime: they can be delayed during load and jobs may be dropped; public-repository scheduled workflows can also be automatically disabled after 60 days without repository activity. Minimum supported schedule interval is five minutes, but that does not create a real-time guarantee.
+- Therefore, GitHub Actions + GHCR currently provides a **$0 development, CI, bounded research and audit path**, but it is not evidence of an always-on market-data consumer or autonomous trading host.
+- No paid service, new account, deployment, or broker order was initiated.
+
+### Workflow history observations
+
+- GitHub API reported 689 workflow runs at audit time.
+- Across the 589 older runs reviewed, 10 had the `schedule` event. Nine succeeded and one failed; the failed run was Traditional Research v0.2 on 2026-11-08.
+- The failure log shows the workflow stopped at its exact-implementation check because the checked-out historical script began with a literal Markdown YAML fence (`\`\`\`yaml`) and failed `py_compile`. The current `main` version of `rocket_trader_traditional_research_v0_2.py` was inspected and begins with Python source, not that fence. Do not call the old failure a current-main failure; the current script still needs a fresh run to prove end-to-end health.
+- The 10 weekly schedules cluster heavily at the top of the hour on Sunday. This is not a direct monetary cost for standard runners on a public repository, but it increases avoidable queue contention. Consider staggering schedule minutes/hours only after reviewing each research pipeline's dependency and data-window assumptions; do not disable versioned research jobs merely to reduce workflow count.
+
+### Stale open PR discovered
+
+- PR #127 (`Compare adjustment factors with Alpaca issuer corporate actions`) remains open but its branch is 104 commits behind `main`, four commits ahead, and GitHub reports it as diverged/non-mergeable.
+- Its historical CI run #42957587110 succeeded on its old head, but that does not validate the change against current `main`. Do not merge it as-is. Rebase/port the corporate-action feature onto current `main`, preserve intervening changes (including newer ETF data-quality and Tiingo diagnostic logic), rerun all relevant tests and the audit, then submit a fresh PR.
+- The PR's feature is still relevant: independent Alpaca issuer corporate-action records can help diagnose Yahoo/Alpaca adjustment-factor discrepancies. It remains research-only and must not mutate prices or trading ledgers.
+
+### Alpaca free tier and Live eligibility notes
+
+- Alpaca Paper Trading is documented as free and available globally for Paper-only accounts.
+- Alpaca's Basic market-data plan is $0 and provides IEX real-time US equity data; the documented free limits include 30 equity symbols for trade/quote WebSocket subscriptions and 200 historical API calls/minute. SIP/all-exchange equity data requires the paid Algo Trader Plus plan. Keep IEX as the zero-budget default and explicitly mark the resulting coverage limitation in strategy validation.
+- Alpaca states international Live brokerage is jurisdiction-dependent and directs users to contact support to confirm supported countries. Do not assume that a successful global Paper-only account guarantees Live brokerage eligibility. Before any future Live activation, verify account-holder tax residence and current eligibility directly with Alpaca, plus all applicable Mexican and US tax/regulatory obligations. No Live transition is authorized now.
+
+### Infrastructure decision
+
+- Keep GitHub Actions + public GHCR as the zero-cost default for CI, tests, research and bounded Paper audits.
+- Do not use GitHub-hosted runners as a persistent service; do not run a permanent process on an ephemeral Actions runner.
+- Next runtime options to investigate, in order: (1) a computer the user already owns and can leave online, running the Compose service with persistent local storage; (2) a genuinely free persistent host only if its current terms and reliability meet requirements; (3) lowest-cost paid hosting only after explicit user approval.
+- Any local/self-hosted GitHub runner or home-host deployment must keep broker credentials in local secret storage, never in the repository or chat; restrict network exposure; enforce PAPER-only endpoints and no order-submission capability in the observer; test restart/recovery and persistent-volume survival.
+- A free cloud tier must be checked for sleep/idle suspension, persistent disk availability, egress limits, runtime caps, region, secret management, and terms before being recommended as a continuous host.
+
+**Progress estimate:** remains **56%** (engineering/evidence maturity, not profitability). This is an infrastructure and workflow audit; it does not prove continuous runtime, restart recovery, strategy edge, or profitability.
