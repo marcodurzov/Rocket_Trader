@@ -180,7 +180,7 @@ class EquityResearchV03Tests(unittest.TestCase):
         )
         expected_end = historical_request_end(now)
         self.assertTrue(client.requests)
-        self.assertEqual(client.requests[-1].end, expected_end)
+        self.assertEqual(pd.Timestamp(client.requests[-1].end).tz_localize("UTC"), pd.Timestamp(expected_end))
         self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
 
     def test_recent_sip_is_rejected_before_any_market_data_request(self):
