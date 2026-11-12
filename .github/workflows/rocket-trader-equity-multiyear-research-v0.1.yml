@@ -7,12 +7,14 @@ on:
       - "research/equity-multiyear-benchmarks-v0-1"
     paths:
       - "rocket_trader_equity_multiyear_research_v0_1.py"
+      - "requirements-yahoo.txt"
       - ".github/workflows/rocket-trader-equity-multiyear-research-v0.1.yml"
   pull_request:
     branches:
       - main
     paths:
       - "rocket_trader_equity_multiyear_research_v0_1.py"
+      - "requirements-yahoo.txt"
       - ".github/workflows/rocket-trader-equity-multiyear-research-v0.1.yml"
   workflow_dispatch:
     inputs:
@@ -54,6 +56,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
+          pip install -r requirements-yahoo.txt
       - name: Offline self-test
         run: python rocket_trader_equity_multiyear_research_v0_1.py --self-test
       - name: Run five-year adjusted ETF research
