@@ -739,6 +739,7 @@ def compare_adjustment_factors(
 
 
 
+# Alpaca requires >=15 minutes of history delay; one extra minute is the safety margin.
 SIP_HISTORICAL_END_BUFFER_MINUTES = 16
 
 
