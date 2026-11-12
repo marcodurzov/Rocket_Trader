@@ -1320,3 +1320,16 @@ Final code/test head `57e2f330c1cd63e0dc14cea560d520fae98b7b6c` passed all five 
 - Equity research v0.4 self-test and regression tests: run `43155404183` — success.
 
 These are offline PR checks only. The cross-check's live historical retrieval step and each research workflow's market-data step were skipped by their PR-event conditions. Squash-merge PR #181, then verify the main-branch push workflows and inspect their artifacts before claiming historical SIP entitlement or research coverage validated.
+
+
+## 2026-11-12 — PR #181 merged; post-merge data validation pending
+
+- PR #181 was squash-merged into `main` at `87cd23753dbc644414d7d3e25ed6684dc7589274`.
+- Verified `main` now points to that merge commit. The merge includes the historical SIP guard, XNYS completed-session cutoff, Yahoo exclusive-end alignment, provider history-window diagnostics, v0.1–v0.4 workflow/test corrections, and the updated source audit.
+- Final PR offline checks all passed: ETF cross-check `43155404153`; v0.1 `43155404157`; v0.2 `43155404154`; v0.3 `43155404122`; v0.4 `43155404183`.
+- These were PR-event checks. Their live broker data and research steps were skipped intentionally. The merge should trigger main-branch push workflows for the read-only historical SIP cross-check and v0.1–v0.4 research.
+- The available GitHub connector in this session exposes PR-triggered workflow runs, but not the repository-wide push-run listing/artifacts. The merge commit's legacy combined status endpoint currently reports no statuses, so that is not evidence of workflow completion. Do not infer success or failure of the post-merge market-data requests from the offline checks.
+- **Required next verification:** open GitHub Actions for the repository, inspect the push-triggered runs for the ETF cross-check and equity v0.1–v0.4, download their JSON artifacts, and confirm: (1) SIP returned data before 2020 for the Paper credentials; (2) all eight ETFs have the requested history and pass data-quality/coverage gates; (3) provider divergences and adjustment-factor events are understood; (4) v0.2–v0.4 reports preserve multiple-testing, holdout and no-promotion gates. If any workflow failed, inspect logs and fix the actual cause; do not buy data or enable Live as a workaround.
+- No Paper order, Live order, real-money funding, paid data subscription, or strategy promotion occurred in this work.
+
+**Phase conclusion:** PR #181's engineering change is merged and its offline checks are green. The historical SIP entitlement/coverage phase is not closed until the post-merge Paper-credential artifacts are inspected. Overall Rocket Trader remains at 58% engineering/evidence maturity; profitability, validated costs, persistent runtime and autonomous operation remain unproven.
