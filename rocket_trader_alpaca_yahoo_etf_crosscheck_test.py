@@ -186,6 +186,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["auto_adjust"])
         self.assertTrue(calls["actions"])
+        self.assertEqual(calls["end"], "2024-01-11")
 
 
     def test_adjustment_factor_diagnostics_separate_raw_prices_from_adjustments(self):
@@ -361,6 +362,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(calls["auto_adjust"])
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["actions"])
+        self.assertEqual(calls["end"], "2024-01-11")
 
     def test_tiingo_token_is_ignored_without_explicit_opt_in(self):
         self.assertEqual(resolve_tiingo_token(False, "secret-token"), "")
