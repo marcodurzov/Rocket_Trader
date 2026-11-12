@@ -7,12 +7,14 @@ on:
       - "research/equity-multiyear-benchmarks-v0-1"
     paths:
       - "rocket_trader_equity_multiyear_research_v0_1.py"
+      - "requirements-yahoo.txt"
       - ".github/workflows/rocket-trader-equity-multiyear-research-v0.1.yml"
   pull_request:
     branches:
       - main
     paths:
       - "rocket_trader_equity_multiyear_research_v0_1.py"
+      - "requirements-yahoo.txt"
       - ".github/workflows/rocket-trader-equity-multiyear-research-v0.1.yml"
   workflow_dispatch:
     inputs:
@@ -22,12 +24,13 @@ on:
         default: '5'
         type: string
       feed:
-        description: Free IEX feed only; paid SIP is disabled by the zero-budget policy
+        description: Free SIP for historical data ending 15+ minutes ago; IEX for recent/live data
         required: false
-        default: 'IEX'
+        default: 'SIP'
         type: choice
         options:
           - IEX
+          - SIP
   schedule:
     - cron: '0 17 * * 0'
 
@@ -53,6 +56,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
+          pip install -r requirements-yahoo.txt
       - name: Offline self-test
         run: python rocket_trader_equity_multiyear_research_v0_1.py --self-test
       - name: Run five-year adjusted ETF research
@@ -61,7 +65,7 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           YEARS_INPUT: ${{ inputs.years || '5' }}
-          FEED_INPUT: ${{ inputs.feed || 'IEX' }}
+          FEED_INPUT: ${{ inputs.feed || 'SIP' }}
         run: |
           python rocket_trader_equity_multiyear_research_v0_1.py --years "$YEARS_INPUT" --feed "$FEED_INPUT" --output research_artifacts/equity_multiyear_research_v0_1.json
       - name: Verify research-only report

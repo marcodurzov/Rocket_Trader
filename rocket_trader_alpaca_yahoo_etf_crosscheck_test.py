@@ -20,6 +20,7 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     fetch_alpaca_corporate_actions,
     tiingo_audit_status,
     require_zero_budget_feed,
+    historical_request_end,
     resolve_tiingo_token,
     _rename_pair_result,
 )
@@ -31,6 +32,18 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.yahoo = pd.Series(
             [100.0, 101.0, 100.5, 102.0, 103.0, 102.5, 104.0, 105.0],
             index=self.dates,
+        )
+
+    def test_historical_request_end_uses_last_completed_xnys_session(self):
+        before_close = pd.Timestamp("2026-11-11T20:00:00Z").to_pydatetime()
+        after_close = pd.Timestamp("2026-11-11T21:20:00Z").to_pydatetime()
+        self.assertEqual(
+            historical_request_end(before_close),
+            pd.Timestamp("2026-11-10T21:00:00Z").to_pydatetime(),
+        )
+        self.assertEqual(
+            historical_request_end(after_close),
+            pd.Timestamp("2026-11-11T21:00:00Z").to_pydatetime(),
         )
 
     def test_identical_series_pass_diagnostic_gates(self):
@@ -88,6 +101,62 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(result["diagnostic_pass"])
         self.assertLess(result["yahoo_coverage_on_common"], 0.95)
 
+
+    def test_history_start_mismatch_is_not_mislabeled_as_internal_missing_bars(self):
+        extended_dates = pd.date_range("2018-01-02", periods=1500, freq="B", tz="UTC")
+        yahoo = pd.Series(range(100, 1600), index=extended_dates, dtype=float)
+        alpaca = yahoo.loc[yahoo.index >= pd.Timestamp("2020-07-27", tz="UTC")]
+        result = compare_close_series(
+            "DIA", yahoo, alpaca,
+            min_common_sessions=100,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(
+            result["history_window_assessment"],
+            "RIGHT_SOURCE_STARTS_LATER_THAN_LEFT",
+        )
+        self.assertAlmostEqual(result["alpaca_overlap_session_completeness"], 1.0)
+        self.assertAlmostEqual(result["yahoo_overlap_session_completeness"], 1.0)
+        self.assertFalse(result["diagnostic_gates"]["minimum_requested_history_overlap"])
+        self.assertTrue(result["diagnostic_gates"]["minimum_overlap_session_completeness"])
+
+    def test_history_end_mismatch_is_not_mislabeled_as_comparable_windows(self):
+        alpaca = self.yahoo.iloc[:-1]
+        result = compare_close_series(
+            "DIA", self.yahoo, alpaca,
+            min_common_sessions=5,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(
+            result["history_window_assessment"],
+            "RIGHT_SOURCE_ENDS_EARLIER_THAN_LEFT",
+        )
+        self.assertEqual(result["alpaca_history_end_lag_days"], 1)
+        self.assertEqual(result["overlap_session_assessment"], "OVERLAP_SESSIONS_ALIGNED")
+        self.assertFalse(result["diagnostic_gates"]["minimum_requested_history_overlap"])
+
+    def test_history_window_containment_reports_both_boundaries(self):
+        alpaca = self.yahoo.iloc[1:-1]
+        result = compare_close_series(
+            "DIA", self.yahoo, alpaca,
+            min_common_sessions=5,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(result["history_window_assessment"], "RIGHT_SOURCE_WINDOW_INSIDE_LEFT")
+        self.assertEqual(result["alpaca_history_start_lag_days"], 1)
+        self.assertEqual(result["alpaca_history_end_lag_days"], 1)
+
+    def test_internal_missing_sessions_are_reported_separately_from_start_mismatch(self):
+        alpaca = self.yahoo.drop(self.yahoo.index[3])
+        result = compare_close_series(
+            "IWM", self.yahoo, alpaca,
+            min_common_sessions=3,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(result["history_window_assessment"], "COMPARABLE_HISTORY_WINDOWS")
+        self.assertEqual(result["overlap_session_assessment"], "SESSION_GAPS_WITHIN_OVERLAP")
+        self.assertFalse(result["diagnostic_gates"]["minimum_overlap_session_completeness"])
+
     def test_close_series_rejects_nonpositive_or_invalid_data(self):
         bad = self.yahoo.copy()
         bad.iloc[2] = 0
@@ -117,6 +186,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["auto_adjust"])
         self.assertTrue(calls["actions"])
+        self.assertEqual(calls["end"], "2024-01-11")
 
 
     def test_adjustment_factor_diagnostics_separate_raw_prices_from_adjustments(self):
@@ -292,6 +362,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(calls["auto_adjust"])
         self.assertFalse(calls["repair"])
         self.assertTrue(calls["actions"])
+        self.assertEqual(calls["end"], "2024-01-11")
 
     def test_tiingo_token_is_ignored_without_explicit_opt_in(self):
         self.assertEqual(resolve_tiingo_token(False, "secret-token"), "")
@@ -301,10 +372,26 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             resolve_tiingo_token(True, None)
         self.assertEqual(resolve_tiingo_token(True, "starter-token"), "starter-token")
 
-    def test_zero_budget_feed_allows_iex_and_blocks_sip(self):
+    def test_historical_request_end_is_a_completed_safe_utc_boundary(self):
+        for now in (
+            pd.Timestamp("2026-11-11T00:05:00Z").to_pydatetime(),
+            pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime(),
+        ):
+            end = historical_request_end(now)
+            self.assertEqual(end, pd.Timestamp("2026-11-10T21:00:00Z").to_pydatetime())
+            self.assertLessEqual(end, now - pd.Timedelta(minutes=15))
+
+    def test_zero_budget_feed_allows_historical_sip_but_blocks_recent_sip(self):
         self.assertEqual(require_zero_budget_feed("iex"), "IEX")
-        with self.assertRaisesRegex(CrosscheckError, "zero-budget policy"):
-            require_zero_budget_feed("SIP")
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        self.assertEqual(
+            require_zero_budget_feed("SIP", end_time=now - pd.Timedelta(minutes=16), now=now),
+            "SIP",
+        )
+        with self.assertRaisesRegex(CrosscheckError, "at least 15 minutes ago"):
+            require_zero_budget_feed("SIP", end_time=now - pd.Timedelta(minutes=14), now=now)
+        with self.assertRaisesRegex(CrosscheckError, "explicit timezone-aware"):
+            require_zero_budget_feed("SIP", now=now)
 
     def test_tiingo_history_uses_adjusted_close_and_token_header(self):
         calls = {}
@@ -393,6 +480,11 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertIn("yahoo_sessions", named)
         self.assertIn("tiingo_sessions", named)
         self.assertIn("tiingo_coverage_on_common", named)
+        self.assertIn("tiingo_first_session", named)
+        self.assertIn("tiingo_history_start_lag_days", named)
+        self.assertIn("tiingo_history_end_lag_days", named)
+        self.assertIn("tiingo_overlap_session_completeness", named)
+        self.assertIn("overlap_session_assessment", named)
         self.assertAlmostEqual(
             named["right_minus_left_cumulative_return_difference_bps"],
             raw["cumulative_return_difference_bps"],

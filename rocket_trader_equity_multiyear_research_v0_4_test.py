@@ -19,6 +19,7 @@ from rocket_trader_equity_multiyear_research_v0_4 import (
     evaluate_weights,
     strategy_positions,
     require_zero_budget_feed,
+    historical_request_end,
     fetch_daily_bars,
     fetch_yahoo_daily_bars,
     fetch_tiingo_daily_bars,
@@ -52,9 +53,11 @@ class FakeStockClient:
     def __init__(self, frame):
         self.frame = frame
         self.calls = 0
+        self.requests = []
 
     def get_stock_bars(self, request):
         self.calls += 1
+        self.requests.append(request)
         return FakeResponse(self.frame)
 
 
@@ -74,10 +77,17 @@ class EquityResearchV04Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Tiingo is disabled"):
             research(symbols=["SPY", "QQQ"], years=3, feed_name="IEX", source="TIINGO")
 
-    def test_zero_budget_feed_allows_iex_and_rejects_sip(self):
+    def test_zero_budget_feed_allows_historical_sip_but_blocks_recent_sip(self):
         self.assertEqual(require_zero_budget_feed("iex"), "IEX")
-        with self.assertRaisesRegex(EquityResearchError, "zero-budget policy"):
-            require_zero_budget_feed("SIP")
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        self.assertEqual(
+            require_zero_budget_feed("SIP", end_time=now - timedelta(minutes=16), now=now),
+            "SIP",
+        )
+        with self.assertRaisesRegex(EquityResearchError, "at least 15 minutes ago"):
+            require_zero_budget_feed("SIP", end_time=now - timedelta(minutes=14), now=now)
+        with self.assertRaisesRegex(EquityResearchError, "explicit timezone-aware"):
+            require_zero_budget_feed("SIP", now=now)
     def test_normalize_frame_tolerates_only_float_precision_ohlc_differences(self):
         frame = pd.DataFrame({
             "timestamp": pd.date_range("2024-01-01", periods=2, tz="UTC"),
@@ -167,16 +177,53 @@ class EquityResearchV04Tests(unittest.TestCase):
         self.assertFalse(metrics["eligible_for_strategy_evidence"])
         self.assertEqual(metrics["first_missing_exchange_session"], "2024-07-02")
 
-    def test_10_year_fetch_requires_requested_history(self):
+    def test_10_year_fetch_requires_requested_history_and_uses_free_historical_sip(self):
         frame = synthetic_frame()
         end = frame["timestamp"].iloc[-1].to_pydatetime() + timedelta(days=1)
         client = FakeStockClient(frame)
         result = fetch_daily_bars(
-            "SPY", years=10, feed_name="IEX", client=client, end=end, chunk_days=365
+            "SPY", years=10, feed_name="SIP", client=client, end=end, chunk_days=365
         )
         self.assertGreaterEqual(len(result), 1800)
         self.assertEqual(result.iloc[0]["timestamp"], frame.iloc[0]["timestamp"])
         self.assertGreaterEqual(client.calls, 9)
+        self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
+
+    def test_historical_request_end_uses_last_completed_xnys_session(self):
+        before_close = pd.Timestamp("2026-11-11T20:00:00Z").to_pydatetime()
+        after_close = pd.Timestamp("2026-11-11T21:20:00Z").to_pydatetime()
+        self.assertEqual(
+            historical_request_end(before_close),
+            pd.Timestamp("2026-11-10T21:00:00Z").to_pydatetime(),
+        )
+        self.assertEqual(
+            historical_request_end(after_close),
+            pd.Timestamp("2026-11-11T21:00:00Z").to_pydatetime(),
+        )
+
+    def test_fetch_daily_bars_uses_injected_clock_for_default_historical_end(self):
+        frame = synthetic_frame()
+        client = FakeStockClient(frame)
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        fetch_daily_bars(
+            "SPY", years=10, feed_name="SIP", client=client,
+            now=now, chunk_days=365,
+        )
+        expected_end = historical_request_end(now)
+        self.assertTrue(client.requests)
+        self.assertEqual(pd.Timestamp(client.requests[-1].end).tz_localize("UTC"), pd.Timestamp(expected_end))
+        self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
+
+    def test_recent_sip_is_rejected_before_any_market_data_request(self):
+        frame = synthetic_frame()
+        client = FakeStockClient(frame)
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        with self.assertRaisesRegex(EquityResearchError, "at least 15 minutes ago"):
+            fetch_daily_bars(
+                "SPY", years=3, feed_name="SIP", client=client,
+                end=now - timedelta(minutes=14), now=now, chunk_days=365,
+            )
+        self.assertEqual(client.calls, 0)
 
     def test_short_history_cannot_pass_as_ten_year_research(self):
         frame = synthetic_frame(start="2021-11-09", periods=1250)
@@ -207,7 +254,7 @@ class EquityResearchV04Tests(unittest.TestCase):
         self.assertIs(ticker.calls[0]["auto_adjust"], True)
         self.assertIs(ticker.calls[0]["actions"], True)
         self.assertIs(ticker.calls[0]["repair"], False)
-        self.assertEqual(ticker.calls[0]["end"], end.date().isoformat())
+        self.assertEqual(ticker.calls[0]["end"], (end.date() + timedelta(days=1)).isoformat())
 
     def test_tiingo_fetch_uses_adjusted_ohlcv_and_requires_full_history(self):
         raw = synthetic_frame()

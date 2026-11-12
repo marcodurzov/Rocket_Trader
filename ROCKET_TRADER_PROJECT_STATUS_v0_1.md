@@ -110,7 +110,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 ### 23. SIP probe result and cost decision
 - Read-only run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42700787964
 - IEX SPY daily bars: `AVAILABLE` (5 bars returned).
-- SIP SPY daily bars: `NOT_ENTITLED` (HTTP 403).
+- Recent SIP SPY daily-bars probe: `NOT_ENTITLED` (HTTP 403) because PR #31 queried `end=current` over the last 14 days; this tested the recent-data restriction, not historical SIP access.
 - Current Alpaca individual Trading API documentation lists Basic as free/IEX and Algo Trader Plus at USD 99/month for full US-exchange coverage. Given the initial strategy capital of MXN 1,000, paying for SIP now is economically unjustified. Continue discovery with IEX, keep the limitation explicit, and revisit SIP only when the strategy/capital scale supports the recurring data cost. <https://docs.alpaca.markets/us/docs/about-market-data-api>
 - Do not confuse IEX-only historical research with consolidated market coverage.
 
@@ -246,7 +246,7 @@ Do not interpret a successful GitHub Actions run as evidence of profitability.
 - PR #28 exposes `earned_growth_capital_mxn` from the ledger. External deposits/withdrawals do not count toward the MXN 100,000 earned-growth milestone.
 - PR #29 adds a 95% calendar-coverage and maximum-three-day-gap gate for crypto. The five-year run had BTC and ETH at 100% coverage; SOL at 77.10% with 418 missing days and a 417-day maximum gap. SOL is ineligible for evidence; the overall crypto dataset fails quality.
 - PR #30 adds five-year adjusted daily ETF research across SPY, QQQ, IWM, DIA, TLT, GLD, EFA and EEM. No strategy showed robust excess return over the matching benchmark.
-- PR #31 verifies market-data entitlements: IEX available; SIP returned NOT_ENTITLED (HTTP 403). IEX is not consolidated SIP data. Paying for SIP is not justified at the current MXN 1,000 starting capital.
+- PR #31 tested recent market-data entitlement: IEX available; SIP returned NOT_ENTITLED (HTTP 403) because the request ended at `current`. It did not test historical SIP ending 15+ minutes earlier. IEX is not consolidated SIP data. Do not pay for real-time SIP.
 - PR #32 adds a ten-year ETF research path and benchmark-relative moving-block bootstrap. Its offline tests pass, but the first main-branch data run failed closed: every requested ETF returned only 1,581 daily bars (SPY 1,582), below the 1,638 minimum for ten-year evidence. No research result or strategy approval was produced. Run: https://github.com/marcodurzov/Rocket_Trader/actions/runs/42701564813.
 
 ### Important documentation reconciliation
@@ -279,7 +279,7 @@ PR #33 adds the returned date range, approximate weekday coverage, missing weekd
 The post-PR #33 diagnostic run established the actual IEX coverage boundary:
 - DIA, EEM, EFA, GLD, IWM, QQQ and TLT returned 1,581 bars from 2020-07-27 through 2026-11-09, with approximately 96.34% weekday coverage. They do not contain ten years of IEX history.
 - SPY returned 1,582 bars, but its first bar was an isolated 2018-11-01 observation followed by a 634-calendar-day gap; overall approximate weekday coverage was 75.59%.
-- The IEX source limitation is consistent with Alpaca support material stating IEX historical bars begin in 2020, while SIP history reaches earlier. This account's SIP probe returned NOT_ENTITLED (403), so the ten-year workflow must not keep treating IEX as a ten-year source.
+- The IEX source limitation is consistent with Alpaca support material stating IEX historical bars begin in 2020, while SIP history reaches earlier. The old recent-SIP probe returned NOT_ENTITLED (403); it did not test historical SIP, so the ten-year workflow should now test historical SIP rather than assume IEX can cover ten years.
 - Do not lower the 10-year evidence threshold or use IEX data as if it were consolidated market history. PR #36 adds a separate Yahoo Finance research-only provider using adjusted daily OHLC, corporate-action metadata and explicit data-quality gates. Yahoo data is not an execution feed and must not be silently spliced with Alpaca IEX. The strategy report remains research-only and must pass data quality before its metrics are considered.
 
 
@@ -429,7 +429,7 @@ The ten-year Yahoo history now reaches all eight ETFs, but EFA and TLT failed no
 - This is **not** a full 10-year source parity pass: Yahoo returned 2,512 daily sessions; Alpaca IEX returned 1,582; common sessions were 1,581 from 2020-07-27 to 2026-11-09. Yahoo common-session coverage relative to its full series was 62.94%; IEX was 99.94%. Thus the full-period coverage gate correctly failed for all eight ETFs (0/8 diagnostic passes).
 - On the overlap, daily return correlations were 0.99835–0.99975; p95 absolute daily-return differences were 4.69–9.97 bps. However cumulative-return differences ranged from 1.3 bps (DIA) to 220.5 bps (SPY); SPY/QQQ/TLT differences need source-adjustment investigation before providers can be treated as interchangeable.
 - The job's green conclusion means data retrieval and report generation completed, **not** that the diagnostic gates passed. The report keeps candidate promotion, Paper approval and orders disabled; zero orders were submitted.
-- Interpretation: Alpaca IEX's available history is the binding 10-year limitation for this account. SIP entitlement was previously NOT_ENTITLED. Do not reduce the requested coverage threshold or splice Yahoo and IEX as if they were one homogeneous series.
+- Interpretation: Alpaca IEX's available history is the binding 10-year limitation. The prior `NOT_ENTITLED` result applied to a recent SIP request ending at current time, not historical SIP. Do not reduce the coverage threshold or splice Yahoo and IEX as if they were one homogeneous series.
 - Next: evaluate full-history source alternatives/entitlement economics and separately formalize (a) overlap parity and (b) full-period coverage. Investigate cumulative adjusted-return divergence, especially SPY, before strategy research uses any cross-source history.
 
 
@@ -820,8 +820,8 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 
 - Workflow run `43078282153` completed successfully. It queried the 10-year window 2016-11-11 through 2026-11-11 for DIA, EEM, EFA, GLD, IWM, QQQ, SPY and TLT using Alpaca IEX and Yahoo adjusted daily history.
 - Alpaca Corporate Actions returned **410 records** and the response envelope was valid; no API error occurred. Tiingo comparison was `NOT_REQUESTED`; no paid data source was called.
-- **0 of 8 ETF symbols passed the overall diagnostic gates.** All eight passed minimum common sessions, daily-return correlation and the p95 return-difference threshold, but all eight failed the minimum source-coverage gate.
-- Common sessions represented approximately **62.98% of Yahoo's returned sessions** and **99.94% of Alpaca IEX's returned sessions**. In this sample, Alpaca IEX is the sparse side of the comparison. Do not treat the free IEX historical feed as a complete consolidated 10-year ETF history. This is a measured data-coverage limitation; the exact cause of each missing session still requires separate date-level analysis.
+- **0 of 8 ETF symbols passed the overall 10-year source-overlap diagnostic.** All eight passed minimum common sessions, daily-return correlation and the p95 return-difference threshold, but all eight failed the minimum full-history-overlap gate because Alpaca returned a shorter date range.
+- Common sessions represented approximately **62.98% of Yahoo's full 10-year returned sessions** and **99.94% of Alpaca IEX's returned sessions**. The key limitation is a shorter Alpaca history horizon, not evidence of a 37% daily-bar omission rate inside the available IEX window. For seven ETFs Alpaca begins 2020-07-27; SPY begins 2018-11-01. Within the shared date window, the observed session sets are almost identical. Do not treat IEX as a 10-year history source for this account, but do not label the 37% horizon difference as missing daily bars.
 - The audit is not a strategy test and does not validate the 5 bps/side ETF cost placeholder, fills, market impact, or profitability. `candidate_promotion_allowed=false`, `paper_approval=false`, `orders_enabled=false`, `orders_submitted=0`.
 - Useful issuer-action examples: EEM 2023-06-07 returned one cash-dividend record at USD 0.310139; TLT 2026-11-02 returned one at USD 0.343177. QQQ 2022-09-19 returned two distinct Alpaca IDs, both USD 0.51856, with different process/payable dates (2022-09-23 and 2022-10-31). The report now flags this as ambiguous and does not sum it. Resolve against the issuer's official distribution notice before using it as a reference.
 - The first run after PR #175 incorrectly returned zero actions because the parser read arrays from the wrong response level. PR #176 fixed the envelope; the corrected run returned 410 records. Do not cite the earlier zero-count result as evidence of no issuer actions.
@@ -830,7 +830,7 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 
 - Keep Alpaca Basic IEX as the zero-cost Paper execution/data connection, but do not use its observed sparse history as the sole source for long-horizon ETF backtests.
 - Evaluate free historical sources (Yahoo and other genuinely free, legally usable sources) for complete adjusted daily bars; cross-validate dates, actions, splits, dividends and survivorship/adjustment conventions. Use issuer records as the reference for declared distributions.
-- SIP/all-exchange data is not authorized because it requires a paid plan. Tiingo paid plan remains unauthorized. Do not activate or consume any paid provider without explicit approval.
+- Recent/live SIP streaming and SIP data inside the latest 15 minutes require the paid Algo Trader Plus plan and remain unauthorized. Historical SIP ending at least 15 minutes ago is available on Basic at $0. Tiingo paid plan remains unauthorized. Do not activate or consume any paid provider without explicit approval.
 - Before any candidate can pass, the data gate must require adequate coverage from the actual primary backtest source and a second independent reference; missing sessions must be measured by date and reason, not hidden by inner joins.
 - The continuous Activity SSE service remains undeployed. No persistent host has been identified; continue with GitHub Actions for bounded tests/research and do not represent it as a 24/7 runtime.
 
@@ -842,17 +842,17 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 ### PR #179 merged
 
 - PR #179 merged at main commit `31923c5b6d8e57e1525ad5e3d3d6500df4a74e34`.
-- The ETF cross-check now accepts only Alpaca IEX. SIP is rejected in code before a market-data request; the workflow no longer offers SIP.
+- PR #179 initially restricted research to IEX under the assumption that SIP required a paid plan. That restriction is superseded by the historical-SIP correction below: Alpaca Basic permits SIP for historical requests whose `end` is at least 15 minutes old.
 - Equity research v0.1–v0.4 now reject SIP in code and CLI. Their GitHub Actions workflows no longer offer SIP.
 - Public equity research v0.4 no longer offers Tiingo as a primary source and no longer receives `TIINGO_API_TOKEN`.
 - The public ETF cross-check workflow does not inject Tiingo credentials and does not opt in. Its optional Tiingo comparison is disabled unless a local/programmatic caller explicitly sets `include_tiingo` and supplies a token; the zero-cost Starter comparison is limited to five years. No Tiingo account was created and no Tiingo request was made.
-- The scheduled entitlement probe is now an IEX-only health probe. Its successful run `43080158991` returned IEX `AVAILABLE` (5 bars) and marked SIP `DISABLED_BY_ZERO_BUDGET_POLICY`, `request_made=false`. The self-test asserts that the broker client was called only for IEX.
+- The scheduled entitlement probe is now an IEX-only health probe. Its successful run `43080158991` returned IEX `AVAILABLE` (5 bars); SIP was intentionally not queried because this workflow checks the recent/live free feed. Historical SIP is separately allowed only with a 15-minute-safe end.
 - Repository audit identified the four ETF research workflows, the ETF cross-check workflow and the entitlement probe as the relevant SIP/Tiingo workflow surfaces. Those public paths have now been hardened.
 - Post-merge workflow runs for the IEX probe, ETF cross-check and research versions 0.1–0.4 all completed successfully: `43080158991`, `43080158893`, `43080158810`, `43080158982`, `43080158898`, and `43080158764`.
 
 ### Actual research outputs (read-only; no orders)
 
-- ETF cross-check run `43080158893`: 10-year window, 8 ETFs, Alpaca IEX vs Yahoo adjusted daily bars. The audit returned `ok=true` but `all_diagnostic_gates_pass=false`; all eight symbols failed minimum source coverage. Common sessions were 62.98% of Yahoo's returned sessions and 99.94% of Alpaca IEX's returned sessions. This is a material historical-coverage limitation, not a strategy result.
+- ETF cross-check run `43080158893`: 10-year window, 8 ETFs, Alpaca IEX vs Yahoo adjusted daily bars. The audit returned `ok=true` but `all_diagnostic_gates_pass=false`; all eight symbols failed the 10-year history-overlap gate. Common sessions were 62.98% of Yahoo's full history and 99.94% of Alpaca IEX's returned sessions. This reflects Alpaca's later first available date (seven ETFs 2020-07-27; SPY 2018-11-01), not a demonstrated 37% internal IEX missing-session rate.
 - Equity research v0.1 run `43080158810`: 5-year Alpaca IEX, 8 ETFs; data quality passed for all eight. This version is exploratory and does not apply the later family-wide multiple-testing test; no candidate was promoted or Paper-approved.
 - Equity research v0.2 run `43080158982`: 10-year Yahoo adjusted daily history, 8 ETFs; data quality passed. Holm-Bonferroni family size 49, 5,000 centered moving-block bootstrap replicates per hypothesis, alpha 0.05. Family-wise significant hypotheses: 0; pre-screen passes: 0.
 - Equity research v0.3 run `43080158898`: 10-year Yahoo adjusted daily history, 8 ETFs; data quality passed. Same 49-hypothesis Holm-Bonferroni framework; family-wise significant hypotheses: 0; pre-screen passes: 0.
@@ -870,3 +870,71 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 5. Continue investigating a persistent host that costs USD 0 and is already available to the user. GitHub Actions is for bounded CI/research, not a 24/7 trading runtime. No host has been identified or deployed.
 
 **Progress estimate: 58%** (engineering/evidence maturity, not profitability). The increase from 57% reflects merged zero-budget safeguards and completed statistical research workflows. It does not indicate strategy success, production deployment, Paper approval or readiness for Live.
+
+## 2026-11-11 — Correct interpretation of Alpaca IEX vs Yahoo history coverage
+
+The earlier wording that described Alpaca IEX as the "sparse side" or implied a 37% internal missing-bar rate was inaccurate and is superseded by this correction.
+
+The artifact from run `43080158893` shows:
+- Seven ETFs: Yahoo 2,512 sessions; Alpaca IEX 1,583; common 1,582; first common session 2020-07-27.
+- SPY: Yahoo 2,512 sessions; Alpaca IEX 1,584; common 1,583; first common session 2018-11-01.
+- The 62.98% ratio is common sessions divided by Yahoo's full 10-year history. The 99.94% ratio is common sessions divided by Alpaca's returned history. These ratios describe unequal history horizons.
+- The data do not show that IEX omitted roughly 37% of daily sessions during the period it returned. Within the shared period, almost all returned sessions align between sources.
+- The 10-year audit still correctly fails its full-history-overlap gate: Alpaca's available history for this account does not extend back to the requested 2016 start. It is therefore unsuitable as the only 10-year research source, even though its overlap with Yahoo is highly complete.
+- The code now reports each provider's first/last session, the Alpaca history-start lag, overlap-window session completeness, and a classification distinguishing a later history start from internal gaps. The old `minimum_source_coverage` field remains as a backward-compatible alias; a new explicit `minimum_requested_history_overlap` field explains what it tests.
+
+### Free provider screening (official documentation checked 2026-11-11)
+
+- Alpha Vantage free access is 25 requests/day, but its full daily history (`outputsize=full`) is Premium-only and its split/dividend-adjusted daily endpoint is explicitly Premium. The free daily endpoint is limited to the latest 100 observations. It is not a usable free 5–10-year adjusted OHLC source for this project. Sources: https://www.alphavantage.co/support/api-key/ and https://www.alphavantage.co/documentation/
+- Financial Modeling Prep Basic advertises $0 and 250 calls/day, with a free-use limit of five years of stock history, but its Personal Use license is narrowly non-business/non-commercial. Its Terms prohibit use on behalf of an entity, sharing/integrating data into tools accessible to third parties, and copying/downloading content without prior written approval. Do not wire FMP into Rocket Trader's public repository/workflows or cache its data unless FMP confirms in writing that this specific private personal automated-trading use and storage are permitted. Sources: https://site.financialmodelingprep.com/how-to/how-to-create-a-financial-modeling-prep-account and https://site.financialmodelingprep.com/developer/docs/terms-of-service
+- FMP is therefore not automatically accepted just because its plan is free. Price is only one gate; licensing and intended use must also pass.
+- Continue using Alpaca IEX for the authorized Paper connection and bounded current/history checks, while keeping Yahoo research data segregated and labeled. Do not silently stitch providers or treat Yahoo as an exchange-licensed execution feed.
+
+## 2026-11-11 — Correct zero-budget Alpaca market-data policy: free historical SIP
+
+A review of the current official Alpaca documentation found that the prior blanket SIP block was incorrect.
+
+- Alpaca Basic costs **USD 0/month**. The official Market Data FAQ explicitly states that historical SIP requests are allowed without a paid subscription when the request's `end` parameter is at least 15 minutes old. Recent SIP trades/quotes/bars and the SIP live stream still require Algo Trader Plus. Sources: https://docs.alpaca.markets/us/docs/market-data-faq and https://docs.alpaca.markets/us/v1.1/docs/about-market-data-api
+- Alpaca's own support representative states IEX daily bars are only available from 2020, while SIP historical bars are available from 2016. This explains the earlier observed IEX start dates and the 10-year history gap; it was not an unexplained 37% missing-bar rate. Source: https://forum.alpaca.markets/t/cannot-get-historical-bar-data-before-2020/12415
+- The correct zero-budget policy is therefore:
+  - **Historical equity research/audits:** use SIP by default, but enforce request end at least 15 minutes before current time. The implementation chooses UTC midnight for the latest date safely older than the cutoff, which also avoids including an incomplete current daily candle.
+  - **Recent/live market data:** IEX only on the free Basic plan. Do not use SIP for the latest 15 minutes or for live SIP streaming.
+  - **No paid subscription:** do not enable Algo Trader Plus or any other paid data tier without explicit user approval.
+- Updated the ETF cross-check and equity research v0.1–v0.4 to allow SIP only with a timezone-aware historical end that passes the 15-minute rule. The CLI/workflow default is now SIP for historical research; IEX remains selectable for recent/live-compatible checks. Equity research v0.2–v0.4 now defaults its source to Alpaca rather than Yahoo, with Yahoo retained as the independent comparison source.
+- The cross-check now sets its historical data end to the safe UTC date boundary before requesting Yahoo/Alpaca daily prices; corporate-action lookup retains the current timestamp and is read-only.
+- The scheduled market-data entitlement probe remains intentionally IEX-only because it is a current/live-feed health check, not a historical SIP entitlement test.
+- **Not yet proven for this Paper credential set:** a post-merge read-only SIP historical request must return bars from before 2020, ideally for SPY and the full ETF universe. The implementation must not be described as validated until that workflow succeeds. If Alpaca returns an entitlement error, preserve the logs and revert to IEX-only; do not upgrade or pay.
+
+
+
+## 2026-11-12 — Historical SIP correction and PR #181 test follow-up
+
+PR #181 corrects the interpretation of Alpaca IEX's short history and implements the documented free Basic historical SIP path (only when the request end is at least 15 minutes old). The first CI attempt exposed a deterministic-test bug: the fixed test clock was not forwarded through `fetch_daily_bars()` into the SIP guard, so v0.2–v0.4 each failed the recent-SIP rejection test while v0.1 and the ETF cross-check passed. The code now accepts an optional `now` reference and forwards it consistently; normal runtime still defaults to UTC system time. Tests now pass the same fixed clock to the fetcher.
+
+Correction commits are on `fix/classify-historical-window-coverage`; latest known head: `cd119e3d63d76dc716354249c4c44497666d7daf`. New CI runs `43154220272`, `43154220412`, `43154220268`, `43154220349`, `43154220319` were pending/in progress at documentation time. Do not merge until all required checks pass.
+
+The PR event skips live broker data retrieval. Post-merge validation must separately query read-only historical SIP using the existing Paper credentials and confirm bars before 2020. No paid feed, Tiingo account, Paper order or Live action was used. Strategy approval, Paper approval and orders remain disabled. No profitability claim is supported.
+
+**Progress estimate remains 58%** (engineering/evidence maturity, not profitability). Historical SIP availability is documented by Alpaca, but credential-specific entitlement is not yet verified.
+
+
+Further review of PR #181 found that the new source-window label compared only first dates. This could mislabel a provider that ended earlier but started on the same date as the other source. The comparison now evaluates both first and last dates, reports `alpaca_history_end_lag_days`, and has regression tests for early-end and contained-window cases. Code commit `dfdeed8854e07ed3df34893bdce7bce67c1429d3`; test commit `bc6b10cf2a7f74b704b82457b864ccb0ca3e7afe`. Fresh CI for this latest code was not yet visible. Prior crosscheck offline run `43154220272` passed, but predates this second correction. No data entitlement, strategy or execution approval changed.
+
+
+## 2026-11-12 — Completed XNYS session boundary
+
+Historical end timestamps now resolve from the XNYS calendar to the latest completed session close (16-minute buffer), rather than UTC midnight. Alpaca requests end at that close; Yahoo's exclusive end advances to the next calendar date so both providers include the same last completed session. Start dates are UTC midnight. This avoids partial daily bars during market hours and keeps free historical SIP requests outside the 15-minute restriction. The v0.1 workflow now installs `requirements-yahoo.txt` for the calendar dependency.
+
+Latest pre-final-test successes: ETF crosscheck `43154959313`, equity v0.1 `43154959322`. v0.2–v0.4 exposed a test-only timezone representation mismatch (the Alpaca SDK model returns a naive UTC end); tests now normalize it. Final latest-head checks are still required. PR #181 must be squash-merged only after all offline checks pass. Post-merge read-only SIP access and pre-2020 coverage remain unverified; no Live/Paper orders or strategy approval.
+
+
+## 2026-11-12 — PR #181 final offline CI passed
+
+Final code/test head `57e2f330c1cd63e0dc14cea560d520fae98b7b6c` passed:
+- ETF cross-check offline suite `43155404153`
+- Equity research v0.1 `43155404157`
+- Equity research v0.2 `43155404154`
+- Equity research v0.3 `43155404122`
+- Equity research v0.4 `43155404183`
+
+The PR workflows skip actual broker history retrieval and all live research requests. Next action is squash-merge PR #181, then verify the main-branch push workflows' read-only historical SIP outputs. This status does not assert that SIP entitlement, pre-2020 coverage or strategy profitability has been proven.

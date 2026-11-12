@@ -189,23 +189,81 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def require_zero_budget_feed(feed_name: str) -> str:
-    """Allow only free Alpaca IEX until a paid consolidated feed is approved."""
-    normalized = str(feed_name or "").strip().upper()
-    if normalized != "IEX":
-        raise EquityResearchError(
-            "SIP is disabled by Rocket Trader's zero-budget policy; only free IEX is enabled."
+# Alpaca requires >=15 minutes of history delay; one extra minute is the safety margin.
+SIP_HISTORICAL_END_BUFFER_MINUTES = 16
+
+
+def historical_request_end(now: Optional[datetime] = None) -> datetime:
+    """Return the close timestamp of the latest completed XNYS session.
+
+    Alpaca's daily bars are stamped at 00:00 UTC for the session date. Ending
+    the request at that session's actual close includes the completed daily
+    bar while keeping the SIP request end safely in the past. Yahoo's end is
+    exclusive, so its adapters add one calendar day separately.
+    """
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise EquityResearchError("current time must be timezone-aware")
+    cutoff = current.astimezone(timezone.utc) - timedelta(minutes=SIP_HISTORICAL_END_BUFFER_MINUTES)
+    try:
+        import exchange_calendars as xcals
+        calendar = xcals.get_calendar("XNYS")
+        sessions = calendar.sessions_in_range(
+            pd.Timestamp(cutoff.date() - timedelta(days=30)),
+            pd.Timestamp(cutoff.date()),
         )
-    return normalized
+        completed_closes = []
+        for session in sessions:
+            close = calendar.session_close(session)
+            close = (
+                close.tz_convert("UTC")
+                if close.tzinfo is not None
+                else close.tz_localize("UTC")
+            )
+            if close.to_pydatetime() <= cutoff:
+                completed_closes.append(close)
+    except Exception as exc:
+        raise EquityResearchError(
+            f"Unable to resolve completed XNYS session for historical data end: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if not completed_closes:
+        raise EquityResearchError("No completed XNYS session found in the preceding 30 calendar days")
+    return completed_closes[-1].to_pydatetime()
+
+
+def require_zero_budget_feed(
+    feed_name: str,
+    *,
+    end_time: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    """Allow free IEX, or free historical SIP only when its requested end is >15m old."""
+    normalized = str(feed_name or "").strip().upper()
+    if normalized == "IEX":
+        return normalized
+    if normalized == "SIP":
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise EquityResearchError("current time must be timezone-aware")
+        if end_time is None or end_time.tzinfo is None or end_time.utcoffset() is None:
+            raise EquityResearchError("SIP requires an explicit timezone-aware historical end time")
+        if end_time.astimezone(timezone.utc) > current.astimezone(timezone.utc) - timedelta(minutes=15):
+            raise EquityResearchError(
+                "Free Alpaca Basic permits SIP only for historical requests ending at least 15 minutes ago; use IEX for recent data."
+            )
+        return normalized
+    raise EquityResearchError("feed must be IEX or SIP")
 
 
 def fetch_daily_bars(
     symbol: str,
     *,
     years: int = DEFAULT_YEARS,
-    feed_name: str = "IEX",
+    feed_name: str = "SIP",
     client: Optional[StockHistoricalDataClient] = None,
     end: Optional[datetime] = None,
+    now: Optional[datetime] = None,
     chunk_days: int = 365,
 ) -> pd.DataFrame:
     if years < 3 or chunk_days < 30:
@@ -218,12 +276,13 @@ def fetch_daily_bars(
         if not key or not secret:
             raise EquityResearchError("Alpaca market-data credentials are missing.")
         api = StockHistoricalDataClient(key, secret)
-    feed_name = require_zero_budget_feed(feed_name)
-    feed = DataFeed.IEX
-    end_at = end or datetime.now(timezone.utc)
+    end_at = end or historical_request_end(now)
     if end_at.tzinfo is None or end_at.utcoffset() is None:
         raise ValueError("end must be timezone-aware")
-    start_at = end_at - timedelta(days=365 * years)
+    feed_name = require_zero_budget_feed(feed_name, end_time=end_at, now=now)
+    feed = DataFeed.SIP if feed_name == "SIP" else DataFeed.IEX
+    start_date = (end_at - timedelta(days=365 * years)).date()
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
     cursor = start_at
     chunks: List[pd.DataFrame] = []
     while cursor < end_at:
@@ -284,9 +343,10 @@ def fetch_yahoo_daily_bars(
     end_at = end or datetime.now(timezone.utc)
     if end_at.tzinfo is None or end_at.utcoffset() is None:
         raise ValueError("end must be timezone-aware")
-    start_at = end_at - timedelta(days=365 * years)
-    # yfinance end is exclusive; excluding today avoids partial-session bars.
-    end_exclusive = end_at.date().isoformat()
+    start_date = (end_at - timedelta(days=365 * years)).date()
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    # yfinance end is exclusive; advance one date to include the last completed XNYS session.
+    end_exclusive = (end_at.date() + timedelta(days=1)).isoformat()
     try:
         if ticker is None:
             import yfinance as yf
@@ -356,7 +416,8 @@ def fetch_tiingo_daily_bars(
     end_at = end or datetime.now(timezone.utc)
     if end_at.tzinfo is None or end_at.utcoffset() is None:
         raise ValueError("end must be timezone-aware")
-    start_at = end_at - timedelta(days=365 * years)
+    start_date = (end_at - timedelta(days=365 * years)).date()
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
     url = (
         "https://api.tiingo.com/tiingo/daily/"
         + quote(clean, safe="")
@@ -426,7 +487,7 @@ def fetch_tiingo_daily_bars(
     return normalized
 
 
-def source_metadata(source: str, feed_name: str = "IEX") -> Dict[str, str]:
+def source_metadata(source: str, feed_name: str = "SIP") -> Dict[str, str]:
     clean = str(source).strip().upper()
     if clean == "YAHOO":
         return {
@@ -836,7 +897,7 @@ def research(
     feed_name: str = "IEX",
     source: str = "ALPACA",
 ) -> Dict[str, Any]:
-    feed_name = require_zero_budget_feed(feed_name)
+    feed_name = require_zero_budget_feed(feed_name, end_time=historical_request_end())
     clean = sorted({normalize_symbol(s) for s in symbols})
     if len(clean) < 2:
         raise EquityResearchError("Cross-sectional research requires at least two ETFs.")
@@ -1030,7 +1091,7 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
     parser.add_argument("--years", type=int, default=DEFAULT_YEARS)
-    parser.add_argument("--feed", default="IEX", choices=["IEX"])
+    parser.add_argument("--feed", default="SIP", choices=["IEX", "SIP"])
     parser.add_argument("--source", default="ALPACA", choices=["ALPACA", "YAHOO"])
     parser.add_argument("--output", default="research_artifacts/equity_multiyear_research_v0_4.json")
     args = parser.parse_args()

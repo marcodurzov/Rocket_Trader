@@ -90,6 +90,33 @@ def compare_close_series(
         corr = 0.0
     yahoo_coverage = len(common) / len(yahoo)
     alpaca_coverage = len(common) / len(alpaca)
+    overlap_start = common.index.min()
+    overlap_end = common.index.max()
+    yahoo_overlap = yahoo.loc[(yahoo.index >= overlap_start) & (yahoo.index <= overlap_end)]
+    alpaca_overlap = alpaca.loc[(alpaca.index >= overlap_start) & (alpaca.index <= overlap_end)]
+    yahoo_overlap_completeness = len(common) / len(yahoo_overlap)
+    alpaca_overlap_completeness = len(common) / len(alpaca_overlap)
+    alpaca_start_lag_days = int((alpaca.index.min() - yahoo.index.min()).days)
+    alpaca_end_lag_days = int((yahoo.index.max() - alpaca.index.max()).days)
+    if alpaca_start_lag_days > 0 and alpaca_end_lag_days > 0:
+        history_window_assessment = "RIGHT_SOURCE_WINDOW_INSIDE_LEFT"
+    elif alpaca_start_lag_days > 0:
+        history_window_assessment = "RIGHT_SOURCE_STARTS_LATER_THAN_LEFT"
+    elif alpaca_end_lag_days > 0:
+        history_window_assessment = "RIGHT_SOURCE_ENDS_EARLIER_THAN_LEFT"
+    elif alpaca_start_lag_days < 0 and alpaca_end_lag_days < 0:
+        history_window_assessment = "LEFT_SOURCE_WINDOW_INSIDE_RIGHT"
+    elif alpaca_start_lag_days < 0:
+        history_window_assessment = "RIGHT_SOURCE_STARTS_EARLIER_THAN_LEFT"
+    elif alpaca_end_lag_days < 0:
+        history_window_assessment = "RIGHT_SOURCE_ENDS_LATER_THAN_LEFT"
+    else:
+        history_window_assessment = "COMPARABLE_HISTORY_WINDOWS"
+    overlap_session_assessment = (
+        "OVERLAP_SESSIONS_ALIGNED"
+        if min(yahoo_overlap_completeness, alpaca_overlap_completeness) >= min_source_coverage
+        else "SESSION_GAPS_WITHIN_OVERLAP"
+    )
     yahoo_total = float((1.0 + paired["yahoo"]).prod() - 1.0)
     alpaca_total = float((1.0 + paired["alpaca"]).prod() - 1.0)
     yahoo_norm = common["yahoo"] / common["yahoo"].iloc[0]
@@ -116,9 +143,15 @@ def compare_close_series(
             "alpaca_vs_yahoo_normalized_close_difference_pct": round(float(value), 6),
         })
 
+    history_overlap_gate = min(yahoo_coverage, alpaca_coverage) >= min_source_coverage
     gates = {
         "minimum_common_sessions": len(common) >= min_common_sessions,
-        "minimum_source_coverage": min(yahoo_coverage, alpaca_coverage) >= min_source_coverage,
+        "minimum_requested_history_overlap": history_overlap_gate,
+        # Backward-compatible alias; this is full-history overlap, not missing-bar rate.
+        "minimum_source_coverage": history_overlap_gate,
+        "minimum_overlap_session_completeness": min(
+            yahoo_overlap_completeness, alpaca_overlap_completeness
+        ) >= min_source_coverage,
         "minimum_daily_return_correlation": corr >= min_return_correlation,
         "maximum_p95_abs_return_difference": float(abs_diff_bps.quantile(0.95))
         <= max_p95_abs_return_diff_bps,
@@ -128,10 +161,26 @@ def compare_close_series(
         "yahoo_sessions": int(len(yahoo)),
         "alpaca_sessions": int(len(alpaca)),
         "common_sessions": int(len(common)),
+        "yahoo_first_session": str(yahoo.index.min()),
+        "alpaca_first_session": str(alpaca.index.min()),
+        "yahoo_last_session": str(yahoo.index.max()),
+        "alpaca_last_session": str(alpaca.index.max()),
         "first_common_session": str(common.index[0]),
         "last_common_session": str(common.index[-1]),
+        "history_window_assessment": history_window_assessment,
+        "overlap_session_assessment": overlap_session_assessment,
+        "alpaca_history_start_lag_days": alpaca_start_lag_days,
+        "alpaca_history_end_lag_days": alpaca_end_lag_days,
+        "yahoo_sessions_in_overlap_window": int(len(yahoo_overlap)),
+        "alpaca_sessions_in_overlap_window": int(len(alpaca_overlap)),
+        "yahoo_overlap_session_completeness": round(float(yahoo_overlap_completeness), 6),
+        "alpaca_overlap_session_completeness": round(float(alpaca_overlap_completeness), 6),
         "yahoo_coverage_on_common": round(float(yahoo_coverage), 6),
         "alpaca_coverage_on_common": round(float(alpaca_coverage), 6),
+        "coverage_gate_semantics": (
+            "Full-history overlap ratio; a low value may reflect different first available "
+            "dates, not missing sessions within the shared date window."
+        ),
         "daily_return_correlation": round(corr, 8),
         "mean_abs_daily_return_difference_bps": round(float(abs_diff_bps.mean()), 4),
         "p95_abs_daily_return_difference_bps": round(float(abs_diff_bps.quantile(0.95)), 4),
@@ -151,7 +200,7 @@ def fetch_yahoo_history(symbol: str, start: datetime, end: datetime) -> pd.Serie
     import yfinance as yf
     frame = yf.Ticker(symbol).history(
         start=start.date().isoformat(),
-        end=end.date().isoformat(),
+        end=(end.date() + timedelta(days=1)).isoformat(),
         interval="1d",
         auto_adjust=True,
         actions=True,
@@ -257,6 +306,16 @@ def _rename_pair_result(
         ("alpaca_sessions", f"{right_name.lower()}_sessions"),
         ("yahoo_coverage_on_common", f"{left_name.lower()}_coverage_on_common"),
         ("alpaca_coverage_on_common", f"{right_name.lower()}_coverage_on_common"),
+        ("yahoo_first_session", f"{left_name.lower()}_first_session"),
+        ("alpaca_first_session", f"{right_name.lower()}_first_session"),
+        ("yahoo_last_session", f"{left_name.lower()}_last_session"),
+        ("alpaca_last_session", f"{right_name.lower()}_last_session"),
+        ("alpaca_history_start_lag_days", f"{right_name.lower()}_history_start_lag_days"),
+        ("alpaca_history_end_lag_days", f"{right_name.lower()}_history_end_lag_days"),
+        ("yahoo_sessions_in_overlap_window", f"{left_name.lower()}_sessions_in_overlap_window"),
+        ("alpaca_sessions_in_overlap_window", f"{right_name.lower()}_sessions_in_overlap_window"),
+        ("yahoo_overlap_session_completeness", f"{left_name.lower()}_overlap_session_completeness"),
+        ("alpaca_overlap_session_completeness", f"{right_name.lower()}_overlap_session_completeness"),
         ("yahoo_cumulative_return_common_period", f"{left_name.lower()}_cumulative_return_common_period"),
         ("alpaca_cumulative_return_common_period", f"{right_name.lower()}_cumulative_return_common_period"),
     ):
@@ -276,7 +335,7 @@ def fetch_yahoo_adjustment_fields(
     import yfinance as yf
     frame = yf.Ticker(symbol).history(
         start=start.date().isoformat(),
-        end=end.date().isoformat(),
+        end=(end.date() + timedelta(days=1)).isoformat(),
         interval="1d",
         auto_adjust=False,
         actions=True,
@@ -680,14 +739,71 @@ def compare_adjustment_factors(
 
 
 
-def require_zero_budget_feed(feed_name: str) -> str:
-    """Only permit the free IEX feed until a paid SIP plan is explicitly approved."""
-    normalized = str(feed_name or "").strip().upper()
-    if normalized != "IEX":
-        raise CrosscheckError(
-            "SIP is disabled by Rocket Trader's zero-budget policy; only free IEX is enabled."
+# Alpaca requires >=15 minutes of history delay; one extra minute is the safety margin.
+SIP_HISTORICAL_END_BUFFER_MINUTES = 16
+
+
+def historical_request_end(now: Optional[datetime] = None) -> datetime:
+    """Return the close timestamp of the latest completed XNYS session.
+
+    Alpaca's daily bars are stamped at 00:00 UTC for the session date. Ending
+    the request at that session's actual close includes the completed daily
+    bar while keeping the SIP request end safely in the past. Yahoo's end is
+    exclusive, so its adapters add one calendar day separately.
+    """
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise CrosscheckError("current time must be timezone-aware")
+    cutoff = current.astimezone(timezone.utc) - timedelta(minutes=SIP_HISTORICAL_END_BUFFER_MINUTES)
+    try:
+        import exchange_calendars as xcals
+        calendar = xcals.get_calendar("XNYS")
+        sessions = calendar.sessions_in_range(
+            pd.Timestamp(cutoff.date() - timedelta(days=30)),
+            pd.Timestamp(cutoff.date()),
         )
-    return normalized
+        completed_closes = []
+        for session in sessions:
+            close = calendar.session_close(session)
+            close = (
+                close.tz_convert("UTC")
+                if close.tzinfo is not None
+                else close.tz_localize("UTC")
+            )
+            if close.to_pydatetime() <= cutoff:
+                completed_closes.append(close)
+    except Exception as exc:
+        raise CrosscheckError(
+            f"Unable to resolve completed XNYS session for historical data end: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if not completed_closes:
+        raise CrosscheckError("No completed XNYS session found in the preceding 30 calendar days")
+    return completed_closes[-1].to_pydatetime()
+
+
+def require_zero_budget_feed(
+    feed_name: str,
+    *,
+    end_time: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> str:
+    """Allow free IEX, or free historical SIP only when its requested end is >15m old."""
+    normalized = str(feed_name or "").strip().upper()
+    if normalized == "IEX":
+        return normalized
+    if normalized == "SIP":
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise CrosscheckError("current time must be timezone-aware")
+        if end_time is None or end_time.tzinfo is None or end_time.utcoffset() is None:
+            raise CrosscheckError("SIP requires an explicit timezone-aware historical end time")
+        if end_time.astimezone(timezone.utc) > current.astimezone(timezone.utc) - timedelta(minutes=15):
+            raise CrosscheckError(
+                "Free Alpaca Basic permits SIP only for historical requests ending at least 15 minutes ago; use IEX for recent data."
+            )
+        return normalized
+    raise CrosscheckError("feed must be IEX or SIP")
 
 
 def resolve_tiingo_token(
@@ -745,7 +861,7 @@ def run_audit(
     secret_key: str,
     symbols: Iterable[str] = DEFAULT_SYMBOLS,
     years: int = 10,
-    feed_name: str = "IEX",
+    feed_name: str = "SIP",
     now: Optional[datetime] = None,
     yahoo_loader=fetch_yahoo_history,
     alpaca_loader=fetch_alpaca_history,
@@ -760,7 +876,6 @@ def run_audit(
         raise CrosscheckError("years must be between 1 and 20")
     if not api_key or not secret_key:
         raise CrosscheckError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
-    feed_name = require_zero_budget_feed(feed_name)
     token = resolve_tiingo_token(include_tiingo, tiingo_token)
     if token and years > 5:
         raise CrosscheckError(
@@ -770,11 +885,14 @@ def run_audit(
     if current.tzinfo is None or current.utcoffset() is None:
         raise CrosscheckError("now must be timezone-aware")
     current = current.astimezone(timezone.utc)
-    start = current - timedelta(days=365.25 * years)
+    data_end = historical_request_end(current)
+    feed_name = require_zero_budget_feed(feed_name, end_time=data_end, now=current)
+    start_date = (data_end - timedelta(days=365.25 * years)).date()
+    start = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
 
     from alpaca.data.enums import DataFeed
     from alpaca.data.historical import StockHistoricalDataClient
-    feed_map = {"IEX": DataFeed.IEX}
+    feed_map = {"IEX": DataFeed.IEX, "SIP": DataFeed.SIP}
     feed = feed_map[feed_name]
     client = StockHistoricalDataClient(api_key=api_key, secret_key=secret_key)
 
@@ -795,11 +913,11 @@ def run_audit(
     tiingo_errors = []
     for symbol in symbol_list:
         try:
-            yahoo = yahoo_loader(symbol, start, current)
-            alpaca = alpaca_loader(client, symbol, start, current, feed)
+            yahoo = yahoo_loader(symbol, start, data_end)
+            alpaca = alpaca_loader(client, symbol, start, data_end, feed)
             result = compare_close_series(symbol, yahoo, alpaca)
-            yahoo_fields = yahoo_adjustment_loader(symbol, start, current)
-            alpaca_raw = alpaca_raw_loader(client, symbol, start, current, feed)
+            yahoo_fields = yahoo_adjustment_loader(symbol, start, data_end)
+            alpaca_raw = alpaca_raw_loader(client, symbol, start, data_end, feed)
             result["adjustment_factor_diagnostics"] = compare_adjustment_factors(
                 symbol,
                 yahoo_fields["raw_close"],
@@ -816,7 +934,7 @@ def run_audit(
             results.append(result)
             if token:
                 try:
-                    tiingo = tiingo_loader(symbol, start, current, token)
+                    tiingo = tiingo_loader(symbol, start, data_end, token)
                     tiingo_results.append({
                         "symbol": symbol,
                         "tiingo_vs_yahoo": _rename_pair_result(
@@ -849,7 +967,8 @@ def run_audit(
         "pipeline": "rocket_trader_alpaca_yahoo_etf_crosscheck_v0_1",
         "mode": "DATA_AUDIT_ONLY",
         "period_start": start.isoformat(),
-        "period_end": current.isoformat(),
+        "period_end": data_end.isoformat(),
+        "sip_historical_cutoff_enforced": feed_name == "SIP",
         "years_requested": years,
         "symbols_requested": symbol_list,
         "feed": feed_name.upper(),
@@ -892,7 +1011,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
     parser.add_argument("--years", type=int, default=10)
-    parser.add_argument("--feed", choices=("IEX",), default="IEX")
+    parser.add_argument("--feed", choices=("IEX", "SIP"), default="SIP")
     parser.add_argument(
         "--include-tiingo", action="store_true",
         help="Explicitly opt in to Tiingo; requires a free Starter token and a maximum 5-year window."

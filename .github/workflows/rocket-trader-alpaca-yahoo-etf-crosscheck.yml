@@ -23,12 +23,13 @@ on:
         default: "10"
         type: string
       feed:
-        description: Alpaca market-data feed
+        description: Free historical SIP (end 15+ minutes old); IEX for recent/live data
         required: true
-        default: "IEX"
+        default: "SIP"
         type: choice
         options:
           - IEX
+          - SIP
 
 permissions:
   contents: read
@@ -59,7 +60,7 @@ jobs:
         run: |
           python rocket_trader_alpaca_yahoo_etf_crosscheck.py \
             --years "${{ inputs.years || '10' }}" \
-            --feed "${{ inputs.feed || 'IEX' }}" \
+            --feed "${{ inputs.feed || 'SIP' }}" \
             --symbols DIA EEM EFA GLD IWM QQQ SPY TLT \
             --output artifacts/alpaca_yahoo_etf_crosscheck.json
       - name: Upload immutable comparison report
