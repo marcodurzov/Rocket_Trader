@@ -740,12 +740,46 @@ def compare_adjustment_factors(
 
 
 def historical_request_end(now: Optional[datetime] = None) -> datetime:
-    """Return UTC midnight for the last date safely older than Alpaca's 15-minute SIP cutoff."""
+    """Return the next UTC date boundary after the latest completed XNYS session.
+
+    The end is inclusive for Alpaca and exclusive for Yahoo's history API, so
+    placing it at midnight after the last completed session includes that full
+    session without admitting an in-progress daily candle.
+    """
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() is None:
         raise CrosscheckError("current time must be timezone-aware")
     cutoff = current.astimezone(timezone.utc) - timedelta(minutes=16)
-    return datetime.combine(cutoff.date(), datetime.min.time(), tzinfo=timezone.utc)
+    try:
+        import exchange_calendars as xcals
+        calendar = xcals.get_calendar("XNYS")
+        sessions = calendar.sessions_in_range(
+            pd.Timestamp(cutoff.date() - timedelta(days=30)),
+            pd.Timestamp(cutoff.date()),
+        )
+        completed = []
+        for session in sessions:
+            close = calendar.session_close(session)
+            close = (
+                close.tz_convert("UTC")
+                if close.tzinfo is not None
+                else close.tz_localize("UTC")
+            )
+            if close.to_pydatetime() <= cutoff:
+                completed.append(session)
+    except Exception as exc:
+        raise CrosscheckError(
+            f"Unable to resolve completed XNYS session for historical data end: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if not completed:
+        raise CrosscheckError("No completed XNYS session found in the preceding 30 calendar days")
+    last_session_date = pd.Timestamp(completed[-1]).date()
+    return datetime.combine(
+        last_session_date + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=timezone.utc,
+    )
 
 
 def require_zero_budget_feed(
