@@ -34,6 +34,18 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             index=self.dates,
         )
 
+    def test_historical_request_end_uses_last_completed_xnys_session(self):
+        before_close = pd.Timestamp("2026-11-11T20:00:00Z").to_pydatetime()
+        after_close = pd.Timestamp("2026-11-11T21:20:00Z").to_pydatetime()
+        self.assertEqual(
+            historical_request_end(before_close),
+            pd.Timestamp("2026-11-11T00:00:00Z").to_pydatetime(),
+        )
+        self.assertEqual(
+            historical_request_end(after_close),
+            pd.Timestamp("2026-11-12T00:00:00Z").to_pydatetime(),
+        )
+
     def test_identical_series_pass_diagnostic_gates(self):
         result = compare_close_series(
             "SPY", self.yahoo, self.yahoo,
