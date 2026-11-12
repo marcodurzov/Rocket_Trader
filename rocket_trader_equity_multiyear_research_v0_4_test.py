@@ -209,7 +209,7 @@ class EquityResearchV04Tests(unittest.TestCase):
             "SPY", years=10, feed_name="SIP", client=client,
             now=now, chunk_days=365,
         )
-        expected_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        expected_end = historical_request_end(now)
         self.assertTrue(client.requests)
         self.assertEqual(client.requests[-1].end, expected_end)
         self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
