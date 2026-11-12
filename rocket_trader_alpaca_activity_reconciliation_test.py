@@ -80,6 +80,42 @@ class AlpacaActivityReconciliationTests(unittest.TestCase):
             self.assertEqual(result["reconciliation_status"], "MATCHED")
         self.assertEqual(len(self.ledger.list_events(aggregate_id="rt-order-1")), 1)
 
+    def test_weighted_average_fill_price_matches_order_snapshot(self):
+        activities = [
+            self.fill("avg-fill-1", "0.00004", "50000", "0.00004"),
+            self.fill("avg-fill-2", "0.00006", "50100", "0.00010"),
+        ]
+        result = self.reader({None: activities}).reconcile_order_fills(
+            client_order_id="rt-order-avg", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy",
+            expected_filled_qty="0.00010", expected_filled_avg_price="50060",
+        )
+        self.assertEqual(result["reconciliation_status"], "MATCHED")
+        self.assertEqual(result["activity_avg_price"], "50060")
+        self.assertTrue(result["average_price_match"])
+
+    def test_weighted_average_fill_price_mismatch_is_flagged(self):
+        activities = [
+            self.fill("avg-mismatch-1", "0.00004", "50000", "0.00004"),
+            self.fill("avg-mismatch-2", "0.00006", "50100", "0.00010"),
+        ]
+        result = self.reader({None: activities}).reconcile_order_fills(
+            client_order_id="rt-order-avg", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy",
+            expected_filled_qty="0.00010", expected_filled_avg_price="50000",
+        )
+        self.assertEqual(result["reconciliation_status"], "AVERAGE_FILL_PRICE_MISMATCH")
+        self.assertFalse(result["average_price_match"])
+
+    def test_required_order_average_price_missing_fails_closed(self):
+        result = self.reader({None: [self.fill("avg-missing", "0.00010", "50000", "0.00010")]}).reconcile_order_fills(
+            client_order_id="rt-order-avg", broker_order_id="broker-order-1",
+            expected_symbol="BTC/USD", expected_side="buy",
+            expected_filled_qty="0.00010", require_average_price=True,
+        )
+        self.assertEqual(result["reconciliation_status"], "ORDER_AVERAGE_PRICE_MISSING")
+        self.assertIsNone(result["average_price_match"])
+
     def test_incomplete_activity_history_is_not_reported_as_full_match(self):
         reader = self.reader({None: [self.fill("fill-part", "0.00004", "50000", "0.00004")]})
         result = reader.reconcile_order_fills(
