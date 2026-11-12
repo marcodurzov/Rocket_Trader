@@ -108,6 +108,32 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertFalse(result["diagnostic_gates"]["minimum_requested_history_overlap"])
         self.assertTrue(result["diagnostic_gates"]["minimum_overlap_session_completeness"])
 
+    def test_history_end_mismatch_is_not_mislabeled_as_comparable_windows(self):
+        alpaca = self.yahoo.iloc[:-1]
+        result = compare_close_series(
+            "DIA", self.yahoo, alpaca,
+            min_common_sessions=5,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(
+            result["history_window_assessment"],
+            "RIGHT_SOURCE_ENDS_EARLIER_THAN_LEFT",
+        )
+        self.assertEqual(result["alpaca_history_end_lag_days"], 1)
+        self.assertEqual(result["overlap_session_assessment"], "OVERLAP_SESSIONS_ALIGNED")
+        self.assertFalse(result["diagnostic_gates"]["minimum_requested_history_overlap"])
+
+    def test_history_window_containment_reports_both_boundaries(self):
+        alpaca = self.yahoo.iloc[1:-1]
+        result = compare_close_series(
+            "DIA", self.yahoo, alpaca,
+            min_common_sessions=5,
+            min_source_coverage=0.95,
+        )
+        self.assertEqual(result["history_window_assessment"], "RIGHT_SOURCE_WINDOW_INSIDE_LEFT")
+        self.assertEqual(result["alpaca_history_start_lag_days"], 1)
+        self.assertEqual(result["alpaca_history_end_lag_days"], 1)
+
     def test_internal_missing_sessions_are_reported_separately_from_start_mismatch(self):
         alpaca = self.yahoo.drop(self.yahoo.index[3])
         result = compare_close_series(
@@ -443,6 +469,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertIn("tiingo_coverage_on_common", named)
         self.assertIn("tiingo_first_session", named)
         self.assertIn("tiingo_history_start_lag_days", named)
+        self.assertIn("tiingo_history_end_lag_days", named)
         self.assertIn("tiingo_overlap_session_completeness", named)
         self.assertIn("overlap_session_assessment", named)
         self.assertAlmostEqual(
