@@ -19,6 +19,9 @@ on:
     paths:
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_alpaca_activity_reconciliation_test.py"
+      - "alpaca_paper_activity_reconciliation_audit.py"
+      - "alpaca_paper_activity_reconciliation_audit_test.py"
+      - "requirements-alpaca.txt"
       - ".github/workflows/rocket-trader-alpaca-activity-reconciliation-tests.yml"
       - "rocket_trader_execution_event_ledger.py"
   workflow_dispatch:
