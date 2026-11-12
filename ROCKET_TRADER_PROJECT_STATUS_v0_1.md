@@ -916,3 +916,6 @@ Correction commits are on `fix/classify-historical-window-coverage`; latest know
 The PR event skips live broker data retrieval. Post-merge validation must separately query read-only historical SIP using the existing Paper credentials and confirm bars before 2020. No paid feed, Tiingo account, Paper order or Live action was used. Strategy approval, Paper approval and orders remain disabled. No profitability claim is supported.
 
 **Progress estimate remains 58%** (engineering/evidence maturity, not profitability). Historical SIP availability is documented by Alpaca, but credential-specific entitlement is not yet verified.
+
+
+Further review of PR #181 found that the new source-window label compared only first dates. This could mislabel a provider that ended earlier but started on the same date as the other source. The comparison now evaluates both first and last dates, reports `alpaca_history_end_lag_days`, and has regression tests for early-end and contained-window cases. Code commit `dfdeed8854e07ed3df34893bdce7bce67c1429d3`; test commit `bc6b10cf2a7f74b704b82457b864ccb0ca3e7afe`. Fresh CI for this latest code was not yet visible. Prior crosscheck offline run `43154220272` passed, but predates this second correction. No data entitlement, strategy or execution approval changed.
