@@ -938,3 +938,12 @@ Final code/test head `57e2f330c1cd63e0dc14cea560d520fae98b7b6c` passed:
 - Equity research v0.4 `43155404183`
 
 The PR workflows skip actual broker history retrieval and all live research requests. Next action is squash-merge PR #181, then verify the main-branch push workflows' read-only historical SIP outputs. This status does not assert that SIP entitlement, pre-2020 coverage or strategy profitability has been proven.
+
+
+## 2026-11-12 — PR #181 merged; Paper historical-data proof remains open
+
+PR #181 was squash-merged into `main` at `87cd23753dbc644414d7d3e25ed6684dc7589274`. The final PR offline checks all passed (crosscheck `43155404153`, v0.1 `43155404157`, v0.2 `43155404154`, v0.3 `43155404122`, v0.4 `43155404183`). PR checks intentionally skipped all actual broker history/research calls.
+
+Main-branch push workflows should now run read-only SIP history and v0.1–v0.4 research with existing Paper credentials. The GitHub connector available in this session does not expose repository-wide push-run listing or artifacts; combined legacy commit status is empty and cannot establish whether those workflows completed. The historical SIP phase therefore remains pending until the GitHub Actions run logs and JSON artifacts are inspected. No orders or Live actions were used.
+
+**Progress remains 58%** (engineering/evidence maturity, not profitability). No strategy is approved; execution costs and persistent runtime remain unvalidated.
