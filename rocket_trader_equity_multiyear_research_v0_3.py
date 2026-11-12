@@ -149,6 +149,7 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
+# Alpaca requires >=15 minutes of history delay; one extra minute is the safety margin.
 SIP_HISTORICAL_END_BUFFER_MINUTES = 16
 
 
