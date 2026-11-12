@@ -8,6 +8,9 @@ on:
     paths:
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_alpaca_activity_reconciliation_test.py"
+      - "alpaca_paper_activity_reconciliation_audit.py"
+      - "alpaca_paper_activity_reconciliation_audit_test.py"
+      - "requirements-alpaca.txt"
       - ".github/workflows/rocket-trader-alpaca-activity-reconciliation-tests.yml"
       - "rocket_trader_execution_event_ledger.py"
   pull_request:
@@ -16,6 +19,9 @@ on:
     paths:
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_alpaca_activity_reconciliation_test.py"
+      - "alpaca_paper_activity_reconciliation_audit.py"
+      - "alpaca_paper_activity_reconciliation_audit_test.py"
+      - "requirements-alpaca.txt"
       - ".github/workflows/rocket-trader-alpaca-activity-reconciliation-tests.yml"
       - "rocket_trader_execution_event_ledger.py"
   workflow_dispatch:
@@ -36,9 +42,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Alpaca SDK dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-alpaca.txt
+
       - name: Compile
         run: |
-          python -m py_compile rocket_trader_alpaca_activity_reconciliation.py rocket_trader_alpaca_activity_reconciliation_test.py
+          python -m py_compile rocket_trader_alpaca_activity_reconciliation.py rocket_trader_alpaca_activity_reconciliation_test.py alpaca_paper_activity_reconciliation_audit.py alpaca_paper_activity_reconciliation_audit_test.py
 
       - name: Run offline activity reconciliation tests
-        run: python -m unittest -v rocket_trader_alpaca_activity_reconciliation_test.py
+        run: python -m unittest -v rocket_trader_alpaca_activity_reconciliation_test.py alpaca_paper_activity_reconciliation_audit_test.py
