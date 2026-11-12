@@ -189,6 +189,7 @@ def fetch_daily_bars(
     feed_name: str = "SIP",
     client: Optional[StockHistoricalDataClient] = None,
     end: Optional[datetime] = None,
+    now: Optional[datetime] = None,
     chunk_days: int = 365,
 ) -> pd.DataFrame:
     if years < 3 or chunk_days < 30:
@@ -201,10 +202,10 @@ def fetch_daily_bars(
         if not key or not secret:
             raise EquityResearchError("Alpaca market-data credentials are missing.")
         api = StockHistoricalDataClient(key, secret)
-    end_at = end or historical_request_end()
+    end_at = end or historical_request_end(now)
     if end_at.tzinfo is None or end_at.utcoffset() is None:
         raise ValueError("end must be timezone-aware")
-    feed_name = require_zero_budget_feed(feed_name, end_time=end_at)
+    feed_name = require_zero_budget_feed(feed_name, end_time=end_at, now=now)
     feed = DataFeed.SIP if feed_name == "SIP" else DataFeed.IEX
     start_at = end_at - timedelta(days=365 * years)
     cursor = start_at
