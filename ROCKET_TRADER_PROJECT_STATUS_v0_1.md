@@ -905,3 +905,14 @@ A review of the current official Alpaca documentation found that the prior blank
 - The scheduled market-data entitlement probe remains intentionally IEX-only because it is a current/live-feed health check, not a historical SIP entitlement test.
 - **Not yet proven for this Paper credential set:** a post-merge read-only SIP historical request must return bars from before 2020, ideally for SPY and the full ETF universe. The implementation must not be described as validated until that workflow succeeds. If Alpaca returns an entitlement error, preserve the logs and revert to IEX-only; do not upgrade or pay.
 
+
+
+## 2026-11-12 — Historical SIP correction and PR #181 test follow-up
+
+PR #181 corrects the interpretation of Alpaca IEX's short history and implements the documented free Basic historical SIP path (only when the request end is at least 15 minutes old). The first CI attempt exposed a deterministic-test bug: the fixed test clock was not forwarded through `fetch_daily_bars()` into the SIP guard, so v0.2–v0.4 each failed the recent-SIP rejection test while v0.1 and the ETF cross-check passed. The code now accepts an optional `now` reference and forwards it consistently; normal runtime still defaults to UTC system time. Tests now pass the same fixed clock to the fetcher.
+
+Correction commits are on `fix/classify-historical-window-coverage`; latest known head: `cd119e3d63d76dc716354249c4c44497666d7daf`. New CI runs `43154220272`, `43154220412`, `43154220268`, `43154220349`, `43154220319` were pending/in progress at documentation time. Do not merge until all required checks pass.
+
+The PR event skips live broker data retrieval. Post-merge validation must separately query read-only historical SIP using the existing Paper credentials and confirm bars before 2020. No paid feed, Tiingo account, Paper order or Live action was used. Strategy approval, Paper approval and orders remain disabled. No profitability claim is supported.
+
+**Progress estimate remains 58%** (engineering/evidence maturity, not profitability). Historical SIP availability is documented by Alpaca, but credential-specific entitlement is not yet verified.
