@@ -173,6 +173,8 @@ def main() -> int:
                 expected_symbol=symbol,
                 expected_side=side,
                 expected_filled_qty=snapshot_filled_qty,
+                expected_filled_avg_price=getattr(order, "filled_avg_price", None),
+                require_average_price=True,
             )
             order_record = {
                 "broker_order_id": broker_order_id,
@@ -184,6 +186,10 @@ def main() -> int:
                 "reconciliation_status": reconciliation["reconciliation_status"],
                 "activity_filled_qty": reconciliation["activity_filled_qty"],
                 "fill_count": reconciliation["fill_count"],
+                "expected_filled_avg_price": reconciliation["expected_filled_avg_price"],
+                "activity_avg_price": reconciliation["activity_avg_price"],
+                "average_price_difference": reconciliation["average_price_difference"],
+                "average_price_match": reconciliation["average_price_match"],
             }
             report["orders"].append(order_record)
             if reconciliation["reconciliation_status"] == "MATCHED":
