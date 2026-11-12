@@ -16,6 +16,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 
+AVERAGE_PRICE_ABS_TOLERANCE = Decimal("0.00000001")
+
+
 class AlpacaActivityReconciliationError(RuntimeError):
     """Incomplete, malformed, or unavailable broker activity evidence."""
 
@@ -176,6 +179,8 @@ class AlpacaAccountActivityReader:
         expected_symbol: str,
         expected_side: str,
         expected_filled_qty: Any,
+        expected_filled_avg_price: Any = None,
+        require_average_price: bool = False,
         page_size: int = 100,
     ) -> Dict[str, Any]:
         """Ingest individual FILL activities and compare them to the order snapshot."""
@@ -190,6 +195,12 @@ class AlpacaAccountActivityReader:
         expected = _decimal(expected_filled_qty, "expected_filled_qty")
         if expected < 0:
             raise AlpacaActivityReconciliationError("expected_filled_qty cannot be negative.")
+        if not isinstance(require_average_price, bool):
+            raise AlpacaActivityReconciliationError("require_average_price must be boolean.")
+        expected_avg_price = (
+            None if expected_filled_avg_price in (None, "")
+            else _decimal(expected_filled_avg_price, "expected_filled_avg_price", positive=True)
+        )
 
         activities = self._fetch(
             activity_types=["FILL"], order_id=broker_order_id, page_size=page_size
@@ -245,8 +256,24 @@ class AlpacaAccountActivityReader:
             )
             fill_records.append(payload)
 
+        activity_avg_price = fill_notional / fill_qty if fill_qty > 0 else None
+        average_price_difference = (
+            abs(activity_avg_price - expected_avg_price)
+            if activity_avg_price is not None and expected_avg_price is not None
+            else None
+        )
+        average_price_match = (
+            average_price_difference <= AVERAGE_PRICE_ABS_TOLERANCE
+            if average_price_difference is not None else None
+        )
+
         if fill_qty == expected and cumulative_consistent:
-            reconciliation_status = "MATCHED"
+            if require_average_price and expected > 0 and expected_avg_price is None:
+                reconciliation_status = "ORDER_AVERAGE_PRICE_MISSING"
+            elif expected_avg_price is not None and average_price_match is not True:
+                reconciliation_status = "AVERAGE_FILL_PRICE_MISMATCH"
+            else:
+                reconciliation_status = "MATCHED"
         elif fill_qty < expected:
             reconciliation_status = "INCOMPLETE_ACTIVITY_HISTORY"
         elif fill_qty > expected:
@@ -262,6 +289,10 @@ class AlpacaAccountActivityReader:
             "expected_filled_qty": str(expected),
             "activity_filled_qty": str(fill_qty),
             "fill_notional": str(fill_notional),
+            "expected_filled_avg_price": str(expected_avg_price) if expected_avg_price is not None else None,
+            "activity_avg_price": str(activity_avg_price) if activity_avg_price is not None else None,
+            "average_price_difference": str(average_price_difference) if average_price_difference is not None else None,
+            "average_price_match": average_price_match,
             "fill_count": len(fill_records),
             "cumulative_checks": cumulative_checks,
             "cumulative_consistent": cumulative_consistent,
