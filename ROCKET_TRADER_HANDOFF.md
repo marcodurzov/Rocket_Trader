@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-12 (PR #181 merged; historical SIP safety cutoff implemented; post-merge Paper data proof still pending)
+**Last updated:** 2026-11-12 (PRs #181–#183 merged; historical SIP guard and average-fill-price reconciliation hardened)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `b0df633350a267efbe6a63d55a795f1fd9a18065` (PR #181 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `18ad5ba1e1dc3c0897793961a7b882f888f2cef9` (PR #183 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -129,7 +129,7 @@ The previous PR #94/#95 baseline was `a6f1b92136c041af0084bf28d7e686df0d444725`.
 ## 7. Next actions — ordered
 
 1. Verify the post-merge historical SIP retrieval on main using the Paper credentials already configured in GitHub Actions. Inspect actual workflow steps and JSON artifacts (not just green status); confirm the 16-minute XNYS completed-session cutoff, full requested-history coverage, all eight symbols, corporate-action adjustments and independent Yahoo parity. The previous recent SIP NOT_ENTITLED probe did not test delayed historical SIP. If SIP returns data, that proves this credential set can access delayed historical SIP; it does not by itself prove source parity or strategy edge. Do not pay for real-time SIP, splice providers or weaken coverage gates.
-2. Fix authoritative broker activity reconciliation so missed fills can be recovered idempotently from broker activities, with explicit handling for delayed fees, partial fills, corrections/busts and corporate actions.
+2. Extend authoritative broker activity reconciliation beyond the now-implemented idempotent FILL ingestion and quantity/weighted-average-price comparison. Remaining gaps include end-to-end restart recovery, delayed fee allocation, partial-fill lifecycle transitions, corrections/busts, corporate actions and broker/ledger cash-position parity.
 3. Collect enough Paper quote/fill observations to estimate spread/slippage/fees by asset, liquidity, session and order conditions, with minimum sample and confidence gates. Keep approval false until evidence supports it.
 4. Validate regime features, freshness, hysteresis, transitions and regime-conditioned performance using point-in-time history.
 5. Connect selector to runtime in **recommendation/observe-only** mode first; test abstention, stale data and safe-cash behavior.
@@ -1346,3 +1346,16 @@ These are offline PR checks only. The cross-check's live historical retrieval st
 - No orders were submitted; no Paper approval or LIVE authorization was granted. Progress remains 58%, an engineering/evidence maturity estimate only; this documentation correction does not increase it.
 
 Immediate next gate: obtain and inspect the post-merge main workflow artifacts for the ETF cross-check and equity v0.1–v0.4. Verify each run's commit, completed steps, data source/feed, requested dates, row counts, coverage, report flags and errors. Keep all candidate/paper/order flags false unless their separate acceptance gates pass.
+
+
+### 2026-11-12 continuation — PR #183 average-fill-price reconciliation
+
+- PR #183 merged to main at `18ad5ba1e1dc3c0897793961a7b882f888f2cef9`.
+- Audit gap: the prior read-only activity audit could mark an order MATCHED when individual FILL quantities summed to the broker order's filled quantity, even if their weighted average price disagreed with the order snapshot. It now calculates the activity-weighted average and compares it with Alpaca `filled_avg_price` using Decimal arithmetic and an absolute USD tolerance of 0.00000001.
+- The real Paper audit now fails closed for a filled order when the broker average price is missing or does not match. The report records expected/observed average prices, absolute difference and match status. Existing generic reader callers remain compatible unless they require the average-price gate.
+- Offline regression coverage includes matching weighted averages, mismatches, and missing broker average prices. Workflow run `43312572979` passed compile plus 37 activity-reconciliation tests. Workflow run `43312573050` passed its static-check job, including 28 offline tests across activity audit/SSE/reconciliation; its `paper-activity-audit` job was skipped on the PR event.
+- Therefore, this is unit/offline-tested reconciliation logic, **not** proof from a new live Paper account-activity retrieval. No Paper order, account mutation or Live action occurred. Existing unresolved fee allocation and corrections/busts remain blockers.
+- Two non-fatal ResourceWarnings remain in the audit-runner tests because a couple of test reads use bare `open()` without closing the handle. They did not fail either run; clean them up separately.
+- Progress remains **58%**. This correctness improvement does not establish empirical cost validity, full accounting completeness, deployed runtime or strategy edge.
+
+**Next accounting gate:** run the read-only Paper activity audit on main with a bounded explicit time window and inspect the JSON artifact. Then prove recovery from broker activities into the durable event ledger and FIFO inbox across restart, including delayed fees and corrections/busts. Keep order submission disabled until these gates are independently demonstrated.
