@@ -961,3 +961,17 @@ Validation:
 - No Paper order, account mutation, paid provider, deployment or Live action occurred.
 
 Remaining accounting gaps: live Paper activity evidence, durable restart recovery, delayed fee allocation, correction/bust handling, partial-fill lifecycle and full broker/ledger cash-position parity. Progress remains 58% engineering/evidence maturity; this offline correctness fix does not increase it.
+
+
+## 2026-11-12 — PR #185: finite timestamp-tolerance guard for staged activity reconciliation
+
+PR #185 (`974288523023f7d08879f2fc420ee25f5f58468f`) fixes a fail-open edge case: a NaN timestamp tolerance made `time_delta > tolerance` evaluate false for every fill pair, bypassing the intended timestamp comparison. The reconciler now rejects non-numeric, boolean, negative and non-finite tolerances before opening the read-only databases.
+
+Validation:
+- Workflow `43313016633`: success; compile and 9 offline staged-activity reconciliation tests passed.
+- Workflow `43313016735`: success; 28 offline Alpaca activity/audit tests passed.
+- Workflow `43313016757`: static-check success; live Paper audit job skipped on the PR event.
+- Workflow `43313016739`: Paper Observer Runtime test suite success.
+- No broker orders, account mutations, deployments or Live actions occurred.
+
+Progress remains 58% engineering/evidence maturity. The next unresolved gate is actual read-only Paper activity evidence, followed by durable restart recovery, delayed fee allocation, correction/bust handling and complete broker/ledger reconciliation.
