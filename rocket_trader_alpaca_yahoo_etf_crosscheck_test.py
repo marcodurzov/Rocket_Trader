@@ -376,8 +376,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime(),
         ):
             end = historical_request_end(now)
-            self.assertEqual(end.hour, 0)
-            self.assertEqual(end.minute, 0)
+            self.assertEqual(end, pd.Timestamp("2026-11-10T21:00:00Z").to_pydatetime())
             self.assertLessEqual(end, now - pd.Timedelta(minutes=15))
 
     def test_zero_budget_feed_allows_historical_sip_but_blocks_recent_sip(self):
