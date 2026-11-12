@@ -1243,3 +1243,45 @@ A review of the current official Alpaca documentation found that the prior blank
 - The scheduled market-data entitlement probe remains intentionally IEX-only because it is a current/live-feed health check, not a historical SIP entitlement test.
 - **Not yet proven for this Paper credential set:** a post-merge read-only SIP historical request must return bars from before 2020, ideally for SPY and the full ETF universe. The implementation must not be described as validated until that workflow succeeds. If Alpaca returns an entitlement error, preserve the logs and revert to IEX-only; do not upgrade or pay.
 
+
+
+## 2026-11-11/12 — PR #181 deterministic historical-SIP test-clock correction
+
+### Reproduction and diagnosis
+- PR #181's first CI head was `520de2312086b6285996cdf15dc46af0960e9fe3`.
+- The ETF cross-check offline suite passed (run `43099544972`), and equity v0.1 passed (run `43099545012`).
+- Equity research v0.2/v0.3/v0.4 failed one newly added regression each (runs `43099544902`, `43099545017`, `43099545117`). The failing test attempted to prove a SIP request ending 14 minutes before a fixed test clock was rejected before network access.
+- Root cause: `fetch_daily_bars()` called `require_zero_budget_feed(...)` without forwarding the test's reference clock. The guard therefore compared the fixed test timestamp against the real system clock. This was a deterministic-test defect, not evidence of a broker entitlement failure. Do not weaken the 15-minute safety guard.
+
+### Correction applied on PR branch
+- Added optional timezone-aware `now` injection to `fetch_daily_bars()` in equity research v0.1–v0.4.
+- The default remains the actual UTC clock in normal operation. When supplied, the same reference clock is used both to derive the safe historical end and to validate the 15-minute SIP cutoff.
+- Updated the recent-SIP rejection tests in v0.2–v0.4 to pass their fixed `now` into `fetch_daily_bars()`. This makes the test deterministic and still asserts zero broker data requests on a rejected recent SIP request.
+- No market-data entitlement, strategy promotion, Paper approval, order path or Live configuration was changed.
+- Sequential branch commits:
+  - v0.1 code: `634ad0c87a844a25d1feef3f8945dfe0c26976c1`
+  - v0.2 code: `dffaee1e075a735a993e4d40e085121a0a804159`
+  - v0.3 code: `ea565d3516a3dcabe00e7c1e4a9c5614432c2d45`
+  - v0.4 code: `a1fe39aded844bac428ffa2bed9b3b4ca33afbe3`
+  - v0.2 test: `82367dab6fa84ae16de290685860d66dc9abcf6c`
+  - v0.3 test: `09868fbefc6481a84ebdcc1be68106d372956106`
+  - v0.4 test / current branch HEAD at note time: `cd119e3d63d76dc716354249c4c44497666d7daf`
+
+### Validation state
+- New PR CI was triggered on head `cd119e3d63d76dc716354249c4c44497666d7daf`:
+  - ETF cross-check run `43154220272` was in progress.
+  - Equity v0.1 run `43154220412` was pending.
+  - Equity v0.2 run `43154220268` was pending.
+  - Equity v0.3 run `43154220349` was pending.
+  - Equity v0.4 run `43154220319` was pending.
+- The PR cross-check event skips live broker history retrieval by design. A green PR suite validates only compilation/offline tests. After the code is merged, a separate read-only main-branch run must query historical SIP with the existing Paper credentials and verify pre-2020 bars. Until that succeeds, free historical SIP is documented as an official provider capability but remains unverified for this credential set.
+- No paid plan, Tiingo account/token, broker order, Paper order, or Live action was used.
+
+**Progress estimate remains 58%** (engineering/evidence maturity only). The deterministic test correction and pending CI do not prove historical SIP entitlement, strategy edge, execution costs, persistent deployment, autonomous operation or profitability.
+
+### Next action
+1. Wait for all five current PR checks to finish; inspect failure logs, not just run conclusions.
+2. Fix any new regression failures on this branch and repeat CI.
+3. Merge PR #181 only after every required offline check is green and the diff is reviewed.
+4. Run the post-merge read-only 10-year SIP/Yahoo cross-check and v0.2–v0.4 research with the free historical SIP path. Preserve artifacts, per-symbol coverage and provider divergences. Do not promote any strategy from data-source success alone.
+5. Keep all Paper execution gates false until independent strategy, execution-cost, accounting, risk and persistent-runtime evidence passes; Live remains disabled.
