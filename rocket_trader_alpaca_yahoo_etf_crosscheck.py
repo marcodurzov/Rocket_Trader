@@ -96,10 +96,20 @@ def compare_close_series(
     alpaca_overlap = alpaca.loc[(alpaca.index >= overlap_start) & (alpaca.index <= overlap_end)]
     yahoo_overlap_completeness = len(common) / len(yahoo_overlap)
     alpaca_overlap_completeness = len(common) / len(alpaca_overlap)
-    if alpaca.index.min() > yahoo.index.min():
+    alpaca_start_lag_days = int((alpaca.index.min() - yahoo.index.min()).days)
+    alpaca_end_lag_days = int((yahoo.index.max() - alpaca.index.max()).days)
+    if alpaca_start_lag_days > 0 and alpaca_end_lag_days > 0:
+        history_window_assessment = "RIGHT_SOURCE_WINDOW_INSIDE_LEFT"
+    elif alpaca_start_lag_days > 0:
         history_window_assessment = "RIGHT_SOURCE_STARTS_LATER_THAN_LEFT"
-    elif yahoo.index.min() > alpaca.index.min():
-        history_window_assessment = "LEFT_SOURCE_STARTS_LATER_THAN_RIGHT"
+    elif alpaca_end_lag_days > 0:
+        history_window_assessment = "RIGHT_SOURCE_ENDS_EARLIER_THAN_LEFT"
+    elif alpaca_start_lag_days < 0 and alpaca_end_lag_days < 0:
+        history_window_assessment = "LEFT_SOURCE_WINDOW_INSIDE_RIGHT"
+    elif alpaca_start_lag_days < 0:
+        history_window_assessment = "RIGHT_SOURCE_STARTS_EARLIER_THAN_LEFT"
+    elif alpaca_end_lag_days < 0:
+        history_window_assessment = "RIGHT_SOURCE_ENDS_LATER_THAN_LEFT"
     else:
         history_window_assessment = "COMPARABLE_HISTORY_WINDOWS"
     overlap_session_assessment = (
@@ -159,7 +169,8 @@ def compare_close_series(
         "last_common_session": str(common.index[-1]),
         "history_window_assessment": history_window_assessment,
         "overlap_session_assessment": overlap_session_assessment,
-        "alpaca_history_start_lag_days": int((alpaca.index.min() - yahoo.index.min()).days),
+        "alpaca_history_start_lag_days": alpaca_start_lag_days,
+        "alpaca_history_end_lag_days": alpaca_end_lag_days,
         "yahoo_sessions_in_overlap_window": int(len(yahoo_overlap)),
         "alpaca_sessions_in_overlap_window": int(len(alpaca_overlap)),
         "yahoo_overlap_session_completeness": round(float(yahoo_overlap_completeness), 6),
@@ -300,6 +311,7 @@ def _rename_pair_result(
         ("yahoo_last_session", f"{left_name.lower()}_last_session"),
         ("alpaca_last_session", f"{right_name.lower()}_last_session"),
         ("alpaca_history_start_lag_days", f"{right_name.lower()}_history_start_lag_days"),
+        ("alpaca_history_end_lag_days", f"{right_name.lower()}_history_end_lag_days"),
         ("yahoo_sessions_in_overlap_window", f"{left_name.lower()}_sessions_in_overlap_window"),
         ("alpaca_sessions_in_overlap_window", f"{right_name.lower()}_sessions_in_overlap_window"),
         ("yahoo_overlap_session_completeness", f"{left_name.lower()}_overlap_session_completeness"),
