@@ -156,6 +156,19 @@ class EquityResearchV02Tests(unittest.TestCase):
         self.assertGreaterEqual(client.calls, 9)
         self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
 
+    def test_fetch_daily_bars_uses_injected_clock_for_default_historical_end(self):
+        frame = synthetic_frame()
+        client = FakeStockClient(frame)
+        now = pd.Timestamp("2026-11-11T12:00:00Z").to_pydatetime()
+        fetch_daily_bars(
+            "SPY", years=10, feed_name="SIP", client=client,
+            now=now, chunk_days=365,
+        )
+        expected_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        self.assertTrue(client.requests)
+        self.assertEqual(client.requests[-1].end, expected_end)
+        self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
+
     def test_recent_sip_is_rejected_before_any_market_data_request(self):
         frame = synthetic_frame()
         client = FakeStockClient(frame)
