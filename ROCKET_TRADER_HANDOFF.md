@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **58%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 58% profitable, nor does it mean a 54% probability of success.
+Current estimate: **58%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 58% profitable, nor does it mean a 58% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
