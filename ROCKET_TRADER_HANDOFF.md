@@ -1,10 +1,10 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-11 (PRs #141–#171 merged; Paper Activity SSE crypto fills confirmed; durable consumer packaged; read-only healthcheck hardened)
+**Last updated:** 2026-11-12 (PR #181 merged; historical SIP safety cutoff implemented; post-merge Paper data proof still pending)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `8bf6d6a2560806a4b2b2aa04c92f8576c571f094` (PR #171 merged; strategy runtime baseline remains unchanged at `419cc0d61de411166fbea832717b56e6c14e4c9e`)
-**Current progress estimate:** **55%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
+**Latest main HEAD before this Handoff refresh:** `b0df633350a267efbe6a63d55a795f1fd9a18065` (PR #181 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
 
@@ -128,7 +128,7 @@ The previous PR #94/#95 baseline was `a6f1b92136c041af0084bf28d7e686df0d444725`.
 
 ## 7. Next actions — ordered
 
-1. Resolve the ETF historical data-source limitation: IEX does not provide the requested full 10-year history for this account. A prior SIP probe returned NOT_ENTITLED because it ended at current time; it did not test historical SIP. Re-run historical SIP with an end at least 15 minutes old before evaluating other sources; do not pay for real-time SIP. Investigate SPY/QQQ cumulative-return differences before treating providers as interchangeable. Never splice provider series or weaken coverage gates.
+1. Verify the post-merge historical SIP retrieval on main using the Paper credentials already configured in GitHub Actions. Inspect actual workflow steps and JSON artifacts (not just green status); confirm the 16-minute XNYS completed-session cutoff, full requested-history coverage, all eight symbols, corporate-action adjustments and independent Yahoo parity. The previous recent SIP NOT_ENTITLED probe did not test delayed historical SIP. If SIP returns data, that proves this credential set can access delayed historical SIP; it does not by itself prove source parity or strategy edge. Do not pay for real-time SIP, splice providers or weaken coverage gates.
 2. Fix authoritative broker activity reconciliation so missed fills can be recovered idempotently from broker activities, with explicit handling for delayed fees, partial fills, corrections/busts and corporate actions.
 3. Collect enough Paper quote/fill observations to estimate spread/slippage/fees by asset, liquidity, session and order conditions, with minimum sample and confidence gates. Keep approval false until evidence supports it.
 4. Validate regime features, freshness, hysteresis, transitions and regime-conditioned performance using point-in-time history.
@@ -144,7 +144,7 @@ The runbook is `PAPER_OBSERVER_DEPLOYMENT.md`. The user must execute deployment 
 
 ## 9. Progress measurement
 
-Current estimate: **54%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 54% profitable, nor does it mean a 54% probability of success.
+Current estimate: **58%**. This represents the combination of architecture, implemented safety/research foundations and verified operating evidence. The project is not 58% profitable, nor does it mean a 58% probability of success.
 
 Increase the estimate only when a significant gate is completed with evidence. In particular, deployment, empirical execution costs, full accounting reconciliation, robust OOS strategy edge, sustained Paper acceptance and independent LIVE review are major remaining milestones. A complete codebase without real operational validation is not a complete trading system.
 
@@ -1333,3 +1333,16 @@ These are offline PR checks only. The cross-check's live historical retrieval st
 - No Paper order, Live order, real-money funding, paid data subscription, or strategy promotion occurred in this work.
 
 **Phase conclusion:** PR #181's engineering change is merged and its offline checks are green. The historical SIP entitlement/coverage phase is not closed until the post-merge Paper-credential artifacts are inspected. Overall Rocket Trader remains at 58% engineering/evidence maturity; profitability, validated costs, persistent runtime and autonomous operation remain unproven.
+
+
+### 2026-11-12 continuation — PR #181 historical SIP correction and verification gate
+
+- PR #181 was squash-merged into main at `87cd23753dbc644414d7d3e25ed6684dc7589274`. It corrects the prior over-broad IEX-only restriction: Alpaca's official Market Data FAQ states that Basic users may query historical SIP bars when the request end is at least 15 minutes old. Recent/live SIP remains subscription-restricted.
+- The implementation uses a 16-minute buffer and the latest completed XNYS session close, rather than UTC midnight, so a daily candle still in progress is not accidentally included. Yahoo's exclusive end is aligned separately to include the same completed session.
+- PR offline checks passed: ETF cross-check `43155404153`; equity research v0.1 `43155404157`; v0.2 `43155404154`; v0.3 `43155404122`; v0.4 `43155404183`. These PR-event checks deliberately skipped broker history retrieval and full research calls.
+- The main-branch Paper historical-SIP data proof is still pending. A successful offline test is not proof of SIP entitlement, 10-year coverage, Yahoo parity, or strategy profitability. The GitHub connector used in this session does not expose repository-wide push-run listing or workflow dispatch, so do not invent post-merge run IDs or infer results from the empty legacy combined status.
+- PR #180's documented equity research outcomes remain negative: v0.2/v0.3/v0.4 family-wise Holm-Bonferroni significant hypotheses = 0 and pre-screen passes = 0. The earlier v0.1 JSON shared in chat was identified as version 0.1 with a five-year requested lookback; the additional percent-separated artifacts have not yet been reliably parsed. Do not merge their metrics into the v0.2–v0.5 results.
+- Source reference: Alpaca Market Data FAQ, https://docs.alpaca.markets/us/docs/market-data-faq (historical SIP request end must be at least 15 minutes old).
+- No orders were submitted; no Paper approval or LIVE authorization was granted. Progress remains 58%, an engineering/evidence maturity estimate only; this documentation correction does not increase it.
+
+Immediate next gate: obtain and inspect the post-merge main workflow artifacts for the ETF cross-check and equity v0.1–v0.4. Verify each run's commit, completed steps, data source/feed, requested dates, row counts, coverage, report flags and errors. Keep all candidate/paper/order flags false unless their separate acceptance gates pass.

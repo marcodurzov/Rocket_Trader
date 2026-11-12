@@ -22,7 +22,7 @@ Build an autonomous, research-led trading system that seeks sustainable net grow
 - Scope: US listed equities/ETFs and crypto spot, with separate market engines and execution state machines plus one shared portfolio capital/risk manager.
 - Crypto is own-capital spot only. No margin, borrowing, leverage, shorting, futures, perpetuals, options or leveraged/inverse ETFs.
 - Paper account permissions do not establish eligibility for live crypto trading from Mexico. Validate separately before any future live review.
-- SIP market data is currently not entitled; equity research must label IEX limitations explicitly. Do not pay for a higher data tier without a documented expected economic benefit.
+- Basic-plan recent/live equity data is IEX; explicit recent SIP requests are subscription-restricted. Alpaca's official Market Data FAQ states that historical SIP bars are available without a subscription when the request end is at least 15 minutes old. Rocket Trader therefore uses IEX for recent/live market data and permits SIP only for historical research with an explicit timezone-aware completed-session end and a 16-minute safety buffer. Do not pay for real-time SIP without a documented expected economic benefit. Historical SIP access and full-history coverage still require a successful read-only request using this account's credentials.
 
 ## 4. Research and trader intelligence
 - Jefe Maestro contributes engineering/research methods (ensembles, temporal features, walk-forward validation, fingerprints, bootstrap/permutation, multiple-testing correction, attribution and continuity), not lottery datasets or lottery-specific features.
@@ -54,4 +54,13 @@ The reference registry contains six strategy/investor references, not a real-tim
 
 
 ### Historical data-source clarification
-Alpaca IEX history observed by Rocket Trader starts at 2020-07-27 for most tested ETFs; SPY had an isolated 2018 bar followed by a 634-day gap. SIP access returned NOT_ENTITLED for this account. The 10-year research workflow therefore uses a separate Yahoo Finance adjusted-daily source when selected, with explicit provenance and quality checks. Yahoo is research-only, never the live execution feed, and its data is never blended with Alpaca IEX into one series.
+Alpaca IEX history observed by Rocket Trader starts at 2020-07-27 for most tested ETFs; SPY had an isolated 2018 bar followed by a 634-day gap. A prior NOT_ENTITLED response tested a recent SIP request ending at current time, not delayed historical SIP. Per Alpaca's official FAQ (https://docs.alpaca.markets/us/docs/market-data-faq), Basic users can query historical SIP when the request end is at least 15 minutes old. PR #181 implements historical-only SIP with a 16-minute buffer and latest completed XNYS session close; IEX remains the recent/live feed. This account's actual historical SIP retrieval and full 10-year coverage remain unverified until post-merge Paper workflow artifacts are inspected. Yahoo remains an independent research comparison source; provider histories must never be blended or spliced.
+
+
+### 2026-11-12 — Historical SIP access clarification (supersedes earlier wording)
+
+Alpaca's official Market Data FAQ explicitly distinguishes recent/live SIP from historical SIP: Basic users may query historical SIP when the request end is at least 15 minutes old; recent SIP endpoints remain restricted without the paid subscription. The prior Rocket Trader HTTP 403/NOT_ENTITLED test used an end at current time and therefore did not establish that historical SIP was unavailable.
+
+PR #181 implements this distinction. For daily research, Rocket Trader resolves the latest completed XNYS session close and applies a 16-minute buffer. The code fails closed if the exchange calendar cannot be resolved or the end is not timezone-aware. The actual Paper-credential historical SIP request still needs post-merge verification. Source: https://docs.alpaca.markets/us/docs/market-data-faq.
+
+This clarification does not authorize a paid plan, does not establish full 10-year coverage, does not certify Yahoo/Alpaca parity, and does not approve any strategy or Paper orders.
