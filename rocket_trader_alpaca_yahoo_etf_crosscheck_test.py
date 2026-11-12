@@ -39,11 +39,11 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         after_close = pd.Timestamp("2026-11-11T21:20:00Z").to_pydatetime()
         self.assertEqual(
             historical_request_end(before_close),
-            pd.Timestamp("2026-11-11T00:00:00Z").to_pydatetime(),
+            pd.Timestamp("2026-11-10T21:00:00Z").to_pydatetime(),
         )
         self.assertEqual(
             historical_request_end(after_close),
-            pd.Timestamp("2026-11-12T00:00:00Z").to_pydatetime(),
+            pd.Timestamp("2026-11-11T21:00:00Z").to_pydatetime(),
         )
 
     def test_identical_series_pass_diagnostic_gates(self):
