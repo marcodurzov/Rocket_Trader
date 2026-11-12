@@ -195,7 +195,7 @@ class EquityResearchV04Tests(unittest.TestCase):
         with self.assertRaisesRegex(EquityResearchError, "at least 15 minutes ago"):
             fetch_daily_bars(
                 "SPY", years=3, feed_name="SIP", client=client,
-                end=now - timedelta(minutes=14), chunk_days=365,
+                end=now - timedelta(minutes=14), now=now, chunk_days=365,
             )
         self.assertEqual(client.calls, 0)
 
