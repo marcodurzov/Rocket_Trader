@@ -167,7 +167,7 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
         with patch.object(audit, "TradingClient", UnsafeAccountClient):
             result = audit.main()
         self.assertEqual(result, 1)
-        report = json.loads(open(self.report, encoding="utf-8").read())
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
         self.assertEqual(report["status"], "FAILED")
         self.assertEqual(report.get("order_count", 0), 0)
 
