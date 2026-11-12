@@ -24,6 +24,7 @@ class FakeAuditClient:
             SimpleNamespace(
                 id="broker-order-1", client_order_id="rt-order-1",
                 symbol="BTC/USD", side="buy", status="filled", filled_qty="0.1",
+                filled_avg_price="100",
             )
         ]
         self.activities = {
@@ -100,6 +101,33 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
         self.assertEqual(report["status"], "SUCCESS")
         self.assertEqual(report["matched_order_count"], 1)
         self.assertEqual(report["fee_evidence_status"], "NO_RECORDS_FEES_UNKNOWN")
+
+    def test_average_price_mismatch_prevents_success_status(self):
+        class WrongAveragePriceClient(FakeAuditClient):
+            def __init__(self, api_key, api_secret, paper):
+                super().__init__(api_key, api_secret, paper)
+                self.orders[0].filled_avg_price = "101"
+
+        with patch.object(audit, "TradingClient", WrongAveragePriceClient):
+            result = audit.main()
+        self.assertEqual(result, 1)
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "RECONCILIATION_REQUIRES_REVIEW")
+        self.assertEqual(report["unmatched_order_count"], 1)
+        self.assertFalse(report["orders"][0]["average_price_match"])
+
+    def test_missing_average_price_prevents_success_for_filled_order(self):
+        class MissingAveragePriceClient(FakeAuditClient):
+            def __init__(self, api_key, api_secret, paper):
+                super().__init__(api_key, api_secret, paper)
+                self.orders[0].filled_avg_price = None
+
+        with patch.object(audit, "TradingClient", MissingAveragePriceClient):
+            result = audit.main()
+        self.assertEqual(result, 1)
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "RECONCILIATION_REQUIRES_REVIEW")
+        self.assertEqual(report["orders"][0]["reconciliation_status"], "ORDER_AVERAGE_PRICE_MISSING")
 
     def test_live_or_non_paper_configuration_is_rejected_before_client_creation(self):
         os.environ["ALPACA_LIVE_ENABLED"] = "true"
