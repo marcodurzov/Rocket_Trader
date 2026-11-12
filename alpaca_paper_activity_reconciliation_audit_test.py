@@ -135,7 +135,7 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
             result = audit.main()
         self.assertEqual(result, 1)
         self.assertEqual(FakeAuditClient.instances, [])
-        report = json.loads(open(self.report, encoding="utf-8").read())
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
         self.assertEqual(report["status"], "FAILED")
 
     def test_safe_reconciliation_error_is_reported_without_sdk_details(self):
