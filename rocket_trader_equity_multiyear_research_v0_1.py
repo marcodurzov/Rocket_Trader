@@ -127,6 +127,9 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
+SIP_HISTORICAL_END_BUFFER_MINUTES = 16
+
+
 def historical_request_end(now: Optional[datetime] = None) -> datetime:
     """Return the close timestamp of the latest completed XNYS session.
 
@@ -138,7 +141,7 @@ def historical_request_end(now: Optional[datetime] = None) -> datetime:
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() is None:
         raise EquityResearchError("current time must be timezone-aware")
-    cutoff = current.astimezone(timezone.utc) - timedelta(minutes=16)
+    cutoff = current.astimezone(timezone.utc) - timedelta(minutes=SIP_HISTORICAL_END_BUFFER_MINUTES)
     try:
         import exchange_calendars as xcals
         calendar = xcals.get_calendar("XNYS")
