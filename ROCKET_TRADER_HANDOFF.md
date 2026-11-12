@@ -1285,3 +1285,14 @@ A review of the current official Alpaca documentation found that the prior blank
 3. Merge PR #181 only after every required offline check is green and the diff is reviewed.
 4. Run the post-merge read-only 10-year SIP/Yahoo cross-check and v0.2–v0.4 research with the free historical SIP path. Preserve artifacts, per-symbol coverage and provider divergences. Do not promote any strategy from data-source success alone.
 5. Keep all Paper execution gates false until independent strategy, execution-cost, accounting, risk and persistent-runtime evidence passes; Live remains disabled.
+
+
+### PR #181 — second diagnostic edge case found and corrected
+- During a further code review, the history-window classification was found to compare only each provider's first session. If two sources shared the same first session but one ended earlier, the report could incorrectly label the history windows `COMPARABLE_HISTORY_WINDOWS`.
+- Corrected classification to inspect both first and last sessions, distinguishing a later start, earlier end, and a source window contained inside the other. Added signed `alpaca_history_end_lag_days` alongside the start lag and propagated it through provider-name normalization for optional Tiingo comparisons.
+- Added regression tests for an earlier end and a window contained inside another, plus a provider-name assertion.
+- Code commit: `dfdeed8854e07ed3df34893bdce7bce67c1429d3`; regression tests: `bc6b10cf2a7f74b704b82457b864ccb0ca3e7afe`.
+- New checks for these latest commits had not yet appeared in the commit workflow-run query at documentation time. The previously triggered crosscheck run `43154348896` and equity v0.4 run `43154348846` remained in progress at dependency installation; v0.2/v0.3/v0.1 jobs were queued/not yet exposed. The prior PR run `43154220272` did complete successfully for crosscheck offline tests, but it predates this end-boundary correction.
+- This correction affects diagnostic labeling only; it does not relax source coverage or overlap-completeness gates, and does not alter strategy returns or orders.
+
+**Next:** obtain fresh green CI for the latest PR head, then merge only after all offline checks pass. Historical SIP entitlement remains unverified until a separate post-merge read-only Paper-credential run succeeds.
