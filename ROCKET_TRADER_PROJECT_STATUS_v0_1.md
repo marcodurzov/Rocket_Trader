@@ -926,3 +926,15 @@ Further review of PR #181 found that the new source-window label compared only f
 Historical end timestamps now resolve from the XNYS calendar to the latest completed session close (16-minute buffer), rather than UTC midnight. Alpaca requests end at that close; Yahoo's exclusive end advances to the next calendar date so both providers include the same last completed session. Start dates are UTC midnight. This avoids partial daily bars during market hours and keeps free historical SIP requests outside the 15-minute restriction. The v0.1 workflow now installs `requirements-yahoo.txt` for the calendar dependency.
 
 Latest pre-final-test successes: ETF crosscheck `43154959313`, equity v0.1 `43154959322`. v0.2–v0.4 exposed a test-only timezone representation mismatch (the Alpaca SDK model returns a naive UTC end); tests now normalize it. Final latest-head checks are still required. PR #181 must be squash-merged only after all offline checks pass. Post-merge read-only SIP access and pre-2020 coverage remain unverified; no Live/Paper orders or strategy approval.
+
+
+## 2026-11-12 — PR #181 final offline CI passed
+
+Final code/test head `57e2f330c1cd63e0dc14cea560d520fae98b7b6c` passed:
+- ETF cross-check offline suite `43155404153`
+- Equity research v0.1 `43155404157`
+- Equity research v0.2 `43155404154`
+- Equity research v0.3 `43155404122`
+- Equity research v0.4 `43155404183`
+
+The PR workflows skip actual broker history retrieval and all live research requests. Next action is squash-merge PR #181, then verify the main-branch push workflows' read-only historical SIP outputs. This status does not assert that SIP entitlement, pre-2020 coverage or strategy profitability has been proven.
