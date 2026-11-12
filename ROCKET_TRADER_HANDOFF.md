@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-12 (PRs #181–#183 merged; historical SIP guard and average-fill-price reconciliation hardened)
+**Last updated:** 2026-11-12 (PRs #181–#185 merged; historical SIP, fill-price and reconciliation-tolerance guards hardened)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `18ad5ba1e1dc3c0897793961a7b882f888f2cef9` (PR #183 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `974288523023f7d08879f2fc420ee25f5f58468f` (PR #185 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -129,7 +129,7 @@ The previous PR #94/#95 baseline was `a6f1b92136c041af0084bf28d7e686df0d444725`.
 ## 7. Next actions — ordered
 
 1. Verify the post-merge historical SIP retrieval on main using the Paper credentials already configured in GitHub Actions. Inspect actual workflow steps and JSON artifacts (not just green status); confirm the 16-minute XNYS completed-session cutoff, full requested-history coverage, all eight symbols, corporate-action adjustments and independent Yahoo parity. The previous recent SIP NOT_ENTITLED probe did not test delayed historical SIP. If SIP returns data, that proves this credential set can access delayed historical SIP; it does not by itself prove source parity or strategy edge. Do not pay for real-time SIP, splice providers or weaken coverage gates.
-2. Extend authoritative broker activity reconciliation beyond the now-implemented idempotent FILL ingestion and quantity/weighted-average-price comparison. Remaining gaps include end-to-end restart recovery, delayed fee allocation, partial-fill lifecycle transitions, corrections/busts, corporate actions and broker/ledger cash-position parity.
+2. Extend authoritative broker activity reconciliation beyond the now-implemented idempotent FILL ingestion, quantity/weighted-average-price comparison and finite timestamp-tolerance guard. Remaining gaps include end-to-end restart recovery, delayed fee allocation, partial-fill lifecycle transitions, corrections/busts, corporate actions and broker/ledger cash-position parity.
 3. Collect enough Paper quote/fill observations to estimate spread/slippage/fees by asset, liquidity, session and order conditions, with minimum sample and confidence gates. Keep approval false until evidence supports it.
 4. Validate regime features, freshness, hysteresis, transitions and regime-conditioned performance using point-in-time history.
 5. Connect selector to runtime in **recommendation/observe-only** mode first; test abstention, stale data and safe-cash behavior.
@@ -1359,3 +1359,15 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 - Progress remains **58%**. This correctness improvement does not establish empirical cost validity, full accounting completeness, deployed runtime or strategy edge.
 
 **Next accounting gate:** run the read-only Paper activity audit on main with a bounded explicit time window and inspect the JSON artifact. Then prove recovery from broker activities into the durable event ledger and FIFO inbox across restart, including delayed fees and corrections/busts. Keep order submission disabled until these gates are independently demonstrated.
+
+
+### 2026-11-12 continuation — PR #185 finite reconciliation-tolerance guard
+
+- PR #185 merged to main at `974288523023f7d08879f2fc420ee25f5f58468f`.
+- A review found that `timestamp_tolerance_seconds=NaN` was accepted by the staged activity reconciler. Because comparisons against NaN are false, this could silently disable the timestamp-difference check. The function now accepts only numeric, finite, non-negative tolerances and rejects booleans, strings, NaN and infinities before reading either database.
+- Added a dedicated workflow because this module previously had no matching workflow trigger. Workflow `43313016633` passed compile and all 9 offline staged-activity reconciliation tests, including the new invalid-tolerance regression.
+- Related regression runs after PR #183: workflow `43313016735` passed 28 offline Alpaca activity/audit tests; `43313016757` passed static checks but skipped its live Paper audit job on the PR event; `43313016739` passed the Paper Observer Runtime test suite. No live Paper account-activity request was proven by those PR checks.
+- Cleaned the audit-runner tests to close report files and eliminate the ResourceWarnings observed in PR #183's run.
+- No broker orders, account mutations, deployments or Live actions occurred. Progress remains **58%** because the improvement is code/offline evidence, not sustained Paper or profitability evidence.
+
+**Next gate:** execute and inspect the read-only Paper audit on main with explicit bounded order/fee windows, then verify the returned real activity records and the durable restart/recovery path. Keep order submission disabled while fee allocation, corrections/busts and full cash/position reconciliation remain incomplete.
