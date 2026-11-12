@@ -515,8 +515,8 @@ def self_test() -> Dict[str, Any]:
     assert require_zero_budget_feed("IEX") == "IEX"
     before_close = pd.Timestamp("2026-11-11T20:00:00Z").to_pydatetime()
     after_close = pd.Timestamp("2026-11-11T21:20:00Z").to_pydatetime()
-    assert historical_request_end(before_close) == pd.Timestamp("2026-11-11T00:00:00Z").to_pydatetime()
-    assert historical_request_end(after_close) == pd.Timestamp("2026-11-12T00:00:00Z").to_pydatetime()
+    assert historical_request_end(before_close) == pd.Timestamp("2026-11-10T21:00:00Z").to_pydatetime()
+    assert historical_request_end(after_close) == pd.Timestamp("2026-11-11T21:00:00Z").to_pydatetime()
     now = datetime.now(timezone.utc)
     assert require_zero_budget_feed(
         "SIP", end_time=historical_request_end(now), now=now
