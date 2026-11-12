@@ -10,6 +10,7 @@ fill events. It never writes to the ledger or broker.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -73,8 +74,12 @@ def reconcile_staged_fill_activities(
     symbol, side, order ID and execution timestamp. A matched fill is not
     reconciled until the fee/FX-aware ledger bridge marks it PROCESSED.
     """
-    if timestamp_tolerance_seconds < 0:
-        raise ValueError("timestamp_tolerance_seconds cannot be negative")
+    if isinstance(timestamp_tolerance_seconds, bool) or not isinstance(
+        timestamp_tolerance_seconds, (int, float, Decimal)
+    ):
+        raise ValueError("timestamp_tolerance_seconds must be a finite non-negative number")
+    if not math.isfinite(float(timestamp_tolerance_seconds)) or timestamp_tolerance_seconds < 0:
+        raise ValueError("timestamp_tolerance_seconds must be a finite non-negative number")
     try:
         with _read_only(activity_db_path) as activities, _read_only(fill_inbox_db_path) as inbox:
             staged = activities.execute(
