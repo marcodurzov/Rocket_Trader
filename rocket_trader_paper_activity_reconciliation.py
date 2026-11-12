@@ -74,7 +74,9 @@ def reconcile_staged_fill_activities(
     symbol, side, order ID and execution timestamp. A matched fill is not
     reconciled until the fee/FX-aware ledger bridge marks it PROCESSED.
     """
-    if isinstance(timestamp_tolerance_seconds, bool) or not isinstance(timestamp_tolerance_seconds, (int, float, Decimal)):
+    if isinstance(timestamp_tolerance_seconds, bool) or not isinstance(
+        timestamp_tolerance_seconds, (int, float, Decimal)
+    ):
         raise ValueError("timestamp_tolerance_seconds must be a finite non-negative number")
     if not math.isfinite(float(timestamp_tolerance_seconds)) or timestamp_tolerance_seconds < 0:
         raise ValueError("timestamp_tolerance_seconds must be a finite non-negative number")
