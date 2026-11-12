@@ -65,6 +65,15 @@ class PaperActivityReconciliationTests(unittest.TestCase):
     def reconcile(self):
         return reconcile_staged_fill_activities(self.activity_db, self.inbox_db)
 
+    def test_timestamp_tolerance_rejects_negative_nonfinite_and_non_numeric_values(self):
+        for value in (-0.1, float("nan"), float("inf"), float("-inf"), True, "2"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    reconcile_staged_fill_activities(
+                        self.activity_db, self.inbox_db,
+                        timestamp_tolerance_seconds=value,
+                    )
+
     def test_matching_processed_fill_reconciles(self):
         self.seed()
         report = self.reconcile()
