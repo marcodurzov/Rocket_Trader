@@ -341,7 +341,7 @@ def fetch_yahoo_daily_bars(
         raise ValueError("end must be timezone-aware")
     start_date = (end_at - timedelta(days=365 * years)).date()
     start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-    # yfinance end is exclusive; excluding today avoids partial-session bars.
+    # yfinance end is exclusive; advance one date to include the last completed XNYS session.
     end_exclusive = (end_at.date() + timedelta(days=1)).isoformat()
     try:
         if ticker is None:
