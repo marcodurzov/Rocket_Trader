@@ -20,6 +20,7 @@ from rocket_trader_equity_multiyear_research_v0_2 import (
     normalize_frame,
     strategy_positions,
     require_zero_budget_feed,
+    historical_request_end,
 )
 
 
@@ -155,6 +156,18 @@ class EquityResearchV02Tests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["timestamp"], frame.iloc[0]["timestamp"])
         self.assertGreaterEqual(client.calls, 9)
         self.assertTrue(all(request.feed.value == "sip" for request in client.requests))
+
+    def test_historical_request_end_uses_last_completed_xnys_session(self):
+        before_close = pd.Timestamp("2026-11-11T20:00:00Z").to_pydatetime()
+        after_close = pd.Timestamp("2026-11-11T21:20:00Z").to_pydatetime()
+        self.assertEqual(
+            historical_request_end(before_close),
+            pd.Timestamp("2026-11-11T00:00:00Z").to_pydatetime(),
+        )
+        self.assertEqual(
+            historical_request_end(after_close),
+            pd.Timestamp("2026-11-12T00:00:00Z").to_pydatetime(),
+        )
 
     def test_fetch_daily_bars_uses_injected_clock_for_default_historical_end(self):
         frame = synthetic_frame()
