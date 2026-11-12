@@ -1296,3 +1296,16 @@ A review of the current official Alpaca documentation found that the prior blank
 - This correction affects diagnostic labeling only; it does not relax source coverage or overlap-completeness gates, and does not alter strategy returns or orders.
 
 **Next:** obtain fresh green CI for the latest PR head, then merge only after all offline checks pass. Historical SIP entitlement remains unverified until a separate post-merge read-only Paper-credential run succeeds.
+
+
+### PR #181 — completed-session boundary and final test corrections
+- Replaced UTC-midnight date guessing with the XNYS session calendar. `historical_request_end(now)` now returns the actual close timestamp of the latest completed NYSE session, with a 16-minute buffer. This handles normal closes, early closes, weekends and market holidays; if the calendar cannot be loaded or no completed session is found, the code fails closed.
+- Alpaca receives that completed-session close timestamp. Yahoo's end parameter is exclusive, so Yahoo adapters advance the end date by one calendar day to include the same completed session. Historical start timestamps are normalized to UTC midnight. Tiingo's date-based end remains the session date.
+- Added tests for pre-close vs post-close behavior, Yahoo's exclusive end, and the completed-session end in v0.1–v0.4. v0.1 workflow now installs `requirements-yahoo.txt` because that dependency supplies `exchange_calendars`.
+- CI caught and resolved two test-only issues: v0.1 initially lacked the calendar package in its workflow; the Alpaca SDK represents `StockBarsRequest.end` as a naive UTC datetime in the request model, so regression tests now normalize that representation before comparison. The production cutoff remains timezone-aware.
+- Confirmed successful latest runs on the pre-final-test head: crosscheck `43154959313` and v0.1 `43154959322`. Later v0.2–v0.4 runs exposed only the naive-vs-aware test assertion and have been corrected in the branch; final-head CI must still be observed.
+- The PR event intentionally skips the broker historical retrieval step. No credential-specific SIP data access has yet been demonstrated. After squash-merging, inspect the main-branch push workflows and their immutable artifacts for the 10-year SIP/Yahoo comparison and v0.1–v0.4 research outputs.
+- Current branch is a long-lived PR branch with many incremental commits; use **squash merge** after final green checks to keep `main` history clean.
+- No live credentials, Live orders, Paper orders, paid feed or strategy promotion were used.
+
+**Current status:** engineering fix is implemented; final CI on the latest PR head and the post-merge read-only SIP market-data run remain open. Strategy profitability remains unproven and no candidate is approved.
