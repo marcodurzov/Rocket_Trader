@@ -163,11 +163,11 @@ class EquityResearchV03Tests(unittest.TestCase):
         after_close = pd.Timestamp("2026-11-11T21:20:00Z").to_pydatetime()
         self.assertEqual(
             historical_request_end(before_close),
-            pd.Timestamp("2026-11-11T00:00:00Z").to_pydatetime(),
+            pd.Timestamp("2026-11-10T21:00:00Z").to_pydatetime(),
         )
         self.assertEqual(
             historical_request_end(after_close),
-            pd.Timestamp("2026-11-12T00:00:00Z").to_pydatetime(),
+            pd.Timestamp("2026-11-11T21:00:00Z").to_pydatetime(),
         )
 
     def test_fetch_daily_bars_uses_injected_clock_for_default_historical_end(self):
@@ -223,7 +223,7 @@ class EquityResearchV03Tests(unittest.TestCase):
         self.assertIs(ticker.calls[0]["auto_adjust"], True)
         self.assertIs(ticker.calls[0]["actions"], True)
         self.assertIs(ticker.calls[0]["repair"], False)
-        self.assertEqual(ticker.calls[0]["end"], end.date().isoformat())
+        self.assertEqual(ticker.calls[0]["end"], (end.date() + timedelta(days=1)).isoformat())
 
     def test_yahoo_short_history_fails_closed(self):
         raw = synthetic_frame(start="2021-11-09", periods=1250)
