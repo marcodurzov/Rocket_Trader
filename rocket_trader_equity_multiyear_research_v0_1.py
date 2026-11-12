@@ -128,11 +128,12 @@ def data_quality_metrics(frame: pd.DataFrame) -> Dict[str, Any]:
 
 
 def historical_request_end(now: Optional[datetime] = None) -> datetime:
-    """Return the next UTC date boundary after the latest completed XNYS session.
+    """Return the close timestamp of the latest completed XNYS session.
 
-    The end is inclusive for Alpaca and exclusive for Yahoo's history API, so
-    placing it at midnight after the last completed session includes that full
-    session without admitting an in-progress daily candle.
+    Alpaca's daily bars are stamped at 00:00 UTC for the session date. Ending
+    the request at that session's actual close includes the completed daily
+    bar while keeping the SIP request end safely in the past. Yahoo's end is
+    exclusive, so its adapters add one calendar day separately.
     """
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() is None:
@@ -145,7 +146,7 @@ def historical_request_end(now: Optional[datetime] = None) -> datetime:
             pd.Timestamp(cutoff.date() - timedelta(days=30)),
             pd.Timestamp(cutoff.date()),
         )
-        completed = []
+        completed_closes = []
         for session in sessions:
             close = calendar.session_close(session)
             close = (
@@ -154,20 +155,15 @@ def historical_request_end(now: Optional[datetime] = None) -> datetime:
                 else close.tz_localize("UTC")
             )
             if close.to_pydatetime() <= cutoff:
-                completed.append(session)
+                completed_closes.append(close)
     except Exception as exc:
         raise EquityResearchError(
             f"Unable to resolve completed XNYS session for historical data end: "
             f"{type(exc).__name__}: {exc}"
         ) from exc
-    if not completed:
+    if not completed_closes:
         raise EquityResearchError("No completed XNYS session found in the preceding 30 calendar days")
-    last_session_date = pd.Timestamp(completed[-1]).date()
-    return datetime.combine(
-        last_session_date + timedelta(days=1),
-        datetime.min.time(),
-        tzinfo=timezone.utc,
-    )
+    return completed_closes[-1].to_pydatetime()
 
 
 def require_zero_budget_feed(
@@ -219,7 +215,8 @@ def fetch_daily_bars(
         raise ValueError("end must be timezone-aware")
     feed_name = require_zero_budget_feed(feed_name, end_time=end_at, now=now)
     feed = DataFeed.SIP if feed_name == "SIP" else DataFeed.IEX
-    cursor = end_at - timedelta(days=365 * years)
+    start_date = (end_at - timedelta(days=365 * years)).date()
+    cursor = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
     chunks: List[pd.DataFrame] = []
     while cursor < end_at:
         chunk_end = min(cursor + timedelta(days=chunk_days), end_at)
