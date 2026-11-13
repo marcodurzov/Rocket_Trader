@@ -2298,6 +2298,42 @@ def self_test() -> Dict[str, Any]:
     assert missing_fx_decision.quantity == 0.0
     assert missing_fx_decision.reason == "strategy_risk_metrics_missing"
 
+    # Strategy daily-loss protection must use the MXN allocation metrics,
+    # not the much larger virtual Paper account's USD equity denominator.
+    strategy_daily_loss_account = dataclasses.replace(
+        account, strategy_daily_pnl_pct=-0.06
+    )
+    strategy_daily_loss_decision = core.decision_engine.evaluate(
+        account=strategy_daily_loss_account,
+        snapshot=snapshot,
+        signal=signal,
+    )
+    assert strategy_daily_loss_decision.status == DecisionStatus.KILL_SWITCH
+    assert strategy_daily_loss_decision.reason == "strategy_daily_loss_limit"
+
+    # Non-finite account and strategy risk inputs must be rejected at the boundary.
+    invalid_account_inputs_rejected = True
+    for invalid_kwargs in (
+        {"equity": float("nan")},
+        {"strategy_capital_mxn": float("nan")},
+        {"strategy_equity_mxn": float("nan")},
+        {"strategy_daily_pnl_pct": float("nan")},
+    ):
+        try:
+            AccountState(
+                equity=1000.0,
+                cash=1000.0,
+                strategy_capital_mxn=1000.0,
+                strategy_equity_mxn=1000.0,
+                strategy_daily_pnl_pct=0.0,
+                **invalid_kwargs,
+            )
+        except (TypeError, ValueError):
+            continue
+        invalid_account_inputs_rejected = False
+        break
+    assert invalid_account_inputs_rejected is True
+
     # The legacy Core Alpaca adapter must also block fractional equity brackets.
     fractional_adapter = object.__new__(AlpacaExecutionAdapter)
     fractional_adapter.mode = ExecutionMode.PAPER
