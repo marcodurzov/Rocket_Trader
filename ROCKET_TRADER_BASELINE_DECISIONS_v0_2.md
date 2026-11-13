@@ -76,3 +76,8 @@ Legacy ledger databases are not silently reinterpreted. Existing FILL events wit
 ## Strategy risk denominators
 
 Broker-side Paper equity/cash are USD and must not be used as the denominator for strategy drawdown or daily loss when the allocated strategy capital is MXN 1,000. The Core now requires explicit `strategy_equity_mxn` and `strategy_daily_pnl_pct` whenever `strategy_capital_mxn` is set; missing metrics block entries. Its persistent strategy drawdown high-water mark is explicitly denominated in MXN and uses a dedicated `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH`. Do not reuse an old USD guard-state file for MXN; the currency marker makes that mismatch fail closed.
+
+
+## Strategy risk measurement and drawdown currency
+
+The Core must measure strategy daily loss and persistent drawdown against strategy equity in MXN, not the broker's virtual Paper account equity in USD. When `strategy_capital_mxn` is set, callers must also supply a current `strategy_equity_mxn` and `strategy_daily_pnl_pct` derived from durable ledger state and current broker marks. Missing metrics fail closed. The persistent strategy drawdown state uses `equity_currency=MXN` and the dedicated `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH`; do not reuse an old USD guard file. The broker USD protected floor remains a separate emergency account-level control.
