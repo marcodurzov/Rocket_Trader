@@ -1026,3 +1026,14 @@ The next evidence gate is a manual read-only Paper audit dispatch. Fill reconcil
 The current ledger's prior formula converted USD realized P&L at the exit FX only. That omits FX movement on the entry cost basis. For a USD 1,000 BUY at 18 MXN/USD followed by a USD 1,000 SELL at 20 MXN/USD, USD P&L is zero but MXN P&L is +2,000; the prior formula reported zero. The proposed FIFO method stores each BUY lot's cost basis in MXN at entry FX and converts net SELL proceeds at exit FX, with entry/exit fees included at their respective FX rates.
 
 Legacy ledger databases are protected by an accounting-method marker and explicit migration. Migration is refused when immutable monthly closes exist; it validates event hashes and fill FX metadata, requires stopped writers, and creates a verified SQLite backup. No deployed/persistent database was accessed or migrated. This PR does not authorize orders or Live trading.
+
+
+## 2026-11-12 — PR #192: FX-aware MXN FIFO realized P&L
+
+PR #192 (`b7eb353f11c29158bc79da9f3c603ca6aae21ad1`) corrects the ledger's currency accounting. The previous formula converted USD P&L only at the SELL FX rate, omitting FX movement on the BUY cost basis. The new method stores FIFO BUY cost basis in MXN at entry FX and converts net SELL proceeds at exit FX. This records both market P&L and USD/MXN movement in the MXN capital ledger.
+
+A version marker (`FIFO_MXN_ENTRY_AND_EXIT_FX_V2`) prevents silent reinterpretation of legacy ledgers. The explicit migration verifies event hashes and FX metadata, requires stopped writers and a verified SQLite backup, and refuses immutable monthly closes.
+
+Validation: 29 ledger tests passed; 37 Paper audit offline tests passed (real Paper audit skipped on PR event); fill-ledger bridge passed 29 ledger + 10 bridge + 8 fee tests; cash bridge passed 12 + 7 admin + 29 ledger tests; durable SSE passed 26 tests; observer runtime and container builds passed. Post-merge CI passed, and the Paper Observer image was published to GHCR at digest `sha256:e58d3d4aa6cf9da80e68dbcf3088bb11cddf1af560f0c3ca8252d3872a172a00`. This is image publication, not deployment.
+
+No persistent ledger was accessed/migrated and no real Paper query, order, account mutation or Live action occurred. Progress remains 58%.
