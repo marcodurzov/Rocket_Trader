@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `974288523023f7d08879f2fc420ee25f5f58468f` (PR #185 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `875772afba86ba249849194a3213055dd23fee8d` (PR #187 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1379,3 +1379,11 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 - The proposed change makes pagination completeness explicit: an empty page or short page proves exhaustion; a full page at the page cap reports `PAGE_LIMIT_REACHED`; a repeated cursor reports `CURSOR_STALLED`. `sync_complete` and `pagination_complete` are false unless exhaustion is observed. Invalid max_pages values (including booleans) are rejected.
 - Offline regression tests cover full-page cap, short-page exhaustion, empty-page exhaustion, repeated cursor and invalid limits.
 - This is an engineering guard only. It does not prove real Paper API ingestion, full account history, or restart recovery. No broker orders or account mutations are performed.
+
+ 
+### 2026-11-12 continuation — PR #187 activity pagination completeness
+
+- PR #187 merged to main at 875772afba86ba249849194a3213055dd23fee8d.
+- The REST Paper activity stager now reports EXHAUSTED, PAGE_LIMIT_REACHED or CURSOR_STALLED, and sets sync_complete/pagination_complete false unless an empty or short page proves exhaustion. It validates max_pages as a positive integer and fails closed on a non-advancing cursor.
+- Workflow 43351364962 passed compile and all 19 activity-stager tests. Workflow 43351365053 passed Compose validation, built the Paper Observer image and verified its accounting/runtime modules. Workflow 43351364942 passed compile and 28 offline observer/runtime tests.
+- These checks did not query Alpaca or prove complete real Paper activity recovery. No order or account mutation occurred.
