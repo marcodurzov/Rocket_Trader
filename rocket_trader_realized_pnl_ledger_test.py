@@ -406,6 +406,27 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             )
         self.assertFalse(os.path.exists(backup))
 
+    def test_legacy_migration_refuses_event_hash_mismatch(self):
+        self.fill("legacy-corrupt-buy", "BUY", "0.1", "10000")
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER ledger_events_no_update")
+            conn.execute(
+                "UPDATE ledger_events SET payload_json='{}' WHERE event_id='legacy-corrupt-buy'"
+            )
+            conn.execute(
+                "CREATE TRIGGER ledger_events_no_update BEFORE UPDATE ON ledger_events "
+                "BEGIN SELECT RAISE(ABORT, 'ledger events are immutable'); END"
+            )
+            conn.execute(
+                "DELETE FROM ledger_meta WHERE key='realized_pnl_accounting_method'"
+            )
+        backup = os.path.join(self.tmp.name, "corrupt-ledger-backup.sqlite3")
+        with self.assertRaisesRegex(LedgerError, "event hash mismatch"):
+            RealizedPnLLedger.migrate_legacy_accounting_method(
+                self.db, backup_path=backup, confirm=True, no_writers_confirmed=True,
+            )
+        self.assertFalse(os.path.exists(backup))
+
     def test_legacy_migration_refuses_immutable_monthly_closes(self):
         self.fill("legacy-close-buy", "BUY", "0.1", "10000")
         self.fill("legacy-close-sell", "SELL", "0.1", "11000")
