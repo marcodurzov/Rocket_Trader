@@ -41,6 +41,10 @@ def create_paper_cash_anchor(
     """Read inbox cursor first, then take one Paper cash snapshot and anchor it."""
     if not Path(inbox_db_path).expanduser().is_file():
         raise PaperCashLedgerError("Existing durable Activity SSE inbox is missing")
+    if not Path(cash_db_path).expanduser().is_file() and not initialize_db:
+        raise PaperCashLedgerError(
+            "Existing durable USD cash ledger database is missing; use --initialize-db only after review"
+        )
     try:
         inbox = DurableActivitySSEInbox(
             str(Path(inbox_db_path).expanduser()), initialize=False
@@ -57,11 +61,14 @@ def create_paper_cash_anchor(
 
     account = client.get_account()
     account_id = str(getattr(account, "id", "") or "").strip()
-    currency = str(getattr(account, "currency", "USD") or "USD").strip().upper()
-    if not account_id or currency != "USD":
-        raise PaperCashLedgerError("Paper account ID and USD account currency are required")
+    currency = str(getattr(account, "currency", "") or "").strip().upper()
+    status = str(getattr(account, "status", "") or "").strip().upper()
+    if not account_id or currency != "USD" or status != "ACTIVE":
+        raise PaperCashLedgerError("Active Paper account ID and explicit USD account currency are required")
     cash = getattr(account, "cash", None)
     equity = getattr(account, "equity", None)
+    if cash is None or equity is None:
+        raise PaperCashLedgerError("Paper account cash and equity snapshot fields are required")
     observed = now or datetime.now(timezone.utc)
     if observed.tzinfo is None or observed.utcoffset() is None:
         raise PaperCashLedgerError("Anchor timestamp must be timezone-aware")
