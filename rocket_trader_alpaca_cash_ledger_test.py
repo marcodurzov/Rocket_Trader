@@ -65,6 +65,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="1044", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
             fee_reconciliation_complete=False,
         )
         self.assertEqual(report["cash_reconciliation_status"], "RECONCILED")
@@ -196,6 +198,51 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             observed_at=NOW, activity_coverage_complete=True,
         )
         self.assertEqual(report["status"], "CASH_ANCHOR_REQUIRED")
+
+    def test_complete_coverage_requires_traceable_replay_evidence(self):
+        with self.assertRaisesRegex(PaperCashLedgerError, "traceable reference"):
+            self.ledger.reconcile(
+                broker_cash_usd="1000", broker_account_id=ACCOUNT,
+                observed_at=NOW, activity_coverage_complete=True,
+            )
+
+    def test_ingests_verified_activity_sse_inbox_without_claiming_coverage(self):
+        from rocket_trader_alpaca_activity_sse_consumer import DurableActivitySSEInbox
+        inbox_path = os.path.join(self.tmp.name, "activity-inbox.sqlite3")
+        inbox = DurableActivitySSEInbox(inbox_path)
+        payload = event(
+            1, "TRD", amount="-25",
+            at=NOW - timedelta(minutes=5),
+            details={"side": "buy", "execution_type": "fill"},
+        )
+        payload["event_id"] = "00000000000000000000000001"
+        inbox.stage(payload)
+        report = self.ledger.ingest_from_activity_sse_inbox(
+            inbox_db_path=inbox_path, page_size=1,
+        )
+        self.assertTrue(report["inbox_integrity_valid"])
+        self.assertEqual(report["staged_count"], 1)
+        self.assertFalse(report["activity_coverage_complete"])
+        cash = self.ledger.reconcile(
+            broker_cash_usd="975", broker_account_id=ACCOUNT,
+            observed_at=NOW, activity_coverage_complete=False,
+        )
+        self.assertEqual(cash["cash_reconciliation_status"], "ACTIVITY_HISTORY_INCOMPLETE")
+
+    def test_corrupt_activity_sse_inbox_is_rejected(self):
+        from rocket_trader_alpaca_activity_sse_consumer import DurableActivitySSEInbox
+        inbox_path = os.path.join(self.tmp.name, "corrupt-inbox.sqlite3")
+        inbox = DurableActivitySSEInbox(inbox_path)
+        payload = event(1, "DIV", amount="5", at=NOW - timedelta(minutes=5))
+        payload["event_id"] = "00000000000000000000000001"
+        inbox.stage(payload)
+        with sqlite3.connect(inbox_path) as conn:
+            conn.execute("DROP TRIGGER activity_sse_events_no_update")
+            conn.execute(
+                "UPDATE activity_sse_events SET payload_json='{}' WHERE ref_id='activity-1'"
+            )
+        with self.assertRaisesRegex(PaperCashLedgerError, "integrity"):
+            self.ledger.ingest_from_activity_sse_inbox(inbox_db_path=inbox_path)
 
     def test_broker_account_id_mismatch_is_rejected(self):
         with self.assertRaisesRegex(PaperCashLedgerError, "does not match"):
