@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `875772afba86ba249849194a3213055dd23fee8d` (PR #187 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `15ee36705909b3a15fb7d722a1d342191422b06e` (PR #188 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1387,3 +1387,11 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 - The REST Paper activity stager now reports EXHAUSTED, PAGE_LIMIT_REACHED or CURSOR_STALLED, and sets sync_complete/pagination_complete false unless an empty or short page proves exhaustion. It validates max_pages as a positive integer and fails closed on a non-advancing cursor.
 - Workflow 43351364962 passed compile and all 19 activity-stager tests. Workflow 43351365053 passed Compose validation, built the Paper Observer image and verified its accounting/runtime modules. Workflow 43351364942 passed compile and 28 offline observer/runtime tests.
 - These checks did not query Alpaca or prove complete real Paper activity recovery. No order or account mutation occurred.
+
+
+### 2026-11-12 continuation — PR #188 fee evidence cannot pass as full audit success
+
+- PR #188 merged to main at `15ee36705909b3a15fb7d722a1d342191422b06e`.
+- The read-only audit no longer returns top-level SUCCESS when fill quantities/prices match but fee activities remain unallocated or unknown. It now reports `fill_reconciliation_status=ALL_ORDERS_MATCHED`, `fee_reconciliation_status=UNRESOLVED`, and `status=FILLS_MATCHED_FEES_UNRESOLVED` with exit code 2. A fill mismatch remains exit code 1; preflight/provider failures remain exit code 1.
+- Workflow `43351716511` passed 28 activity-reader tests. Workflow `43351716505` passed compile and 37 audit/SSE/reconciliation tests. Its live Paper API audit job was skipped because this was a pull-request event.
+- The manual workflow_dispatch remains the only real Paper account audit path. No live Paper query, order, account mutation or Live action occurred in PR checks.
