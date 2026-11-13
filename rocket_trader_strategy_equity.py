@@ -81,8 +81,8 @@ class StrategySessionBaseline:
         if equity <= 0:
             raise StrategyEquityMetricsError("baseline equity_mxn must be positive")
         _utc(self.observed_at, "baseline observed_at")
-        if not str(self.source).strip():
-            raise StrategyEquityMetricsError("baseline source is required")
+        if str(self.source).strip().upper() not in {"VERIFIED_SESSION_OPEN", "PREVIOUS_SESSION_CLOSE"}:
+            raise StrategyEquityMetricsError("baseline source must be a verified session opening or prior-session close")
         object.__setattr__(self, "equity_mxn", equity)
         object.__setattr__(self, "net_external_flows_mxn", flows)
 
