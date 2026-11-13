@@ -1,0 +1,36 @@
+name: Rocket Trader - Strategy Equity MXN Metrics
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_strategy_equity.py"
+      - "rocket_trader_strategy_equity_test.py"
+      - "rocket_trader_currency.py"
+      - ".github/workflows/rocket-trader-strategy-equity-metrics.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "rocket_trader_strategy_equity.py"
+      - "rocket_trader_strategy_equity_test.py"
+      - "rocket_trader_currency.py"
+      - ".github/workflows/rocket-trader-strategy-equity-metrics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  strategy-equity-metrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile rocket_trader_strategy_equity.py rocket_trader_strategy_equity_test.py
+      - name: Run offline strategy equity tests
+        run: python -m unittest -v rocket_trader_strategy_equity_test.py
