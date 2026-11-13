@@ -991,3 +991,10 @@ This is not evidence of a successful real Paper API pull. No order, broker accou
 PR #187 (875772afba86ba249849194a3213055dd23fee8d) prevents a bounded account-activity scan from being mistaken for a complete history retrieval. The stager now differentiates EXHAUSTED, PAGE_LIMIT_REACHED and CURSOR_STALLED; only an empty/short page proves pagination exhaustion.
 
 Validation: workflow 43351364962 passed all 19 activity-stager tests; 43351365053 successfully validated Compose, built the Paper Observer image and verified packaged modules; 43351364942 passed 28 offline runtime tests. No live Paper API activity query was executed by these PR checks. Progress remains 58%.
+
+
+## 2026-11-12 — PR #188: fee-unknown audit is review-required
+
+PR #188 (`15ee36705909b3a15fb7d722a1d342191422b06e`) removes a misleading top-level SUCCESS state when all order fills match but account fee evidence is not allocated to executions. The audit now reports fill status and fee status separately; matched fills with unresolved fees produce `FILLS_MATCHED_FEES_UNRESOLVED` and exit code 2. A fill mismatch remains a distinct review failure.
+
+Validation: workflow `43351716511` passed 28 activity-reader tests; workflow `43351716505` passed compile and 37 audit/SSE/reconciliation tests. The actual Paper API audit job was skipped on PR events. Progress remains 58%.
