@@ -112,6 +112,7 @@ class AlpacaPaperUSDCashLedger:
                     observed_at TEXT NOT NULL,
                     activity_cursor_before_snapshot TEXT,
                     source_reference TEXT NOT NULL,
+                    rebase_reason TEXT,
                     payload_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 )
@@ -119,7 +120,7 @@ class AlpacaPaperUSDCashLedger:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS paper_cash_activities (
                     ref_id TEXT PRIMARY KEY,
-                    event_id TEXT NOT NULL,
+                    event_id TEXT NOT NULL UNIQUE,
                     account_id TEXT NOT NULL,
                     activity_type TEXT NOT NULL,
                     activity_subtype TEXT,
@@ -153,6 +154,8 @@ class AlpacaPaperUSDCashLedger:
         observed_at: Any,
         source_reference: str,
         activity_cursor_before_snapshot: Optional[str] = None,
+        rebase_confirmed: bool = False,
+        rebase_reason: Optional[str] = None,
     ) -> Dict[str, Any]:
         anchor = str(anchor_id or "").strip()
         reference = str(source_reference or "").strip()
@@ -163,11 +166,16 @@ class AlpacaPaperUSDCashLedger:
             raise PaperCashLedgerError("Anchor ID/reference are required and cash cannot be negative")
         if cursor == "":
             raise PaperCashLedgerError("Activity cursor must be null or non-empty")
+        if not isinstance(rebase_confirmed, bool):
+            raise PaperCashLedgerError("rebase_confirmed must be a boolean")
+        reason = str(rebase_reason or "").strip()
         payload = {
             "anchor_id": anchor, "account_id": self.account_id,
             "cash_usd": str(amount), "observed_at": when,
             "activity_cursor_before_snapshot": cursor,
             "source_reference": reference,
+            "rebase_confirmed": rebase_confirmed,
+            "rebase_reason": reason or None,
         }
         raw = _canonical(payload)
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -184,14 +192,18 @@ class AlpacaPaperUSDCashLedger:
             ).fetchone()
             if latest and when <= latest["observed_at"]:
                 raise PaperCashLedgerError("A new cash anchor must be later than the prior anchor")
+            if latest and (not rebase_confirmed or not reason):
+                raise PaperCashLedgerError(
+                    "A later cash anchor requires explicit rebase confirmation and a reason"
+                )
             conn.execute("""
                 INSERT INTO paper_cash_anchors
                 (anchor_id,account_id,cash_usd,observed_at,
-                 activity_cursor_before_snapshot,source_reference,payload_hash,created_at)
-                VALUES (?,?,?,?,?,?,?,?)
+                 activity_cursor_before_snapshot,source_reference,rebase_reason,payload_hash,created_at)
+                VALUES (?,?,?,?,?,?,?,?,?)
             """, (
                 anchor, self.account_id, str(amount), when, cursor,
-                reference, digest, _iso(datetime.now(timezone.utc)),
+                reference, reason or None, digest, _iso(datetime.now(timezone.utc)),
             ))
         return {"status": "ANCHORED", "anchor_id": anchor, "cash_usd": str(amount), "observed_at": when}
 
@@ -366,11 +378,10 @@ class AlpacaPaperUSDCashLedger:
         else:
             status = "RECONCILED"
 
-        fee_status = (
-            "RECONCILED"
-            if fee_reconciliation_complete is True and not pending_fees
-            else "UNRESOLVED"
-        )
+        # The independent fee resolver owns allocation evidence. Its explicit
+        # completion flag may clear candidates that this cash mirror cannot
+        # allocate by itself (e.g. volume fees without parent_id).
+        fee_status = "RECONCILED" if fee_reconciliation_complete is True else "UNRESOLVED"
         return {
             "environment": "PAPER",
             "status": status,
