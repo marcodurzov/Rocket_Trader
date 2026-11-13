@@ -37,13 +37,14 @@ class PaperReconciliationTests(unittest.TestCase):
         return {
             "operating_capital_mxn": capital,
             "open_positions": positions or {},
+            "accounting_method": "FIFO_MXN_ENTRY_AND_EXIT_FX_V2",
         }
 
     def test_matching_crypto_position_is_not_full_account_reconciliation(self):
         broker = FakeBroker(positions=[
-            SimpleNamespace(symbol="BTCUSD", qty="0.0099")
+            SimpleNamespace(symbol="BTCUSD", qty="0.0099", market_value="1000")
         ])
-        ledger = self.snapshot({"BTC/USD": {"quantity": "0.0099"}})
+        ledger = self.snapshot({"BTC/USD": {"quantity": "0.0099", "fifo_cost_basis_mxn": "18000"}})
         result = AlpacaPaperReconciliationGate(broker).reconcile(
             ledger_snapshot=ledger, fx_quote=FX, now=NOW
         )
@@ -58,6 +59,10 @@ class PaperReconciliationTests(unittest.TestCase):
         )
         self.assertTrue(result["broker_cash_equity_observed_only"])
         self.assertEqual(result["ledger_operating_capital_mxn"], "1000")
+        self.assertEqual(result["strategy_equity_status"], "AVAILABLE")
+        self.assertEqual(result["strategy_equity_mxn"], "1000")
+        self.assertEqual(result["strategy_unrealized_pnl_mxn"], "0.00")
+        self.assertTrue(result["strategy_equity_snapshot_hash"])
 
     def test_position_mismatch_blocks_reconciliation(self):
         broker = FakeBroker(positions=[
@@ -79,6 +84,59 @@ class PaperReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "POSITION_MISMATCH")
         self.assertEqual(result["position_differences"]["SPY"]["ledger_qty"], "0")
+
+    def test_strategy_equity_includes_unrealized_mxn_from_broker_market_value(self):
+        broker = FakeBroker(positions=[
+            SimpleNamespace(symbol="BTC/USD", qty="0.01", market_value="1100")
+        ])
+        result = AlpacaPaperReconciliationGate(broker).reconcile(
+            ledger_snapshot=self.snapshot({
+                "BTC/USD": {
+                    "quantity": "0.01",
+                    "fifo_cost_basis_mxn": "18000",
+                }
+            }),
+            fx_quote=FX,
+            now=NOW,
+        )
+        self.assertEqual(result["strategy_equity_status"], "AVAILABLE")
+        self.assertEqual(result["strategy_unrealized_pnl_mxn"], "1800.00")
+        self.assertEqual(result["strategy_equity_mxn"], "2800.00")
+
+    def test_missing_broker_market_value_blocks_strategy_equity_only(self):
+        broker = FakeBroker(positions=[
+            SimpleNamespace(symbol="BTC/USD", qty="0.01")
+        ])
+        result = AlpacaPaperReconciliationGate(broker).reconcile(
+            ledger_snapshot=self.snapshot({
+                "BTC/USD": {
+                    "quantity": "0.01",
+                    "fifo_cost_basis_mxn": "18000",
+                }
+            }),
+            fx_quote=FX,
+            now=NOW,
+        )
+        self.assertTrue(result["positions_match"])
+        self.assertEqual(
+            result["strategy_equity_status"],
+            "UNAVAILABLE_MISSING_MARKET_VALUE",
+        )
+        self.assertIsNone(result["strategy_equity_mxn"])
+
+    def test_missing_fx_aware_accounting_method_blocks_strategy_equity(self):
+        ledger = self.snapshot()
+        ledger["accounting_method"] = "LEGACY"
+        result = AlpacaPaperReconciliationGate(FakeBroker()).reconcile(
+            ledger_snapshot=ledger,
+            fx_quote=FX,
+            now=NOW,
+        )
+        self.assertEqual(
+            result["strategy_equity_status"],
+            "UNAVAILABLE_ACCOUNTING_METHOD",
+        )
+        self.assertIsNone(result["strategy_equity_mxn"])
 
     def test_stale_or_future_fx_fails_closed(self):
         stale = FXQuote(
@@ -121,12 +179,12 @@ class PaperReconciliationTests(unittest.TestCase):
 
     def test_configured_quantity_tolerance(self):
         broker = FakeBroker(positions=[
-            SimpleNamespace(symbol="BTC/USD", qty="0.01000001")
+            SimpleNamespace(symbol="BTC/USD", qty="0.01000001", market_value="1000")
         ])
         result = AlpacaPaperReconciliationGate(
             broker, quantity_tolerance="0.000001"
         ).reconcile(
-            ledger_snapshot=self.snapshot({"BTC/USD": {"quantity": "0.01"}}),
+            ledger_snapshot=self.snapshot({"BTC/USD": {"quantity": "0.01", "fifo_cost_basis_mxn": "18000"}}),
             fx_quote=FX, now=NOW,
         )
         self.assertEqual(result["status"], "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE")
