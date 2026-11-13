@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `b7eb353f11c29158bc79da9f3c603ca6aae21ad1` (PR #192 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `d546ad771025888be2a34553c96ab4d08669f856` (PR #193 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1440,3 +1440,10 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 1. Identify the actual persistent ledger path and stop every process writing to it before considering migration. Do not infer the path from the repository or container image.
 2. If the ledger has legacy fills but no accounting-method marker and no immutable monthly close, run the explicit migration utility only after reviewing its backup and stopped-writer requirements. If immutable monthly closes exist, stop: a manual restatement/reconciliation plan is required; automatic migration is deliberately prohibited.
 3. Run the manual read-only Paper activity audit through GitHub Actions `workflow_dispatch`. The PR/push static checks skip the real Paper query by design. The audit now distinguishes matched fills from unresolved fees and will not claim full reconciliation when fee linkage/allocation is missing.
+
+ 
+### 2026-11-12 continuation — Paper position status was overstated (PR pending)
+
+- Review found that AlpacaPaperReconciliationGate returned status=RECONCILED when position quantities matched, although it only observed broker cash/equity and did not compare them to a local USD cash ledger. That label could be mistaken for full account reconciliation.
+- The proposed status is POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE; it separately reports position match, cash_reconciliation_status=NOT_IMPLEMENTED_NO_USD_CASH_LEDGER, account_reconciliation_complete=false, and that broker cash/equity are observations only. Position mismatches remain blocked.
+- Full cash/equity/P&L parity remains an open accounting requirement. No broker API call or account mutation is part of this change.
