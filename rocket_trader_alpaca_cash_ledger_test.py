@@ -67,6 +67,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             observed_at=NOW, activity_coverage_complete=True,
             activity_coverage_reference="test-catch-up-proof",
             activity_coverage_checked_at=NOW,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
             fee_reconciliation_complete=False,
         )
         self.assertEqual(report["cash_reconciliation_status"], "RECONCILED")
@@ -80,17 +82,33 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="998", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
             fee_reconciliation_complete=False,
         )
         self.assertEqual(report["fee_reconciliation_status"], "UNRESOLVED")
         self.assertEqual(report["pending_fee_allocation_count"], 1)
+
+    def test_fee_completion_requires_traceable_fee_audit_evidence(self):
+        with self.assertRaisesRegex(PaperCashLedgerError, "fee reconciliation requires"):
+            self.ledger.reconcile(
+                broker_cash_usd="1000", broker_account_id=ACCOUNT,
+                observed_at=NOW, activity_coverage_complete=True,
+                activity_coverage_reference="test-catch-up-proof",
+                activity_coverage_checked_at=NOW,
+                fee_reconciliation_complete=True,
+            )
 
     def test_external_fee_resolver_can_explicitly_clear_fee_allocation(self):
         self.ledger.ingest_activity(event(1, "FEE", amount="-2"))
         report = self.ledger.reconcile(
             broker_cash_usd="998", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
             fee_reconciliation_complete=True,
+            fee_reconciliation_reference="test-fee-audit-1",
+            fee_reconciliation_checked_at=NOW,
         )
         self.assertEqual(report["fee_reconciliation_status"], "RECONCILED")
         self.assertEqual(report["pending_fee_allocation_count"], 0)
@@ -101,6 +119,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="1000", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
             fee_reconciliation_complete=False,
         )
         self.assertEqual(report["cash_reconciliation_status"], "RECONCILED")
@@ -111,6 +131,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="1010", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
         )
         self.assertEqual(report["cash_reconciliation_status"], "UNSUPPORTED_ACTIVITY_REQUIRES_REVIEW")
         self.assertFalse(report["account_cash_reconciliation_complete"])
@@ -120,6 +142,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="1010", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
         )
         self.assertEqual(report["cash_reconciliation_status"], "UNSUPPORTED_ACTIVITY_REQUIRES_REVIEW")
 
@@ -128,6 +152,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="1010", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
         )
         self.assertEqual(report["cash_reconciliation_status"], "UNSUPPORTED_ACTIVITY_REQUIRES_REVIEW")
 
@@ -143,6 +169,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="1007", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
         )
         self.assertEqual(report["cash_reconciliation_status"], "CASH_BALANCE_MISMATCH")
         self.assertEqual(report["difference_usd"], "2")
@@ -196,6 +224,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = other.reconcile(
             broker_cash_usd="1000", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
         )
         self.assertEqual(report["status"], "CASH_ANCHOR_REQUIRED")
 
@@ -249,6 +279,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             self.ledger.reconcile(
                 broker_cash_usd="1000", broker_account_id="wrong",
                 observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
             )
 
 
