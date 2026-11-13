@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (PRs #187–#194 merged; activity, accounting and reconciliation controls hardened)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `231332e16b3411cf660f2f5ec1eefdeac493d99d` (PR #194 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `9b2ef94616c48dccc0c67444903a7fbed41b3809` (PR #196 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1439,3 +1439,14 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Review found the Core used Alpaca broker `equity` (USD) for both the daily-loss limit and persistent max-drawdown guard while position sizing used a separate strategy allocation in MXN. With a large virtual Paper balance, the drawdown denominator could be orders of magnitude larger than the strategy's MXN 1,000 allocation, making the strategy-level loss guards ineffective.
 - The proposed change requires `strategy_equity_mxn` and `strategy_daily_pnl_pct` whenever `strategy_capital_mxn` is configured; missing values fail closed. The persistent strategy drawdown guard uses a currency-marked MXN high-water mark and a dedicated `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH`. Broker USD equity floor remains an additional account-level emergency guard.
 - No caller currently provides a complete durable strategy-equity/daily-P&L snapshot from matched broker positions, FIFO MXN cost basis and current marks. Until that integration exists, the Core will reject new entries rather than fall back to broker USD equity. No orders or Live actions are authorized.
+
+
+### 2026-11-13 continuation — PR #196 MXN strategy risk denominators
+
+- PR #196 merged to main at `9b2ef94616c48dccc0c67444903a7fbed41b3809`.
+- Core daily-loss and persistent drawdown protection no longer use the much larger Alpaca Paper USD account equity as the strategy denominator. Whenever `strategy_capital_mxn` is configured, Core requires explicit finite `strategy_equity_mxn` and `strategy_daily_pnl_pct`; missing metrics produce a kill switch. The persistent drawdown state is currency-marked and evaluated in MXN using `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH`. An existing USD state file is rejected rather than reused.
+- Core also rejects non-finite/nonnumeric account risk inputs and malformed position quantities/prices. The broker USD protected floor remains a separate emergency control.
+- PR CI: Core Risk Safety `43355001835` passed; Persistent Drawdown Guard `43355001979` passed 9 tests; Engine and Capital Regression `43355001886` passed; Paper Execution Safety `43355002425`, Crypto Paper Execution Safety `43355002308`, Capital Policy `43355001867`, Earned Growth `43355002008` and Paper activity static checks `43355001889` passed. The actual Paper activity audit job was skipped on the PR event.
+- Post-merge main CI also passed: Core Risk Safety `43355107307`, Drawdown Guard `43355107281`, Capital Policy `43355107324`, Crypto Paper Execution `43355107330`, Earned Growth `43355107424`, Paper Reconciliation `43355107410`, Activity Stager `43355107288`, and Engine/Capital Regression `43355107341`.
+- Critical integration gap remains: no current runtime caller produces the required durable MXN strategy-equity and daily-P&L metrics from reconciled positions, FIFO MXN cost basis and current market marks. Core therefore rejects new entries until that producer is implemented. This is intentional fail-closed behavior, not a completed trading integration.
+- No Paper account query, order, account mutation, persistent-host deployment or Live action occurred. Progress remains **58%**.
