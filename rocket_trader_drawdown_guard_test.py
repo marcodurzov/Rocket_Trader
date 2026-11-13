@@ -46,6 +46,17 @@ class PersistentDrawdownGuardTests(unittest.TestCase):
         for value in (0, -1, float("nan"), float("inf"), "bad"):
             with self.subTest(value=value):
                 with self.assertRaises(DrawdownGuardError): guard.evaluate(value)
+    def test_currency_is_persisted_and_reported(self):
+        guard = PersistentDrawdownGuard(self.path, 0.10, equity_currency="MXN")
+        result = guard.evaluate(1000)
+        self.assertEqual(result.equity_currency, "MXN")
+        self.assertEqual(guard.status()["equity_currency"], "MXN")
+
+    def test_currency_mismatch_fails_closed(self):
+        PersistentDrawdownGuard(self.path, 0.10, equity_currency="USD").evaluate(1000)
+        with self.assertRaises(DrawdownGuardError):
+            PersistentDrawdownGuard(self.path, 0.10, equity_currency="MXN").evaluate(1000)
+
     def test_uninitialized_status_fails_closed(self):
         with self.assertRaises(DrawdownGuardError):
             PersistentDrawdownGuard(self.path, 0.10).status()
