@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
 from rocket_trader_alpaca_cash_activity_bridge import AlpacaCashActivityBridge
@@ -65,6 +65,18 @@ def _require_existing_state(ledger_path: str, stager_path: str) -> None:
         meta = dict(ledger_conn.execute("SELECT key,value FROM ledger_meta").fetchall())
         if meta.get("schema_version") != "1":
             raise ValueError("Existing realized-P&L ledger schema version is missing or unsupported.")
+        configured_policy = {
+            "initial_capital_mxn": os.getenv("ROCKET_TRADER_INITIAL_CAPITAL_MXN", "1000.00"),
+            "milestone_mxn": os.getenv("ROCKET_TRADER_MILESTONE_MXN", "100000.00"),
+        }
+        for key, configured_value in configured_policy.items():
+            try:
+                stored_value = Decimal(meta[key])
+                expected_value = Decimal(configured_value)
+            except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
+                raise ValueError("Existing realized-P&L ledger capital policy metadata is missing or invalid.") from exc
+            if stored_value != expected_value:
+                raise ValueError("Configured capital policy differs from the existing realized-P&L ledger.")
         initial = ledger_conn.execute(
             "SELECT 1 FROM ledger_events WHERE event_id='SYSTEM-INITIAL-CAPITAL' AND event_type='INITIAL_CAPITAL'"
         ).fetchone()
