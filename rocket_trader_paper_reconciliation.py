@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Read-only Alpaca Paper position comparison; cash/equity are observations only.
+"""Read-only Alpaca Paper position, cash and account-equity reconciliation.
 
 Broker account equity/cash remain USD. Strategy capital remains MXN and comes
-only from the realized-P&L ledger. This module does not reconcile broker cash
-against a local USD cash ledger, does not infer strategy capital from Paper
-buying power, and never submits or modifies orders.
+only from the realized-P&L ledger. Full account reconciliation requires exact
+position parity plus a separate append-only USD cash ledger and broker equity
+parity. Paper buying power is never treated as strategy capital; no orders are
+submitted or modified.
 """
 
 from __future__ import annotations
@@ -83,14 +84,9 @@ class AlpacaPaperReconciliationGate:
         fee_reconciliation_reference: Optional[str] = None,
         fee_reconciliation_checked_at: Optional[datetime] = None,
     ) -> Dict[str, Any]:
-        current = now or datetime.now(timezone.utc)
-        if current.tzinfo is None or current.utcoffset() is None:
+        current = now
+        if current is not None and (current.tzinfo is None or current.utcoffset() is None):
             raise PaperReconciliationError("now must be timezone-aware")
-        age = current - fx_quote.observed_at
-        if age < timedelta(0):
-            raise PaperReconciliationError("FX quote timestamp is in the future")
-        if age > self.max_fx_age:
-            raise PaperReconciliationError("FX quote is stale; reconciliation is blocked")
 
         capital_mxn = _d(
             getattr(ledger_snapshot, "operating_capital_mxn", None)
@@ -113,6 +109,13 @@ class AlpacaPaperReconciliationGate:
             raise PaperReconciliationError(
                 "Could not retrieve broker account/positions; reconciliation is blocked"
             ) from exc
+
+        current = current or datetime.now(timezone.utc)
+        age = current - fx_quote.observed_at
+        if age < timedelta(0):
+            raise PaperReconciliationError("FX quote timestamp is in the future")
+        if age > self.max_fx_age:
+            raise PaperReconciliationError("FX quote is stale; reconciliation is blocked")
 
         status = str(_value(account, "status", "UNKNOWN")).upper()
         currency = str(_value(account, "currency", "UNKNOWN")).upper()
