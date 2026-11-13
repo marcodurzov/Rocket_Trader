@@ -92,7 +92,7 @@ class PaperCashLedgerAdminTests(unittest.TestCase):
 
     def test_missing_database_is_not_created_without_explicit_flag(self):
         client = FakePaperClient(self.account)
-        with self.assertRaisesRegex(PaperCashLedgerError, "refusing to create a replacement"):
+        with self.assertRaisesRegex(PaperCashLedgerError, "cash ledger database is missing"):
             create_paper_cash_anchor(
                 client=client,
                 inbox_db_path=self.inbox_db,
