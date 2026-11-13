@@ -67,8 +67,6 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             observed_at=NOW, activity_coverage_complete=True,
             activity_coverage_reference="test-catch-up-proof",
             activity_coverage_checked_at=NOW,
-            activity_coverage_reference="test-catch-up-proof",
-            activity_coverage_checked_at=NOW,
             fee_reconciliation_complete=False,
         )
         self.assertEqual(report["cash_reconciliation_status"], "RECONCILED")
@@ -279,8 +277,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             self.ledger.reconcile(
                 broker_cash_usd="1000", broker_account_id="wrong",
                 observed_at=NOW, activity_coverage_complete=True,
-            activity_coverage_reference="test-catch-up-proof",
-            activity_coverage_checked_at=NOW,
+                activity_coverage_reference="test-catch-up-proof",
+                activity_coverage_checked_at=NOW,
             )
 
 
