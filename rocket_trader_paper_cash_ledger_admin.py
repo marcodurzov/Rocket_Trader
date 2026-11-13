@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,7 +51,7 @@ def create_paper_cash_anchor(
             str(Path(inbox_db_path).expanduser()), initialize=False
         )
         integrity = inbox.verify()
-    except (ActivitySSEConsumerError, ValueError) as exc:
+    except (ActivitySSEConsumerError, sqlite3.Error, ValueError) as exc:
         raise PaperCashLedgerError("Activity SSE inbox integrity verification failed") from exc
     if not isinstance(integrity, dict) or integrity.get("valid") is not True:
         raise PaperCashLedgerError("Activity SSE inbox hash chain/cursor is invalid")
@@ -59,7 +60,10 @@ def create_paper_cash_anchor(
     # already reflected in the cash anchor and excluded by event timestamp.
     cursor_before_snapshot = integrity.get("cursor")
 
-    account = client.get_account()
+    try:
+        account = client.get_account()
+    except Exception as exc:
+        raise PaperCashLedgerError("Read-only Alpaca Paper account snapshot failed") from exc
     account_id = str(getattr(account, "id", "") or "").strip()
     currency_value = getattr(account, "currency", None)
     status_value = getattr(account, "status", None)
@@ -164,7 +168,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (PaperCashLedgerError, OSError, ValueError) as exc:
+    except Exception as exc:
         print(json.dumps({
             "status": "BLOCKED",
             "error_type": type(exc).__name__,
