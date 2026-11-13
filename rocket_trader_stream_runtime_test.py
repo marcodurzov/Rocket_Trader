@@ -79,7 +79,7 @@ class StreamRuntimeTests(unittest.TestCase):
                 self.account_calls = 0
             def get_account(self):
                 self.account_calls += 1
-                return SimpleNamespace(id="paper-account-1", currency="USD")
+                return SimpleNamespace(id="paper-account-1", status="ACTIVE", currency="USD")
         cash_path = os.path.join(self.tmp.name, "paper-cash.sqlite3")
         inbox_path = os.path.join(self.tmp.name, "activity-sse.sqlite3")
         AlpacaPaperUSDCashLedger(cash_path, account_id="paper-account-1")
