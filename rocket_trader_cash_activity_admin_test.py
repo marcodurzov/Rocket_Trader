@@ -10,10 +10,12 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import rocket_trader_cash_activity_admin as admin
 from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
-from rocket_trader_realized_pnl_ledger import RealizedPnLLedger
+from rocket_trader_realized_pnl_ledger import LedgerFX, RealizedPnLLedger
 
 
 class CashActivityAdminStateTests(unittest.TestCase):
@@ -110,6 +112,32 @@ class CashActivityAdminStateTests(unittest.TestCase):
         with sqlite3.connect(self.stager_path) as conn:
             row = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='staged_activities_no_update'"
+            ).fetchone()
+        self.assertIsNone(row)
+
+    def test_legacy_filled_ledger_requires_explicit_migration(self):
+        ledger = RealizedPnLLedger(self.ledger_path)
+        when = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
+        ledger.record_fill(
+            fill_id="legacy-admin-fill", symbol="BTC/USD", side="BUY",
+            quantity="0.01", price_usd="10000", fee_usd="0",
+            fx=LedgerFX(Decimal("18"), when, "ADMIN_TEST_FX"),
+            occurred_at=when, asset_class="CRYPTO_SPOT",
+        )
+        AlpacaPaperActivityStager(
+            db_path=self.stager_path,
+            fetch_page=lambda _cursor, _size: [],
+        )
+        with sqlite3.connect(self.ledger_path) as conn:
+            conn.execute(
+                "DELETE FROM ledger_meta WHERE key='realized_pnl_accounting_method'"
+            )
+        code, _output, err = self.invoke_list()
+        self.assertEqual(code, 1)
+        self.assertIn("explicit FX-aware accounting migration", err)
+        with sqlite3.connect(self.ledger_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM ledger_meta WHERE key='realized_pnl_accounting_method'"
             ).fetchone()
         self.assertIsNone(row)
 

@@ -244,3 +244,18 @@ Do not enable any downstream P&L/position application until correction/bust sema
 ## 13. Cash-activity admin requires existing durable state
 
 The operator CLI `rocket_trader_cash_activity_admin.py` checks that both the realized-P&L ledger and activity-stager SQLite databases already exist and contain their required schema before constructing either component. It refuses to initialize missing or empty files. Do not point the CLI at a fresh path to make a missing database appear healthy; restore the original persistent files and WAL state first.
+
+
+## 14. Explicit migration for legacy realized-P&L accounting
+
+The realized-P&L ledger now records its accounting method. New ledgers use entry-FX FIFO cost basis and exit-FX proceeds to calculate MXN realized P&L. A legacy ledger containing fills or immutable monthly closes without the method marker is intentionally blocked rather than silently restated. If there are no immutable monthly closes, an operator may stop every writer and run:
+
+```bash
+python rocket_trader_ledger_accounting_migration.py \
+  --db-path /persistent/rocket-trader/rocket_trader_ledger.sqlite3 \
+  --backup-path /persistent/rocket-trader/rocket_trader_ledger.pre-fx-v2.sqlite3 \
+  --confirm \
+  --no-writers-confirmed
+```
+
+The backup path must not already exist and its parent directory must exist. The utility verifies event hashes and fill-time FX evidence, creates and checks a consistent SQLite backup, rechecks that the source event count did not change, then appends an immutable migration event. It refuses any ledger with existing immutable monthly closes; those require a separately reviewed manual restatement. Never run this against a live writer or an unknown/replacement database.

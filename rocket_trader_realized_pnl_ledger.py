@@ -21,6 +21,8 @@ from typing import Any, Dict, Iterable, Optional
 
 
 SCHEMA_VERSION = 1
+PNL_ACCOUNTING_METHOD = "FIFO_MXN_ENTRY_AND_EXIT_FX_V2"
+PNL_ACCOUNTING_METHOD_KEY = "realized_pnl_accounting_method"
 DEFAULT_MILESTONE_MXN = Decimal("100000.00")
 
 
@@ -91,6 +93,7 @@ class LedgerSnapshot:
     milestone_reached: bool
     milestone_reached_at: Optional[str]
     event_count: int
+    accounting_method: str
 
 
 class RealizedPnLLedger:
@@ -194,6 +197,26 @@ class RealizedPnLLedger:
             ).fetchone()["value"])
             if stored_initial != self.initial_capital_mxn or stored_milestone != self.milestone_mxn:
                 raise LedgerError("Ledger configuration differs from persisted capital policy")
+            method_row = conn.execute(
+                "SELECT value FROM ledger_meta WHERE key=?", (PNL_ACCOUNTING_METHOD_KEY,)
+            ).fetchone()
+            if method_row and method_row["value"] != PNL_ACCOUNTING_METHOD:
+                raise LedgerError("Unsupported realized-P&L accounting method")
+            if not method_row:
+                has_fills = conn.execute(
+                    "SELECT 1 FROM ledger_events WHERE event_type='FILL' LIMIT 1"
+                ).fetchone()
+                has_closes = conn.execute(
+                    "SELECT 1 FROM monthly_closes LIMIT 1"
+                ).fetchone()
+                if has_fills or has_closes:
+                    raise LedgerError(
+                        "Legacy ledger requires explicit FX-aware accounting migration before use"
+                    )
+                conn.execute(
+                    "INSERT INTO ledger_meta(key,value) VALUES(?,?)",
+                    (PNL_ACCOUNTING_METHOD_KEY, PNL_ACCOUNTING_METHOD),
+                )
             if not conn.execute("SELECT 1 FROM ledger_events LIMIT 1").fetchone():
                 self._append_conn(
                     conn,
@@ -202,6 +225,172 @@ class RealizedPnLLedger:
                     occurred_at="1970-01-01T00:00:00+00:00",
                     payload={"amount_mxn": str(self.initial_capital_mxn), "currency": "MXN"},
                 )
+
+    @classmethod
+    def migrate_legacy_accounting_method(
+        cls,
+        db_path: str,
+        *,
+        backup_path: str,
+        confirm: bool = False,
+        no_writers_confirmed: bool = False,
+    ) -> Dict[str, Any]:
+        """Explicitly migrate legacy MXN P&L semantics after a verified backup.
+
+        Migration is blocked if immutable monthly closes already exist. Stop all
+        writers first; the caller must explicitly confirm that condition.
+        """
+        if confirm is not True or no_writers_confirmed is not True:
+            raise LedgerError("Migration requires explicit confirmation and stopped writers")
+        source_path = Path(db_path).expanduser()
+        backup_file = Path(backup_path).expanduser()
+        if not source_path.is_file():
+            raise LedgerError("Existing ledger database is missing")
+        if backup_file.exists():
+            raise LedgerError("Backup path already exists; refusing to overwrite it")
+        if source_path.resolve() == backup_file.resolve():
+            raise LedgerError("Backup path must differ from the source ledger")
+        if not backup_file.parent.is_dir():
+            raise LedgerError("Backup directory must already exist")
+
+        source = sqlite3.connect(str(source_path), timeout=30)
+        source.row_factory = sqlite3.Row
+        try:
+            tables = {r["name"] for r in source.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()}
+            required_tables = {"ledger_meta", "ledger_events", "monthly_closes"}
+            if not required_tables.issubset(tables):
+                raise LedgerError("Ledger schema is incomplete; migration refused")
+            triggers = {r["name"] for r in source.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            ).fetchall()}
+            required_triggers = {
+                "ledger_events_no_update", "ledger_events_no_delete",
+                "monthly_closes_no_update", "monthly_closes_no_delete",
+            }
+            if not required_triggers.issubset(triggers):
+                raise LedgerError("Append-only ledger triggers are missing; migration refused")
+            meta = dict(source.execute("SELECT key,value FROM ledger_meta").fetchall())
+            if meta.get("schema_version") != str(SCHEMA_VERSION):
+                raise LedgerError("Unsupported ledger schema version")
+            if PNL_ACCOUNTING_METHOD_KEY in meta:
+                if meta[PNL_ACCOUNTING_METHOD_KEY] == PNL_ACCOUNTING_METHOD:
+                    return {"status": "ALREADY_CURRENT", "accounting_method": PNL_ACCOUNTING_METHOD}
+                raise LedgerError("Ledger has an unknown accounting method")
+            if "initial_capital_mxn" not in meta or "milestone_mxn" not in meta:
+                raise LedgerError("Persisted capital policy metadata is incomplete")
+            if source.execute("SELECT 1 FROM monthly_closes LIMIT 1").fetchone():
+                raise LedgerError(
+                    "Legacy immutable monthly closes exist; automatic accounting migration is prohibited"
+                )
+            events = source.execute(
+                "SELECT event_id,event_type,occurred_at,payload_json,payload_hash FROM ledger_events ORDER BY seq"
+            ).fetchall()
+            source_max_seq = source.execute("SELECT MAX(seq) FROM ledger_events").fetchone()[0]
+            if not any(
+                row["event_id"] == "SYSTEM-INITIAL-CAPITAL" and row["event_type"] == "INITIAL_CAPITAL"
+                for row in events
+            ):
+                raise LedgerError("Initial-capital event is missing")
+            fill_count = 0
+            for row in events:
+                payload = json.loads(row["payload_json"])
+                canonical = json.dumps(
+                    payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                )
+                if hashlib.sha256(canonical.encode("utf-8")).hexdigest() != row["payload_hash"]:
+                    raise LedgerError("Ledger event hash mismatch; migration refused")
+                if row["event_type"] != "FILL":
+                    continue
+                fill_count += 1
+                fx = payload.get("fx")
+                if not isinstance(fx, dict):
+                    raise LedgerError("A legacy fill has no persisted FX quote")
+                rate = _d(fx.get("mxn_per_usd"), "fill FX rate")
+                if rate <= 0 or not str(fx.get("source") or "").strip():
+                    raise LedgerError("A legacy fill has invalid FX metadata")
+                try:
+                    fill_time = datetime.fromisoformat(str(row["occurred_at"]).replace("Z", "+00:00"))
+                    fx_time = datetime.fromisoformat(str(fx.get("observed_at", "")).replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise LedgerError("A legacy fill has invalid FX timestamps") from exc
+                if (
+                    fill_time.tzinfo is None or fill_time.utcoffset() is None
+                    or fx_time.tzinfo is None or fx_time.utcoffset() is None
+                ):
+                    raise LedgerError("A legacy fill has timezone-naive FX timestamps")
+                age = fill_time.astimezone(timezone.utc) - fx_time.astimezone(timezone.utc)
+                if age < timedelta(0) or age > timedelta(hours=24):
+                    raise LedgerError("A legacy fill has stale or future FX evidence")
+
+            # Create a consistent SQLite backup before changing the source.
+            target = sqlite3.connect(str(backup_file), timeout=30)
+            try:
+                source.backup(target)
+                integrity = target.execute("PRAGMA integrity_check").fetchone()[0]
+                backup_event_count = target.execute("SELECT COUNT(*) FROM ledger_events").fetchone()[0]
+                backup_max_seq = target.execute("SELECT MAX(seq) FROM ledger_events").fetchone()[0]
+                if (
+                    integrity != "ok"
+                    or backup_event_count != len(events)
+                    or backup_max_seq != source_max_seq
+                ):
+                    raise LedgerError("SQLite backup integrity or event-count verification failed")
+            finally:
+                target.close()
+        finally:
+            source.close()
+
+        backup_digest = hashlib.sha256(backup_file.read_bytes()).hexdigest()
+        now = datetime.now(timezone.utc)
+        conn = sqlite3.connect(str(source_path), timeout=30, isolation_level=None)
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("BEGIN IMMEDIATE")
+            current_method = conn.execute(
+                "SELECT value FROM ledger_meta WHERE key=?", (PNL_ACCOUNTING_METHOD_KEY,)
+            ).fetchone()
+            if current_method:
+                raise LedgerError("Ledger accounting method changed during migration")
+            if conn.execute("SELECT 1 FROM monthly_closes LIMIT 1").fetchone():
+                raise LedgerError("A monthly close appeared during migration; migration refused")
+            current_event_count = conn.execute("SELECT COUNT(*) FROM ledger_events").fetchone()[0]
+            current_max_seq = conn.execute("SELECT MAX(seq) FROM ledger_events").fetchone()[0]
+            if current_event_count != len(events) or current_max_seq != source_max_seq:
+                raise LedgerError("Ledger changed after backup; migration refused")
+            conn.execute(
+                "INSERT INTO ledger_meta(key,value) VALUES(?,?)",
+                (PNL_ACCOUNTING_METHOD_KEY, PNL_ACCOUNTING_METHOD),
+            )
+            cls._append_conn(
+                conn,
+                event_id="MIGRATION-FX-AWARE-FIFO-V2",
+                event_type="ACCOUNTING_METHOD_MIGRATION",
+                occurred_at=_utc(now),
+                payload={
+                    "from_method": "LEGACY_USD_PNL_CONVERTED_AT_EXIT_FX",
+                    "to_method": PNL_ACCOUNTING_METHOD,
+                    "backup_sha256": backup_digest,
+                    "legacy_fill_count": fill_count,
+                    "legacy_event_count": len(events),
+                    "monthly_closes_present": False,
+                },
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+        finally:
+            conn.close()
+        return {
+            "status": "MIGRATED",
+            "accounting_method": PNL_ACCOUNTING_METHOD,
+            "legacy_fill_count": fill_count,
+            "backup_path": str(backup_file),
+            "backup_sha256": backup_digest,
+        }
 
     @staticmethod
     def _append_conn(
@@ -419,18 +608,22 @@ class RealizedPnLLedger:
                     net_qty = Decimal(p.get("net_acquired_quantity", p["quantity"]))
                     if net_qty <= 0:
                         raise LedgerError(f"Invalid net acquired quantity in fill {event['event_id']}")
+                    entry_fx = Decimal(p["fx"]["mxn_per_usd"])
                     lots.setdefault(symbol, []).append({
                         "qty": net_qty,
                         "unit_cost_usd": (gross + fee) / net_qty,
+                        "unit_cost_mxn": (gross + fee) * entry_fx / net_qty,
                     })
                 else:
                     remaining = qty
                     cost_basis = Decimal("0")
+                    cost_basis_mxn = Decimal("0")
                     position_lots = lots.setdefault(symbol, [])
                     while remaining > 0 and position_lots:
                         lot = position_lots[0]
                         consumed = min(remaining, lot["qty"])
                         cost_basis += consumed * lot["unit_cost_usd"]
+                        cost_basis_mxn += consumed * lot["unit_cost_mxn"]
                         lot["qty"] -= consumed
                         remaining -= consumed
                         if lot["qty"] == 0:
@@ -440,8 +633,9 @@ class RealizedPnLLedger:
                             f"SELL fill {event['event_id']} exceeds FIFO inventory for {symbol}"
                         )
                     net_proceeds = gross - fee
+                    net_proceeds_mxn = net_proceeds * rate
                     pnl_usd = net_proceeds - cost_basis
-                    pnl_mxn = pnl_usd * rate
+                    pnl_mxn = net_proceeds_mxn - cost_basis_mxn
                     realized_mxn += pnl_mxn
                     realized_rows.append({
                         "event_id": event["event_id"],
@@ -450,8 +644,11 @@ class RealizedPnLLedger:
                         "quantity": str(qty),
                         "gross_proceeds_usd": str(gross),
                         "exit_fee_usd": str(fee),
+                        "net_proceeds_mxn": str(net_proceeds_mxn),
                         "fifo_cost_basis_usd": str(cost_basis),
+                        "fifo_cost_basis_mxn": str(cost_basis_mxn),
                         "realized_net_pnl_usd": str(pnl_usd),
+                        "entry_and_exit_fx_applied": True,
                         "fx_mxn_per_usd": str(rate),
                         "realized_net_pnl_mxn": str(pnl_mxn),
                     })
@@ -469,6 +666,10 @@ class RealizedPnLLedger:
                 open_positions[symbol] = {
                     "quantity": str(qty),
                     "fifo_cost_basis_usd": str(cost),
+                    "fifo_cost_basis_mxn": str(sum(
+                        (lot["qty"] * lot["unit_cost_mxn"] for lot in position_lots),
+                        Decimal("0"),
+                    )),
                 }
         return {
             "initial": initial, "deposits": deposits, "withdrawals": withdrawals,
@@ -496,6 +697,7 @@ class RealizedPnLLedger:
             milestone_reached=state["milestone_reached"],
             milestone_reached_at=state["milestone_reached_at"],
             event_count=state["event_count"],
+            accounting_method=PNL_ACCOUNTING_METHOD,
         )
 
     def monthly_summary(self, period: str) -> Dict[str, Any]:
@@ -505,6 +707,7 @@ class RealizedPnLLedger:
         total = sum((Decimal(r["realized_net_pnl_mxn"]) for r in rows), Decimal("0"))
         return {
             "period": period,
+            "accounting_method": PNL_ACCOUNTING_METHOD,
             "realized_trade_count": len(rows),
             "realized_net_pnl_mxn": str(_pnl_money(total)),
             "trades": rows,
@@ -548,6 +751,7 @@ class RealizedPnLLedger:
             )
         close = {
             **summary,
+            "accounting_method": PNL_ACCOUNTING_METHOD,
             "operating_capital_mxn": str(capital),
             "earned_growth_capital_mxn": str(
                 _pnl_money(state["initial"] + state["realized_mxn"])

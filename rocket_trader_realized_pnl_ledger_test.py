@@ -41,6 +41,71 @@ class RealizedPnLLedgerTests(unittest.TestCase):
         self.assertEqual(s.earned_growth_capital_mxn, Decimal("1000.00"))
         self.assertEqual(s.realized_net_pnl_mxn, Decimal("0.00"))
 
+    def test_mxn_pnl_includes_entry_and_exit_fx_movements(self):
+        buy_time = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
+        sell_time = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)
+        buy_fx = LedgerFX(Decimal("18"), buy_time, "ENTRY_FX")
+        sell_fx = LedgerFX(Decimal("20"), sell_time, "EXIT_FX")
+        self.ledger.record_fill(
+            fill_id="fx-buy", symbol="BTC/USD", side="BUY",
+            quantity="1", price_usd="1000", fee_usd="0",
+            fx=buy_fx, occurred_at=buy_time, asset_class="CRYPTO_SPOT",
+        )
+        self.ledger.record_fill(
+            fill_id="fx-sell", symbol="BTC/USD", side="SELL",
+            quantity="1", price_usd="1000", fee_usd="0",
+            fx=sell_fx, occurred_at=sell_time, asset_class="CRYPTO_SPOT",
+        )
+        snapshot = self.ledger.snapshot()
+        self.assertEqual(snapshot.realized_net_pnl_mxn, Decimal("2000.00"))
+        row = self.ledger.monthly_summary("2026-11")["trades"][0]
+        self.assertEqual(Decimal(row["fifo_cost_basis_mxn"]), Decimal("18000"))
+        self.assertEqual(Decimal(row["net_proceeds_mxn"]), Decimal("20000"))
+        self.assertEqual(Decimal(row["realized_net_pnl_usd"]), Decimal("0"))
+        self.assertTrue(row["entry_and_exit_fx_applied"])
+
+    def test_mxn_pnl_records_fx_loss_when_usd_price_is_flat(self):
+        buy_time = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
+        sell_time = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)
+        buy_fx = LedgerFX(Decimal("20"), buy_time, "ENTRY_FX")
+        sell_fx = LedgerFX(Decimal("18"), sell_time, "EXIT_FX")
+        self.ledger.record_fill(
+            fill_id="fx-loss-buy", symbol="BTC/USD", side="BUY",
+            quantity="1", price_usd="1000", fee_usd="0",
+            fx=buy_fx, occurred_at=buy_time, asset_class="CRYPTO_SPOT",
+        )
+        self.ledger.record_fill(
+            fill_id="fx-loss-sell", symbol="BTC/USD", side="SELL",
+            quantity="1", price_usd="1000", fee_usd="0",
+            fx=sell_fx, occurred_at=sell_time, asset_class="CRYPTO_SPOT",
+        )
+        self.assertEqual(self.ledger.snapshot().realized_net_pnl_mxn, Decimal("-2000.00"))
+
+    def test_fifo_cost_basis_uses_each_lots_entry_fx(self):
+        t1 = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 11, 9, 16, 0, tzinfo=timezone.utc)
+        t3 = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)
+        fx1 = LedgerFX(Decimal("18"), t1, "ENTRY_FX_1")
+        fx2 = LedgerFX(Decimal("20"), t2, "ENTRY_FX_2")
+        fx3 = LedgerFX(Decimal("22"), t3, "EXIT_FX")
+        for fill_id, qty, price, fx, when in (
+            ("fx-fifo-buy-1", "0.01", "10000", fx1, t1),
+            ("fx-fifo-buy-2", "0.01", "12000", fx2, t2),
+            ("fx-fifo-sell", "0.015", "13000", fx3, t3),
+        ):
+            side = "SELL" if "sell" in fill_id else "BUY"
+            self.ledger.record_fill(
+                fill_id=fill_id, symbol="BTC/USD", side=side,
+                quantity=qty, price_usd=price, fee_usd="0",
+                fx=fx, occurred_at=when, asset_class="CRYPTO_SPOT",
+            )
+        snapshot = self.ledger.snapshot()
+        self.assertEqual(snapshot.realized_net_pnl_mxn, Decimal("1290.00"))
+        self.assertEqual(
+            Decimal(snapshot.open_positions["BTC/USD"]["fifo_cost_basis_mxn"]),
+            Decimal("1200"),
+        )
+
     def test_fifo_realized_net_pnl_includes_entry_and_exit_fees(self):
         self.fill("buy-1", "BUY", "0.01", "10000", "1.00")
         self.fill("buy-2", "BUY", "0.01", "12000", "1.00")
@@ -288,6 +353,95 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             LedgerFX(Decimal("18"), datetime(2026, 11, 9), "fixture")
         with self.assertRaises(LedgerError):
             LedgerFX(Decimal("18"), NOW, " ")
+
+    def test_legacy_ledger_requires_explicit_fx_accounting_migration(self):
+        buy_time = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
+        sell_time = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)
+        buy_fx = LedgerFX(Decimal("18"), buy_time, "ENTRY_FX")
+        sell_fx = LedgerFX(Decimal("20"), sell_time, "EXIT_FX")
+        self.ledger.record_fill(
+            fill_id="legacy-fx-buy", symbol="BTC/USD", side="BUY",
+            quantity="1", price_usd="1000", fee_usd="0",
+            fx=buy_fx, occurred_at=buy_time, asset_class="CRYPTO_SPOT",
+        )
+        self.ledger.record_fill(
+            fill_id="legacy-fx-sell", symbol="BTC/USD", side="SELL",
+            quantity="1", price_usd="1000", fee_usd="0",
+            fx=sell_fx, occurred_at=sell_time, asset_class="CRYPTO_SPOT",
+        )
+        with sqlite3.connect(self.db) as conn:
+            conn.execute(
+                "DELETE FROM ledger_meta WHERE key=?",
+                ("realized_pnl_accounting_method",),
+            )
+        with self.assertRaisesRegex(LedgerError, "explicit FX-aware accounting migration"):
+            RealizedPnLLedger(self.db)
+        backup = os.path.join(self.tmp.name, "ledger-pre-fx-migration.sqlite3")
+        result = RealizedPnLLedger.migrate_legacy_accounting_method(
+            self.db, backup_path=backup, confirm=True, no_writers_confirmed=True,
+        )
+        self.assertEqual(result["status"], "MIGRATED")
+        self.assertTrue(os.path.isfile(backup))
+        self.assertEqual(
+            RealizedPnLLedger(self.db).snapshot().realized_net_pnl_mxn,
+            Decimal("2000.00"),
+        )
+        with sqlite3.connect(backup) as conn:
+            self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            method = conn.execute(
+                "SELECT 1 FROM ledger_meta WHERE key='realized_pnl_accounting_method'"
+            ).fetchone()
+        self.assertIsNone(method)
+
+    def test_legacy_migration_requires_backup_and_stopped_writers_confirmation(self):
+        with sqlite3.connect(self.db) as conn:
+            conn.execute(
+                "DELETE FROM ledger_meta WHERE key=?",
+                ("realized_pnl_accounting_method",),
+            )
+        backup = os.path.join(self.tmp.name, "not-created.sqlite3")
+        with self.assertRaisesRegex(LedgerError, "explicit confirmation"):
+            RealizedPnLLedger.migrate_legacy_accounting_method(
+                self.db, backup_path=backup, confirm=True, no_writers_confirmed=False,
+            )
+        self.assertFalse(os.path.exists(backup))
+
+    def test_legacy_migration_refuses_event_hash_mismatch(self):
+        self.fill("legacy-corrupt-buy", "BUY", "0.1", "10000")
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER ledger_events_no_update")
+            conn.execute(
+                "UPDATE ledger_events SET payload_json='{}' WHERE event_id='legacy-corrupt-buy'"
+            )
+            conn.execute(
+                "CREATE TRIGGER ledger_events_no_update BEFORE UPDATE ON ledger_events "
+                "BEGIN SELECT RAISE(ABORT, 'ledger events are immutable'); END"
+            )
+            conn.execute(
+                "DELETE FROM ledger_meta WHERE key='realized_pnl_accounting_method'"
+            )
+        backup = os.path.join(self.tmp.name, "corrupt-ledger-backup.sqlite3")
+        with self.assertRaisesRegex(LedgerError, "event hash mismatch"):
+            RealizedPnLLedger.migrate_legacy_accounting_method(
+                self.db, backup_path=backup, confirm=True, no_writers_confirmed=True,
+            )
+        self.assertFalse(os.path.exists(backup))
+
+    def test_legacy_migration_refuses_immutable_monthly_closes(self):
+        self.fill("legacy-close-buy", "BUY", "0.1", "10000")
+        self.fill("legacy-close-sell", "SELL", "0.1", "11000")
+        self.ledger.close_month("2026-11")
+        with sqlite3.connect(self.db) as conn:
+            conn.execute(
+                "DELETE FROM ledger_meta WHERE key=?",
+                ("realized_pnl_accounting_method",),
+            )
+        backup = os.path.join(self.tmp.name, "blocked-migration.sqlite3")
+        with self.assertRaisesRegex(LedgerError, "immutable monthly closes"):
+            RealizedPnLLedger.migrate_legacy_accounting_method(
+                self.db, backup_path=backup, confirm=True, no_writers_confirmed=True,
+            )
+        self.assertFalse(os.path.exists(backup))
 
     def test_integrity_check(self):
         self.fill("buy-integrity", "BUY", "0.01", "10000")

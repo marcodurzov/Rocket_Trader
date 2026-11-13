@@ -64,3 +64,10 @@ Alpaca's official Market Data FAQ explicitly distinguishes recent/live SIP from 
 PR #181 implements this distinction. For daily research, Rocket Trader resolves the latest completed XNYS session close and applies a 16-minute buffer. The code fails closed if the exchange calendar cannot be resolved or the end is not timezone-aware. The actual Paper-credential historical SIP request still needs post-merge verification. Source: https://docs.alpaca.markets/us/docs/market-data-faq.
 
 This clarification does not authorize a paid plan, does not establish full 10-year coverage, does not certify Yahoo/Alpaca parity, and does not approve any strategy or Paper orders.
+
+
+## FX-aware realized P&L accounting
+
+Realized P&L is measured in MXN using the FX quote persisted with each fill: each FIFO BUY lot stores its USD and MXN cost basis at entry FX; each SELL converts net USD proceeds at exit FX. This captures both trading-price movement and USD/MXN movement. Fees on entry are included in entry cost basis; exit fees reduce proceeds at exit FX. A flat USD price can therefore produce an MXN gain or loss when FX moves.
+
+Legacy ledger databases are not silently reinterpreted. Existing FILL events without the FX-aware accounting-method marker require the explicit migration utility. Migration is blocked if immutable monthly closes exist, verifies the event hashes and fill-time FX evidence, requires the runtime writers to be stopped, and creates a verified SQLite backup before changing the accounting-method marker. Existing monthly closes require a separate manual restatement process.
