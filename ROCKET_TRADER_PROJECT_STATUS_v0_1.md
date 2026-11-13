@@ -1048,3 +1048,8 @@ The Paper reconciliation gate previously returned RECONCILED when positions matc
 PR #194 (`231332e16b3411cf660f2f5ec1eefdeac493d99d`) removes the misleading `RECONCILED` status from the Paper position gate. Matching broker position quantities now produce `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE`; broker cash/equity are observations only, and full account reconciliation remains false. The runtime healthcheck keeps overall readiness false until USD cash/settlement/fee parity is implemented, while still distinguishing a healthy position comparison from a position mismatch.
 
 Validation: 7 Paper reconciliation tests passed; observer runtime/accounting suites passed (including 32 runtime tests, 29 ledger tests, 19 activity-stager tests and 28 ETF cross-check tests); 26 durable SSE tests passed; container build/packaging passed; 37 offline audit tests passed. The actual Paper audit job was skipped on PR events. No real Paper query or order occurred. Progress remains 58%.
+
+
+## 2026-11-13 — Strategy risk denominators (PR pending)
+
+The Core previously used broker Paper equity in USD as the denominator for daily-loss and persistent drawdown protection even though the strategy allocation and sizing budget are in MXN. A large virtual Paper account could make those limits ineffective relative to the strategy's MXN 1,000 seed. The proposed guard requires strategy equity and daily P&L metrics in MXN, fails closed when absent, and stores a currency-marked MXN drawdown high-water mark. No current runtime integration supplies a complete durable strategy-equity snapshot yet, so entries remain blocked until that integration is implemented.
