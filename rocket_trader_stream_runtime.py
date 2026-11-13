@@ -336,6 +336,27 @@ def reconcile_paper_positions(
             fx_quote=fx_quote,
             now=current,
         )
+        if report.get("strategy_equity_status") == "AVAILABLE":
+            try:
+                risk_metrics = fill_ledger_bridge.ledger.record_strategy_equity_mark(
+                    equity_mxn=report["strategy_equity_mxn"],
+                    occurred_at=current,
+                    source="PAPER_POSITION_RECONCILIATION",
+                    position_snapshot_hash=report["strategy_equity_snapshot_hash"],
+                )
+                report.update(risk_metrics)
+                report["strategy_equity_mxn"] = float(risk_metrics["strategy_equity_mxn"])
+                report["strategy_daily_pnl_pct"] = float(
+                    risk_metrics["strategy_daily_pnl_pct"]
+                )
+            except Exception as exc:
+                report["strategy_risk_metrics_status"] = "BLOCKED"
+                report["strategy_risk_metrics_error_type"] = type(exc).__name__
+                report["strategy_risk_metrics_error"] = str(exc)
+        else:
+            report["strategy_risk_metrics_status"] = (
+                "BLOCKED_" + str(report.get("strategy_equity_status", "UNAVAILABLE"))
+            )
         report["reconciled_at"] = current.isoformat()
         report["orders_enabled"] = False
         return report
