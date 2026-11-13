@@ -539,8 +539,22 @@ class AccountState:
         if self.account_currency.upper() != "USD":
             raise ValueError("Rocket Trader broker AccountState must be denominated in USD")
 
-        if self.strategy_capital_mxn is not None and self.strategy_capital_mxn < 0:
-            raise ValueError("strategy_capital_mxn no puede ser negativo")
+        for field_name, value in (
+            ("equity", self.equity),
+            ("cash", self.cash),
+            ("protected_floor", self.protected_floor),
+            ("realized_pnl_today", self.realized_pnl_today),
+        ):
+            if not math.isfinite(float(value)):
+                raise ValueError(f"{field_name} debe ser finito")
+        if self.equity < 0 or self.cash < 0 or self.protected_floor < 0:
+            raise ValueError("equity, cash y protected_floor no pueden ser negativos")
+        if self.strategy_capital_mxn is not None:
+            if not math.isfinite(self.strategy_capital_mxn) or self.strategy_capital_mxn < 0:
+                raise ValueError("strategy_capital_mxn debe ser finito y no negativo")
+        if self.day_start_equity is not None:
+            if not math.isfinite(self.day_start_equity) or self.day_start_equity <= 0:
+                raise ValueError("day_start_equity debe ser finito y positivo")
 
         if self.fx_quote is not None and self.strategy_capital_mxn is None:
             raise ValueError("fx_quote requiere strategy_capital_mxn explícito")
@@ -554,6 +568,17 @@ class AccountState:
         if self.strategy_daily_pnl_pct is not None:
             if self.strategy_capital_mxn is None or not math.isfinite(self.strategy_daily_pnl_pct):
                 raise ValueError("strategy_daily_pnl_pct requires explicit strategy capital and must be finite")
+        for field_name, value in (("trades_today", self.trades_today), ("consecutive_losses", self.consecutive_losses)):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        for symbol, position in self.positions.items():
+            if not isinstance(position, Position) or symbol != position.symbol:
+                raise ValueError("positions must map symbols to matching Position records")
+            if (
+                not math.isfinite(position.quantity) or position.quantity <= 0
+                or not math.isfinite(position.entry_price) or position.entry_price <= 0
+            ):
+                raise ValueError("position quantity and entry_price must be finite and positive")
 
         if self.equity < 0:
             raise ValueError("equity no puede ser negativa")
@@ -1874,9 +1899,19 @@ class RocketTraderCore:
 
         if self.drawdown_guard is not None:
             try:
-                if account.strategy_equity_mxn is None:
-                    raise DrawdownGuardError("strategy_equity_mxn is required for MXN strategy drawdown protection")
-                drawdown = self.drawdown_guard.evaluate(account.strategy_equity_mxn)
+                if (
+                    account.strategy_equity_mxn is None
+                    or account.strategy_daily_pnl_pct is None
+                ):
+                    decision = self.decision_engine.evaluate(
+                        account=account,
+                        snapshot=snapshot,
+                        signal=signal,
+                        market_regime=market_regime,
+                        news_impact=news_impact,
+                    )
+                else:
+                    drawdown = self.drawdown_guard.evaluate(account.strategy_equity_mxn)
                 if not drawdown.allowed:
                     decision = Decision(
                         decision_id=stable_id(
