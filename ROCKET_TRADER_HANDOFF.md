@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `29b9cd41c0eca876b888a1fb9a0eea34aa60f4d0` (PR #190 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `d2c837c87c812107c3ac5016c6447d049ecb5fb7` (PR #191 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1416,3 +1416,11 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 ### Current operational blocker
 
 The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub Actions with the configured Paper secrets and the known bounded order window. Its fee-window end now defaults to the workflow start time in UTC if left blank. The audit is expected to return a review-required status until fees are linked and allocated to individual fills; do not treat matched fill prices as complete P&L accounting.
+
+
+### 2026-11-12 continuation — MXN FIFO ledger FX methodology review (PR pending)
+
+- Review found that the ledger calculated MXN realized P&L as USD P&L multiplied only by the SELL fill's FX rate. This omits FX movement on the BUY cost basis. Example: buy USD 1,000 when USD/MXN is 18, sell USD 1,000 when it is 20. USD trading P&L is zero, but MXN capital gains MXN 2,000. The old formula reported zero.
+- Proposed correction stores FIFO lot cost basis in both USD and MXN at each BUY's entry FX, converts net SELL proceeds at the SELL's exit FX, and calculates realized MXN P&L as exit proceeds in MXN minus entry cost basis in MXN. Entry and exit fees are converted at their respective fill-time FX.
+- Legacy ledgers are not silently restated. The proposed accounting-method marker blocks old ledgers with fills or monthly closes until an explicit migration. Migration verifies hashes and fill FX evidence, requires stopped writers and a verified SQLite backup, and refuses to migrate ledgers with immutable monthly closes.
+- No existing persistent database was accessed or migrated. This is an accounting-code correction under review; it does not authorize orders or Live trading.
