@@ -17,6 +17,10 @@ on:
     branches:
       - main
     paths:
+      - "rocket_trader_realized_pnl_ledger.py"
+      - "rocket_trader_realized_pnl_ledger_test.py"
+      - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_stream_runtime_test.py"
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_paper_reconciliation_test.py"
       - "rocket_trader_currency.py"
