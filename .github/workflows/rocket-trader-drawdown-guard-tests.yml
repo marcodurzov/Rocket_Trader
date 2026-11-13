@@ -6,6 +6,8 @@ on:
     paths:
       - "rocket_trader_drawdown_guard.py"
       - "rocket_trader_drawdown_guard_test.py"
+      - "rocket_trader_core.py"
+      - "rocket_trader_core.py"
       - ".github/workflows/rocket-trader-drawdown-guard-tests.yml"
   pull_request:
     branches: [main]
