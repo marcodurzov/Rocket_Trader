@@ -435,6 +435,8 @@ class AlpacaPaperUSDCashLedger:
                 return {
                     "status": "CASH_ANCHOR_REQUIRED",
                     "cash_reconciliation_status": "NOT_RECONCILED",
+                    "account_equity_reconciliation_status": "CASH_ANCHOR_REQUIRED",
+                    "account_cash_equity_reconciliation_complete": False,
                     "fee_reconciliation_status": "UNRESOLVED",
                     "account_cash_reconciliation_complete": False,
                     "orders_enabled": False,
