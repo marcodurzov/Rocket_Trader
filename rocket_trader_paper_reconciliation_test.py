@@ -129,7 +129,7 @@ class PaperReconciliationTests(unittest.TestCase):
             ledger_snapshot=self.snapshot({"BTC/USD": {"quantity": "0.01"}}),
             fx_quote=FX, now=NOW,
         )
-        self.assertEqual(result["status"], "RECONCILED")
+        self.assertEqual(result["status"], "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE")
 
 
 if __name__ == "__main__":
