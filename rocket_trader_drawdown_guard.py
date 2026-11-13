@@ -29,6 +29,7 @@ class DrawdownAssessment:
     drawdown_pct: float
     max_drawdown_pct: float
     updated_at: str
+    equity_currency: str
 
 class PersistentDrawdownGuard:
     """Track equity peaks and persist a sticky max-drawdown lock.
@@ -39,13 +40,17 @@ class PersistentDrawdownGuard:
     """
     SCHEMA_VERSION = 1
 
-    def __init__(self, state_path: str, max_drawdown_pct: float = 0.15) -> None:
+    def __init__(self, state_path: str, max_drawdown_pct: float = 0.15, equity_currency: str = "USD") -> None:
         if not state_path:
             raise DrawdownGuardError("A durable drawdown state_path is required.")
         if not math.isfinite(max_drawdown_pct) or not 0 < max_drawdown_pct < 1:
             raise DrawdownGuardError("max_drawdown_pct must be finite and between 0 and 1.")
+        currency = str(equity_currency).upper()
+        if currency not in {"USD", "MXN"}:
+            raise DrawdownGuardError("equity_currency must be USD or MXN.")
         self.path = Path(state_path)
         self.max_drawdown_pct = float(max_drawdown_pct)
+        self.equity_currency = currency
         self._lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -56,6 +61,9 @@ class PersistentDrawdownGuard:
             state = json.loads(self.path.read_text(encoding="utf-8"))
             if state.get("schema_version") != self.SCHEMA_VERSION:
                 raise ValueError("unsupported schema_version")
+            persisted_currency = str(state.get("equity_currency", "USD")).upper()
+            if persisted_currency != self.equity_currency:
+                raise ValueError("equity_currency differs from persisted state")
             if not math.isclose(float(state["max_drawdown_pct"]), self.max_drawdown_pct, rel_tol=0.0, abs_tol=1e-12):
                 raise ValueError("configured max_drawdown_pct differs from persisted state")
             high = float(state["high_water_mark"])
@@ -99,6 +107,7 @@ class PersistentDrawdownGuard:
             if state is None:
                 state = {
                     "schema_version": self.SCHEMA_VERSION,
+                    "equity_currency": self.equity_currency,
                     "max_drawdown_pct": self.max_drawdown_pct,
                     "high_water_mark": current,
                     "current_equity": current,
@@ -132,6 +141,7 @@ class PersistentDrawdownGuard:
                 allowed=not locked, locked=locked, reason=state.get("lock_reason"),
                 equity=current, high_water_mark=high, drawdown_pct=drawdown,
                 max_drawdown_pct=self.max_drawdown_pct, updated_at=str(state["updated_at"]),
+                equity_currency=self.equity_currency,
             )
 
     def status(self) -> Dict[str, Any]:
