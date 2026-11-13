@@ -1003,3 +1003,19 @@ Validation: workflow `43351716511` passed 28 activity-reader tests; workflow `43
 ## 2026-11-12 — Cash activity admin persistent-state guard (PR pending)
 
 The cash activity admin CLI previously could initialize a fresh empty ledger or activity-stager database when a configured persistent file was missing. This could hide lost durable state behind an apparently empty report. The pending guard checks existing files and required schema via read-only SQLite before constructing the components, and refuses missing/empty/invalid state without creating replacement files. Offline tests cover missing files, empty databases and a valid pre-existing state. No broker API call or account mutation is added.
+
+
+## 2026-11-12 — PR #190: fail-closed cash-admin persistent state
+
+PR #190 (`29b9cd41c0eca876b888a1fb9a0eea34aa60f4d0`) prevents the cash-activity admin CLI from silently creating a fresh ledger or activity-stager database when the configured persistent files are missing or damaged. It now validates existing database files, required tables, schema version, capital-policy metadata, initial-capital event and append-only triggers using read-only SQLite connections before constructing either component.
+
+Validation:
+- Cash bridge workflow `43352311234`: 12 cash-activity bridge tests, 6 cash-admin tests and 22 ledger tests passed.
+- Paper audit workflow `43352311258`: 37 offline tests passed; live Paper API job skipped on PR event.
+- Durable Activity SSE workflow `43352311255`: 26 tests and Compose validation passed.
+- Paper Observer Runtime workflow `43352311322`: multi-module offline suite passed.
+- Paper Observer Container workflow `43352311333`: Compose validation, image build and module packaging passed.
+
+No real Paper query, order, account mutation, persistent-host deployment or Live action occurred. Progress remains 58%.
+
+The next evidence gate is a manual read-only Paper audit dispatch. Fill reconciliation and fee reconciliation are now reported separately; a missing fee record remains unknown rather than being treated as zero.
