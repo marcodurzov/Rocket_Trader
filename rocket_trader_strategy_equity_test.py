@@ -33,9 +33,10 @@ def fixture(**overrides):
         "fx_quote": FXQuote(Decimal("18"), NOW - timedelta(minutes=1), "TEST_FX"),
         "session_baseline": StrategySessionBaseline(
             "2026-11-13", Decimal("1000"), NOW - timedelta(hours=1),
-            "VERIFIED_SESSION_OPEN", Decimal("0"),
+            "VERIFIED_SESSION_OPEN",
         ),
         "session_id": "2026-11-13",
+        "session_net_external_flows_mxn": Decimal("0"),
         "account_reconciliation_complete": False,
         "cash_reconciliation_status": "NOT_IMPLEMENTED_NO_USD_CASH_LEDGER",
         "fee_reconciliation_status": "UNRESOLVED",
@@ -61,8 +62,9 @@ class StrategyEquityMetricsTests(unittest.TestCase):
         data["broker_positions"] = []
         data["session_baseline"] = StrategySessionBaseline(
             "2026-11-13", Decimal("1000"), NOW - timedelta(hours=1),
-            "VERIFIED_SESSION_OPEN", Decimal("200"),
+            "VERIFIED_SESSION_OPEN",
         )
+        data["session_net_external_flows_mxn"] = Decimal("200")
         report = calculate_strategy_equity_metrics(**data)
         self.assertEqual(Decimal(str(report["strategy_equity_mxn"])), Decimal("1200"))
         self.assertEqual(Decimal(str(report["strategy_daily_pnl_pct"])), Decimal("0"))
