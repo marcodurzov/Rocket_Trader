@@ -145,7 +145,7 @@ class StrategyEquityMetricsTests(unittest.TestCase):
     def test_future_baseline_is_rejected(self):
         data = fixture(session_baseline=StrategySessionBaseline(
             "2026-11-13", Decimal("1000"), NOW + timedelta(minutes=1),
-            "FUTURE", Decimal("0"),
+            "VERIFIED_SESSION_OPEN", Decimal("0"),
         ))
         with self.assertRaisesRegex(StrategyEquityMetricsError, "future"):
             calculate_strategy_equity_metrics(**data)
