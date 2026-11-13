@@ -628,37 +628,31 @@ class RealizedPnLLedger:
                      if payload.get("mark_type") == "DAY_START"),
                     None,
                 )
+                if baseline is None and marks:
+                    raise LedgerError("Persisted strategy marks have no daily baseline")
+                fill_times = []
+                for fill_row in conn.execute(
+                    "SELECT occurred_at FROM ledger_events WHERE event_type='FILL'"
+                ).fetchall():
+                    fill_time = datetime.fromisoformat(
+                        str(fill_row["occurred_at"]).replace("Z", "+00:00")
+                    )
+                    if fill_time.tzinfo is None or fill_time.utcoffset() is None:
+                        raise LedgerError("Persisted fill has a naive timestamp")
+                    fill_utc = fill_time.astimezone(timezone.utc)
+                    if fill_utc.date().isoformat() == daily_key:
+                        fill_times.append(fill_utc)
                 if baseline is None:
-                    fill_rows = conn.execute(
-                        "SELECT occurred_at FROM ledger_events WHERE event_type='FILL'"
-                    ).fetchall()
-                    for fill_row in fill_rows:
-                        fill_time = datetime.fromisoformat(
-                            str(fill_row["occurred_at"]).replace("Z", "+00:00")
+                    if any(fill_time <= current_utc for fill_time in fill_times):
+                        raise LedgerError(
+                            "Cannot establish daily strategy baseline after same-day fills"
                         )
-                        if fill_time.tzinfo is None or fill_time.utcoffset() is None:
-                            raise LedgerError("Persisted fill has a naive timestamp")
-                        fill_utc = fill_time.astimezone(timezone.utc)
-                        if fill_utc.date().isoformat() == daily_key and fill_utc <= current_utc:
-                            raise LedgerError(
-                                "Cannot establish daily strategy baseline after same-day fills"
-                            )
                     mark_type = "DAY_START"
                     baseline_equity = equity
                     baseline_time = current_utc
                 else:
                     baseline_time, baseline_payload = baseline
-                    if any(
-                        fill_time.date().isoformat() == daily_key and fill_time < baseline_time
-                        for fill_time in (
-                            datetime.fromisoformat(
-                                str(row["occurred_at"]).replace("Z", "+00:00")
-                            ).astimezone(timezone.utc)
-                            for row in conn.execute(
-                                "SELECT occurred_at FROM ledger_events WHERE event_type='FILL'"
-                            ).fetchall()
-                        )
-                    ):
+                    if any(fill_time < baseline_time for fill_time in fill_times):
                         raise LedgerError(
                             "Same-day fills precede the persisted strategy daily baseline"
                         )
@@ -671,6 +665,7 @@ class RealizedPnLLedger:
                                 _d(latest_payload.get("equity_mxn"), "persisted strategy equity")
                                 != equity
                                 or latest_payload.get("position_snapshot_hash") != snapshot_hash
+                                or latest_payload.get("source") != source
                             ):
                                 raise LedgerError(
                                     "Conflicting strategy equity marks share the same timestamp"
