@@ -47,9 +47,16 @@ class PaperReconciliationTests(unittest.TestCase):
         result = AlpacaPaperReconciliationGate(broker).reconcile(
             ledger_snapshot=ledger, fx_quote=FX, now=NOW
         )
-        self.assertEqual(result["status"], "RECONCILED")
+        self.assertEqual(result["status"], "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE")
         self.assertFalse(result["orders_enabled"])
         self.assertFalse(result["paper_buying_power_used_as_capital"])
+        self.assertFalse(result["account_reconciliation_complete"])
+        self.assertEqual(result["position_reconciliation_status"], "MATCHED")
+        self.assertEqual(
+            result["cash_reconciliation_status"],
+            "NOT_IMPLEMENTED_NO_USD_CASH_LEDGER",
+        )
+        self.assertTrue(result["broker_cash_equity_observed_only"])
         self.assertEqual(result["ledger_operating_capital_mxn"], "1000")
 
     def test_position_mismatch_blocks_reconciliation(self):
