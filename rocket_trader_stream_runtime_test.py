@@ -56,13 +56,14 @@ class StreamRuntimeTests(unittest.TestCase):
                 self.account_calls = 0
             def get_account(self):
                 self.account_calls += 1
-                return SimpleNamespace(id="paper-account-1", currency="USD")
+                return SimpleNamespace(id="paper-account-1", status="ACTIVE", currency="USD")
         config = RuntimeConfig(
             api_key="paper-key", secret_key="paper-secret", db_path=self.db,
             equity_symbols=("SPY",), crypto_symbols=(),
         )
         with self._patch_trading_client(FakeTradingClient), patch.dict(os.environ, {
             "ROCKET_TRADER_CASH_LEDGER_ENABLED": "true",
+            "ALPACA_PAPER": "true",
             "ROCKET_TRADER_CASH_LEDGER_DB": os.path.join(self.tmp.name, "missing-cash.sqlite3"),
             "ROCKET_TRADER_ACTIVITY_SSE_DB": os.path.join(self.tmp.name, "missing-inbox.sqlite3"),
             "ROCKET_TRADER_EXECUTION_MODE": "PAPER",
@@ -89,6 +90,7 @@ class StreamRuntimeTests(unittest.TestCase):
         )
         with self._patch_trading_client(FakeTradingClient), patch.dict(os.environ, {
             "ROCKET_TRADER_CASH_LEDGER_ENABLED": "true",
+            "ALPACA_PAPER": "true",
             "ROCKET_TRADER_CASH_LEDGER_DB": cash_path,
             "ROCKET_TRADER_ACTIVITY_SSE_DB": inbox_path,
             "ROCKET_TRADER_EXECUTION_MODE": "PAPER",
