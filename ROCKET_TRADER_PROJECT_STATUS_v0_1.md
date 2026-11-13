@@ -1078,3 +1078,16 @@ PR #200 (`db08010e0beb9a1e722f7858248e1adbe27827c6`) adds an account-bound, appe
 Re-anchoring requires explicit confirmation and a traceable reason. Dedicated PR workflow `43501382436` and post-merge workflow `43501471471` each passed 14 offline tests.
 
 This is not yet connected to the durable Activity SSE inbox, Paper reconciliation gate, or observer runtime. No real Paper data or account was accessed. Activity coverage must not be marked complete without a successful replay/catch-up and dropped-message verification. Position corporate actions, corrections/busts, fee allocation, durable session baselines and Core integration remain open. Progress remains 58%.
+
+
+## 2026-11-13 — PR #204: opt-in Paper cash ledger runtime wiring
+
+PR #204 (`1897b9683271fa8b14341527f5cd6864b3061aaf`) connects the existing USD cash ledger and Activity SSE inbox to the observer's Paper reconciliation gate behind `ROCKET_TRADER_CASH_LEDGER_ENABLED=false` by default. Runtime validates existing persistent DB state read-only and refuses missing/damaged state. It requires Paper-only environment settings and uses `get_account()` only to bind the active USD Paper account ID.
+
+The new Paper cash anchor admin command creates an immutable anchor from a read-only Paper account cash snapshot after verifying the local Activity SSE inbox and capturing its cursor. It does not assert activity coverage or fee allocation. Runtime still passes both completeness flags as false; account reconciliation and strategy metrics therefore remain ineligible.
+
+Validation: post-merge Paper reconciliation (12 tests), USD cash ledger (24 tests), Activity SSE (26 tests), 16 runtime/accounting test modules passed (238 total test cases across those modules), Compose validation and container build passed. Paper Observer image published to GHCR at digest `sha256:e5ea8ad71efe154bf4e80aa43db6857520c502b085507d6bf44b9c3f63c1d083`; not deployed.
+
+No real Paper API call, persistent-host access, anchor creation, deployment, order or Live action occurred. Runtime remains OBSERVE_ONLY. Progress remains 58% until real Paper evidence is collected.
+
+Next: identify the actual persistent host/volume, verify Activity SSE replay, create the cash anchor, implement cursor-bound activity coverage and fee-allocation attestations, then run read-only Paper cash/equity reconciliation across multiple sessions. Do not enable Live.
