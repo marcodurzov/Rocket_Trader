@@ -239,3 +239,8 @@ The service is not running until deployed on the actual persistent host. After d
 5. Preserve the SQLite database and its WAL files together during backup; stop the service or use SQLite's backup API for consistent backups.
 
 Do not enable any downstream P&L/position application until correction/bust semantics and fee allocation are separately validated.
+
+
+## 13. Cash-activity admin requires existing durable state
+
+The operator CLI `rocket_trader_cash_activity_admin.py` checks that both the realized-P&L ledger and activity-stager SQLite databases already exist and contain their required schema before constructing either component. It refuses to initialize missing or empty files. Do not point the CLI at a fresh path to make a missing database appear healthy; restore the original persistent files and WAL state first.
