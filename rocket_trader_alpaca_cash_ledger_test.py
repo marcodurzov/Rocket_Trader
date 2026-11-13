@@ -91,7 +91,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             fee_reconciliation_complete=True,
         )
         self.assertEqual(report["fee_reconciliation_status"], "RECONCILED")
-        self.assertEqual(report["pending_fee_allocation_count"], 1)
+        self.assertEqual(report["pending_fee_allocation_count"], 0)
+        self.assertEqual(report["fee_candidates_without_local_parent_count"], 1)
 
     def test_non_usd_zero_cash_fee_does_not_change_usd_cash_but_remains_unallocated(self):
         self.ledger.ingest_activity(event(1, "CFEE", amount="0", currency="ETH"))
