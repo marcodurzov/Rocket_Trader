@@ -48,9 +48,9 @@ on:
         default: "2026-11-11T04:55:00Z"
         type: string
       fees_until:
-        description: "CFEE query end (ISO-8601 with timezone)"
-        required: true
-        default: "2026-11-13T00:00:00Z"
+        description: "CFEE query end; leave blank to use workflow start time in UTC"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -102,6 +102,16 @@ jobs:
           python-version: "3.12"
       - name: Install Alpaca SDK
         run: pip install "alpaca-py>=0.43,<1.0"
+      - name: Resolve fee window end
+        shell: bash
+        env:
+          REQUESTED_FEES_UNTIL: ${{ inputs.fees_until }}
+        run: |
+          if [[ -n "${REQUESTED_FEES_UNTIL}" ]]; then
+            echo "AUDIT_FEES_UNTIL=${REQUESTED_FEES_UNTIL}" >> "$GITHUB_ENV"
+          else
+            echo "AUDIT_FEES_UNTIL=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+          fi
       - name: Read-only Paper order, fill and fee activity reconciliation
         run: python alpaca_paper_activity_reconciliation_audit.py
       - name: Read-only Paper Activity SSE compatibility probe
