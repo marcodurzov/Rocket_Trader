@@ -308,6 +308,34 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         self.assertEqual(report["account_equity_reconciliation_status"], "NOT_PROVIDED")
         self.assertFalse(report["account_cash_equity_reconciliation_complete"])
 
+    def test_initialize_false_refuses_to_create_missing_database(self):
+        missing = os.path.join(self.tmp.name, "missing-cash.sqlite3")
+        with self.assertRaisesRegex(PaperCashLedgerError, "refusing to create a replacement"):
+            AlpacaPaperUSDCashLedger(
+                missing, account_id=ACCOUNT, initialize=False,
+            )
+        self.assertFalse(os.path.exists(missing))
+
+    def test_existing_database_is_validated_not_silently_repaired(self):
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER paper_cash_activities_no_update")
+        with self.assertRaisesRegex(PaperCashLedgerError, "append-only triggers are missing"):
+            AlpacaPaperUSDCashLedger(
+                self.db, account_id=ACCOUNT, initialize=True,
+            )
+        with sqlite3.connect(self.db) as conn:
+            trigger = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' "
+                "AND name='paper_cash_activities_no_update'"
+            ).fetchone()
+        self.assertIsNone(trigger)
+
+    def test_existing_cash_ledger_rejects_different_broker_account(self):
+        with self.assertRaisesRegex(PaperCashLedgerError, "differs from the persisted"):
+            AlpacaPaperUSDCashLedger(
+                self.db, account_id="different-paper-account", initialize=False,
+            )
+
     def test_broker_account_id_mismatch_is_rejected(self):
         with self.assertRaisesRegex(PaperCashLedgerError, "does not match"):
             self.ledger.reconcile(

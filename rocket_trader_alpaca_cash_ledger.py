@@ -82,16 +82,72 @@ class AlpacaPaperUSDCashLedger:
     }
     KNOWN_ZERO_USD_CASH_TYPES = {"SPLIT", "JNLS", "NC"}
 
-    def __init__(self, db_path: str, *, account_id: str) -> None:
+    def __init__(
+        self,
+        db_path: str,
+        *,
+        account_id: str,
+        initialize: bool = True,
+    ) -> None:
         if not isinstance(db_path, str) or not db_path.strip():
             raise PaperCashLedgerError("A durable USD cash ledger path is required")
         if not isinstance(account_id, str) or not account_id.strip():
             raise PaperCashLedgerError("Alpaca Paper account_id is required")
-        self.db_path = str(db_path)
+        if not isinstance(initialize, bool):
+            raise PaperCashLedgerError("initialize must be a boolean")
+        path = Path(db_path).expanduser()
+        self.db_path = str(path)
         self.account_id = account_id.strip()
-        Path(self.db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._initialize()
+        if path.is_file():
+            # Existing state is validated, never repaired or silently recreated.
+            self._validate_existing_schema()
+        elif initialize:
+            path.resolve().parent.mkdir(parents=True, exist_ok=True)
+            self._initialize()
+            self._validate_existing_schema()
+        else:
+            raise PaperCashLedgerError(
+                "Existing durable USD cash ledger database is missing; refusing to create a replacement"
+            )
+
+    def _validate_existing_schema(self) -> None:
+        path = Path(self.db_path).expanduser().resolve()
+        if not path.is_file():
+            raise PaperCashLedgerError("Existing USD cash ledger database is missing")
+        uri = path.as_uri() + "?mode=ro"
+        try:
+            with sqlite3.connect(uri, uri=True, timeout=30) as conn:
+                conn.execute("PRAGMA query_only=ON")
+                integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+                tables = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                }
+                triggers = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    ).fetchall()
+                }
+                required_tables = {"paper_cash_anchors", "paper_cash_activities"}
+                required_triggers = {
+                    "paper_cash_anchors_no_update", "paper_cash_anchors_no_delete",
+                    "paper_cash_activities_no_update", "paper_cash_activities_no_delete",
+                }
+                if integrity != "ok" or not required_tables.issubset(tables):
+                    raise PaperCashLedgerError("Existing USD cash ledger schema/integrity is invalid")
+                if not required_triggers.issubset(triggers):
+                    raise PaperCashLedgerError("Existing USD cash ledger append-only triggers are missing")
+                anchor = conn.execute(
+                    "SELECT account_id FROM paper_cash_anchors ORDER BY observed_at DESC LIMIT 1"
+                ).fetchone()
+                if anchor and anchor[0] != self.account_id:
+                    raise PaperCashLedgerError(
+                        "Configured Paper account ID differs from the persisted cash ledger anchor"
+                    )
+        except sqlite3.Error as exc:
+            raise PaperCashLedgerError("Could not validate existing USD cash ledger read-only") from exc
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)

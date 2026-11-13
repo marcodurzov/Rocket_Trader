@@ -261,6 +261,45 @@ python rocket_trader_ledger_accounting_migration.py \
 The backup path must not already exist and its parent directory must exist. The utility verifies event hashes and fill-time FX evidence, creates and checks a consistent SQLite backup, rechecks that the source event count did not change, then appends an immutable migration event. It refuses any ledger with existing immutable monthly closes; those require a separately reviewed manual restatement. Never run this against a live writer or an unknown/replacement database.
 
  
-## 15. Paper position reconciliation is not full account reconciliation
+## 15. Paper position, cash and equity reconciliation
 
-AlpacaPaperReconciliationGate currently verifies that broker-reported positions match the local FIFO ledger. It observes broker cash/equity in USD but does not compare them to a local USD cash ledger (none is implemented). Therefore a matching position set is reported as POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE, not RECONCILED; account_reconciliation_complete remains false. Do not treat this gate as cash, equity or full P&L parity. Full account reconciliation requires a durable USD cash/settlement/fee ledger and explicit broker-to-ledger comparison.
+`AlpacaPaperReconciliationGate` can now compare broker positions against the FIFO ledger and, when explicitly configured with an existing USD cash ledger plus the durable Activity SSE inbox, reconcile broker cash and account equity. The cash ledger applies only supported activity types; unknown codes, corrections/busts, missing amounts, incomplete history or cash/equity mismatches keep the gate incomplete.
+
+The runtime cash-ledger integration is opt-in and disabled by default. Even when enabled, the runtime currently does not assert activity-history coverage or fee reconciliation. It therefore reports the observed cash/equity comparison as incomplete until independent, traceable replay/catch-up and fee-audit attestations are integrated. Position parity alone is never described as full account reconciliation, and the gate never enables orders.
+
+
+## 16. Optional USD Paper cash ledger anchor and runtime wiring
+
+The Paper observer now has an opt-in USD cash ledger connection. It is **disabled by default** (`ROCKET_TRADER_CASH_LEDGER_ENABLED=false`). When enabled, runtime requires both the existing cash-ledger database and the durable Activity SSE inbox; it opens the cash ledger in read-only schema-validation mode and refuses to create or repair missing state. The broker client remains explicitly `paper=True`.
+
+### Create the initial cash anchor
+
+Only after the Activity SSE container is running on the actual persistent host and its inbox health check passes, build the observer image and run the one-shot anchor command:
+
+```bash
+docker compose -f docker-compose.paper-observer.yml build rocket-trader-paper-observer
+docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
+  rocket-trader-paper-observer \
+  python /app/rocket_trader_paper_cash_ledger_admin.py --initialize-db
+```
+
+The command:
+- Verifies the local Activity SSE inbox hash chain and cursor.
+- Captures that cursor **before** one read-only `TradingClient.get_account()` call.
+- Records the current Paper USD cash as an immutable anchor in `/app/data/rocket_trader_paper_cash.sqlite3`.
+- Does not create, replace, cancel or modify orders; it does not enable Live.
+- Does **not** claim historical activity coverage, fee allocation, position parity or P&L reconciliation.
+
+For an already-existing cash ledger with no anchor, omit `--initialize-db`. A later rebase is blocked unless both `--rebase-confirmed` and a traceable `--rebase-reason` are supplied after a separate review. Never use rebase to hide an unexplained cash mismatch.
+
+### Runtime wiring status
+
+The Compose setting can be overridden through the private `.env` file:
+
+```dotenv
+ROCKET_TRADER_CASH_LEDGER_ENABLED=false
+ROCKET_TRADER_CASH_LEDGER_DB=/app/data/rocket_trader_paper_cash.sqlite3
+ROCKET_TRADER_ACTIVITY_SSE_DB=/app/data/rocket_trader_activity_sse.sqlite3
+```
+
+Keep the feature disabled until the coverage-attestation and fee-audit integration is completed. If enabled now, the observer will ingest the inbox and compare cash/equity, but it intentionally passes `activity_coverage_complete=false` and `fee_reconciliation_complete=false`; the full account gate and health check will remain incomplete. This is diagnostic wiring, not approval to proceed to trading.

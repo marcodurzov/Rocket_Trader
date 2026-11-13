@@ -183,3 +183,10 @@ Official schema references:
 ## Position health versus account readiness
 
 The Paper observer may report its **position comparison component** as healthy when broker and FIFO-ledger quantities match. That is not equivalent to full account readiness: the healthcheck separately requires `account_reconciliation_complete=true`, which remains false until a durable USD cash/settlement/fee ledger is implemented and reconciled. A matching position set must not make the overall observer healthcheck green while cash/account parity is absent.
+
+
+## 10. Optional Paper USD cash ledger wiring
+
+`ROCKET_TRADER_CASH_LEDGER_ENABLED` is false by default. When explicitly enabled, the observer requires an existing Paper cash ledger DB and existing Activity SSE inbox, obtains the Paper account ID with a read-only `get_account()` call, and opens the cash ledger with `initialize=False` so missing or damaged state is never replaced. The observer does not auto-create a cash anchor. Use `rocket_trader_paper_cash_ledger_admin.py` as a separate one-shot Paper-only command to create the initial anchor after reviewing the persistent inbox.
+
+The runtime currently does not assert activity-history coverage or fee reconciliation. It therefore remains `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE` until a verified replay/catch-up attestation and independent fee audit are connected. `orders_enabled` remains false and the runtime remains `OBSERVE_ONLY`.

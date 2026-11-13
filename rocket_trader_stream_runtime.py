@@ -745,7 +745,7 @@ def build_fill_ledger_bridge(config: RuntimeConfig):
 
 
 def build_position_reconciliation_gate(config: RuntimeConfig, fill_ledger_bridge: Any):
-    """Build a read-only TradingClient-backed position reconciliation gate."""
+    """Build a read-only Paper gate, optionally wired to an existing USD cash ledger."""
     if fill_ledger_bridge is None:
         return None
     try:
@@ -756,10 +756,62 @@ def build_position_reconciliation_gate(config: RuntimeConfig, fill_ledger_bridge
             secret_key=config.secret_key,
             paper=True,
         )
-        return AlpacaPaperReconciliationGate(client)
+        enabled = os.getenv("ROCKET_TRADER_CASH_LEDGER_ENABLED", "false").strip().lower()
+        if enabled not in {"1", "true", "yes", "on", "0", "false", "no", "off", ""}:
+            raise RuntimeConfigurationError(
+                "ROCKET_TRADER_CASH_LEDGER_ENABLED must be boolean."
+            )
+        cash_ledger = None
+        inbox_path = None
+        if enabled in {"1", "true", "yes", "on"}:
+            if os.getenv("ALPACA_PAPER", "false").strip().lower() != "true":
+                raise RuntimeConfigurationError("ALPACA_PAPER=true is required for Paper cash reconciliation.")
+            if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+                raise RuntimeConfigurationError("Cash reconciliation is Paper-only; ALPACA_LIVE_ENABLED must be false.")
+            execution_mode = os.getenv("ROCKET_TRADER_EXECUTION_MODE", "PAPER").strip().upper()
+            if execution_mode != "PAPER":
+                raise RuntimeConfigurationError("Cash reconciliation is Paper-only; execution mode must be PAPER.")
+            parent = Path(config.db_path).resolve().parent
+            cash_path = os.getenv(
+                "ROCKET_TRADER_CASH_LEDGER_DB",
+                str(parent / "rocket_trader_paper_cash.sqlite3"),
+            )
+            inbox_path = os.getenv(
+                "ROCKET_TRADER_ACTIVITY_SSE_DB",
+                str(parent / "rocket_trader_activity_sse.sqlite3"),
+            )
+            if not Path(cash_path).is_file():
+                raise RuntimeConfigurationError(
+                    "Existing Paper USD cash ledger is missing; refusing to initialize a replacement at runtime."
+                )
+            if not Path(inbox_path).is_file():
+                raise RuntimeConfigurationError(
+                    "Existing durable Activity SSE inbox is missing; refusing to create an empty replacement."
+                )
+            account = client.get_account()
+            account_id = str(_field(account, "id", "")).strip()
+            currency_value = _field(account, "currency", None)
+            currency = str(getattr(currency_value, "value", currency_value) or "").strip().upper()
+            account_status_value = _field(account, "status", None)
+            account_status = str(getattr(account_status_value, "value", account_status_value) or "").strip().upper()
+            if not account_id or currency != "USD" or account_status != "ACTIVE":
+                raise RuntimeConfigurationError(
+                    "Paper account ID and USD account currency are required for cash reconciliation."
+                )
+            from rocket_trader_alpaca_cash_ledger import AlpacaPaperUSDCashLedger
+            cash_ledger = AlpacaPaperUSDCashLedger(
+                cash_path, account_id=account_id, initialize=False,
+            )
+        return AlpacaPaperReconciliationGate(
+            client,
+            cash_ledger=cash_ledger,
+            activity_sse_inbox_path=inbox_path,
+        )
     except Exception as exc:
+        if isinstance(exc, RuntimeConfigurationError):
+            raise
         raise RuntimeConfigurationError(
-            f"Could not initialize read-only Paper position reconciliation: {exc}"
+            f"Could not initialize read-only Paper position/cash reconciliation: {exc}"
         ) from exc
 
 
