@@ -1,6 +1,6 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-12 (PRs #181–#185 merged; historical SIP, fill-price and reconciliation-tolerance guards hardened)
+**Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Latest main HEAD before this Handoff refresh:** `974288523023f7d08879f2fc420ee25f5f58468f` (PR #185 merged; strategy runtime baseline remains unchanged unless separately evidenced)
@@ -1371,3 +1371,11 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 - No broker orders, account mutations, deployments or Live actions occurred. Progress remains **58%** because the improvement is code/offline evidence, not sustained Paper or profitability evidence.
 
 **Next gate:** execute and inspect the read-only Paper audit on main with explicit bounded order/fee windows, then verify the returned real activity records and the durable restart/recovery path. Keep order submission disabled while fee allocation, corrections/busts and full cash/position reconciliation remain incomplete.
+
+
+### 2026-11-12 continuation — activity stager pagination completeness guard (PR pending)
+
+- Code review found that the Paper activity stager could exhaust its configured `max_pages` while the final page was full and still return an ordinary report without an explicit incomplete-pagination status. A caller could mistake a bounded partial history scan for a complete account-activity recovery.
+- The proposed change makes pagination completeness explicit: an empty page or short page proves exhaustion; a full page at the page cap reports `PAGE_LIMIT_REACHED`; a repeated cursor reports `CURSOR_STALLED`. `sync_complete` and `pagination_complete` are false unless exhaustion is observed. Invalid max_pages values (including booleans) are rejected.
+- Offline regression tests cover full-page cap, short-page exhaustion, empty-page exhaustion, repeated cursor and invalid limits.
+- This is an engineering guard only. It does not prove real Paper API ingestion, full account history, or restart recovery. No broker orders or account mutations are performed.
