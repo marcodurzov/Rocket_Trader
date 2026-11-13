@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Offline tests for Paper observer runtime; no broker or network calls."""
-import asyncio, json, os, sqlite3, tempfile, unittest
+import asyncio, json, os, sqlite3, tempfile, unittest, sys, types
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from rocket_trader_realized_pnl_ledger import LedgerFX
+from rocket_trader_alpaca_cash_ledger import AlpacaPaperUSDCashLedger
+from rocket_trader_alpaca_activity_sse_consumer import DurableActivitySSEInbox
 
 from rocket_trader_stream_runtime import (
     AlpacaPaperObserverRuntime, MarketRuntimeRecorder, RuntimeConfigurationError, RuntimeStorageError, RuntimeConfig,
-    build_fill_ledger_bridge, build_activity_stager, sync_cash_activity_review,
+    build_fill_ledger_bridge, build_activity_stager, build_position_reconciliation_gate, sync_cash_activity_review,
     account_activity_reconciliation_clear, reconcile_paper_positions,
 )
 
@@ -22,6 +24,81 @@ class StreamRuntimeTests(unittest.TestCase):
         self.recorder = MarketRuntimeRecorder(self.db)
     def tearDown(self):
         self.tmp.cleanup()
+    def _patch_trading_client(self, client_class):
+        alpaca = types.ModuleType("alpaca")
+        trading = types.ModuleType("alpaca.trading")
+        client = types.ModuleType("alpaca.trading.client")
+        client.TradingClient = client_class
+        return patch.dict(sys.modules, {
+            "alpaca": alpaca,
+            "alpaca.trading": trading,
+            "alpaca.trading.client": client,
+        })
+
+    def test_cash_ledger_runtime_option_defaults_off(self):
+        class FakeTradingClient:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        with self._patch_trading_client(FakeTradingClient), patch.dict(os.environ, {
+            "ROCKET_TRADER_CASH_LEDGER_ENABLED": "false",
+        }, clear=False):
+            gate = build_position_reconciliation_gate(config, object())
+        self.assertIsNone(gate.cash_ledger)
+        self.assertIsNone(gate.activity_sse_inbox_path)
+
+    def test_cash_ledger_runtime_requires_existing_databases(self):
+        class FakeTradingClient:
+            def __init__(self, **kwargs):
+                self.account_calls = 0
+            def get_account(self):
+                self.account_calls += 1
+                return SimpleNamespace(id="paper-account-1", currency="USD")
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        with self._patch_trading_client(FakeTradingClient), patch.dict(os.environ, {
+            "ROCKET_TRADER_CASH_LEDGER_ENABLED": "true",
+            "ROCKET_TRADER_CASH_LEDGER_DB": os.path.join(self.tmp.name, "missing-cash.sqlite3"),
+            "ROCKET_TRADER_ACTIVITY_SSE_DB": os.path.join(self.tmp.name, "missing-inbox.sqlite3"),
+            "ROCKET_TRADER_EXECUTION_MODE": "PAPER",
+            "ALPACA_LIVE_ENABLED": "false",
+        }, clear=False):
+            with self.assertRaisesRegex(RuntimeConfigurationError, "cash ledger is missing"):
+                build_position_reconciliation_gate(config, object())
+
+    def test_cash_ledger_runtime_uses_existing_paper_state_read_only(self):
+        class FakeTradingClient:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.account_calls = 0
+            def get_account(self):
+                self.account_calls += 1
+                return SimpleNamespace(id="paper-account-1", currency="USD")
+        cash_path = os.path.join(self.tmp.name, "paper-cash.sqlite3")
+        inbox_path = os.path.join(self.tmp.name, "activity-sse.sqlite3")
+        AlpacaPaperUSDCashLedger(cash_path, account_id="paper-account-1")
+        DurableActivitySSEInbox(inbox_path)
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        with self._patch_trading_client(FakeTradingClient), patch.dict(os.environ, {
+            "ROCKET_TRADER_CASH_LEDGER_ENABLED": "true",
+            "ROCKET_TRADER_CASH_LEDGER_DB": cash_path,
+            "ROCKET_TRADER_ACTIVITY_SSE_DB": inbox_path,
+            "ROCKET_TRADER_EXECUTION_MODE": "PAPER",
+            "ALPACA_LIVE_ENABLED": "false",
+        }, clear=False):
+            gate = build_position_reconciliation_gate(config, object())
+        self.assertIsNotNone(gate.cash_ledger)
+        self.assertEqual(gate.activity_sse_inbox_path, inbox_path)
+        self.assertEqual(gate.cash_ledger.account_id, "paper-account-1")
+
     def test_bar_record_is_idempotent(self):
         bar = SimpleNamespace(symbol="BTC/USD", timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
                                open=100, high=105, low=99, close=104, volume=12,
