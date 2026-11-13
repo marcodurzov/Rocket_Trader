@@ -123,7 +123,7 @@ class StrategyEquityMetricsTests(unittest.TestCase):
         data["broker_positions"] = []
         data["session_baseline"] = StrategySessionBaseline(
             "2026-11-13", Decimal("1000"), NOW - timedelta(hours=1),
-            "VERIFIED_SESSION_OPEN", Decimal("0"),
+            "VERIFIED_SESSION_OPEN",
         )
         report = calculate_strategy_equity_metrics(**data)
         self.assertAlmostEqual(report["strategy_daily_pnl_pct"], -0.10, places=8)
