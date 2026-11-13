@@ -61,8 +61,10 @@ def create_paper_cash_anchor(
 
     account = client.get_account()
     account_id = str(getattr(account, "id", "") or "").strip()
-    currency = str(getattr(account, "currency", "") or "").strip().upper()
-    status = str(getattr(account, "status", "") or "").strip().upper()
+    currency_value = getattr(account, "currency", None)
+    status_value = getattr(account, "status", None)
+    currency = str(getattr(currency_value, "value", currency_value) or "").strip().upper()
+    status = str(getattr(status_value, "value", status_value) or "").strip().upper()
     if not account_id or currency != "USD" or status != "ACTIVE":
         raise PaperCashLedgerError("Active Paper account ID and explicit USD account currency are required")
     cash = getattr(account, "cash", None)
