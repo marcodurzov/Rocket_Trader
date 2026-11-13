@@ -7,6 +7,8 @@ on:
     paths:
       - "rocket_trader_core.py"
       - "rocket_trader_currency.py"
+      - "rocket_trader_drawdown_guard.py"
+      - "rocket_trader_drawdown_guard_test.py"
       - "rocket_trader_core_risk_safety.yml"
       - ".github/workflows/rocket-trader-core-risk-safety.yml"
   push:
@@ -15,6 +17,8 @@ on:
     paths:
       - "rocket_trader_core.py"
       - "rocket_trader_currency.py"
+      - "rocket_trader_drawdown_guard.py"
+      - "rocket_trader_drawdown_guard_test.py"
       - ".github/workflows/rocket-trader-core-risk-safety.yml"
   workflow_dispatch:
 
@@ -31,8 +35,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile Core and currency modules
-        run: python -m py_compile rocket_trader_core.py rocket_trader_currency.py
+        run: python -m py_compile rocket_trader_core.py rocket_trader_currency.py rocket_trader_drawdown_guard.py
       - name: Core safety and capital policy regression
         run: python rocket_trader_core.py
       - name: Currency budget regression
         run: python rocket_trader_currency_test.py
+      - name: Persistent drawdown guard regression
+        run: python -m unittest -v rocket_trader_drawdown_guard_test.py

@@ -522,6 +522,10 @@ class AccountState:
     # FX quote is mandatory before this capital can authorize a USD order.
     strategy_capital_mxn: Optional[float] = None
     fx_quote: Optional[FXQuote] = None
+    # Risk limits for the allocated strategy must be measured in MXN, not
+    # against Alpaca's much larger virtual Paper account equity in USD.
+    strategy_equity_mxn: Optional[float] = None
+    strategy_daily_pnl_pct: Optional[float] = None
 
     positions: Dict[str, Position] = field(default_factory=dict)
 
@@ -535,14 +539,48 @@ class AccountState:
         if self.account_currency.upper() != "USD":
             raise ValueError("Rocket Trader broker AccountState must be denominated in USD")
 
-        if self.strategy_capital_mxn is not None and self.strategy_capital_mxn < 0:
-            raise ValueError("strategy_capital_mxn no puede ser negativo")
+        for field_name, value in (
+            ("equity", self.equity),
+            ("cash", self.cash),
+            ("protected_floor", self.protected_floor),
+            ("realized_pnl_today", self.realized_pnl_today),
+        ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError(f"{field_name} debe ser numérico y finito")
+        if self.equity < 0 or self.cash < 0 or self.protected_floor < 0:
+            raise ValueError("equity, cash y protected_floor no pueden ser negativos")
+        if self.strategy_capital_mxn is not None:
+            if isinstance(self.strategy_capital_mxn, bool) or not isinstance(self.strategy_capital_mxn, (int, float)) or not math.isfinite(self.strategy_capital_mxn) or self.strategy_capital_mxn < 0:
+                raise ValueError("strategy_capital_mxn debe ser finito y no negativo")
+        if self.day_start_equity is not None:
+            if isinstance(self.day_start_equity, bool) or not isinstance(self.day_start_equity, (int, float)) or not math.isfinite(self.day_start_equity) or self.day_start_equity <= 0:
+                raise ValueError("day_start_equity debe ser finito y positivo")
 
         if self.fx_quote is not None and self.strategy_capital_mxn is None:
             raise ValueError("fx_quote requiere strategy_capital_mxn explícito")
 
         if self.fx_quote is not None and not isinstance(self.fx_quote, FXQuote):
             raise ValueError("fx_quote debe ser una instancia FXQuote validada")
+
+        if self.strategy_equity_mxn is not None:
+            if self.strategy_capital_mxn is None or isinstance(self.strategy_equity_mxn, bool) or not isinstance(self.strategy_equity_mxn, (int, float)) or not math.isfinite(self.strategy_equity_mxn) or self.strategy_equity_mxn <= 0:
+                raise ValueError("strategy_equity_mxn requires explicit strategy capital and must be finite/positive")
+        if self.strategy_daily_pnl_pct is not None:
+            if self.strategy_capital_mxn is None or isinstance(self.strategy_daily_pnl_pct, bool) or not isinstance(self.strategy_daily_pnl_pct, (int, float)) or not math.isfinite(self.strategy_daily_pnl_pct):
+                raise ValueError("strategy_daily_pnl_pct requires explicit strategy capital and must be finite")
+        for field_name, value in (("trades_today", self.trades_today), ("consecutive_losses", self.consecutive_losses)):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+        for symbol, position in self.positions.items():
+            if not isinstance(position, Position) or symbol != position.symbol:
+                raise ValueError("positions must map symbols to matching Position records")
+            if (
+                isinstance(position.quantity, bool) or not isinstance(position.quantity, (int, float))
+                or not math.isfinite(position.quantity) or position.quantity <= 0
+                or isinstance(position.entry_price, bool) or not isinstance(position.entry_price, (int, float))
+                or not math.isfinite(position.entry_price) or position.entry_price <= 0
+            ):
+                raise ValueError("position quantity and entry_price must be finite and positive")
 
         if self.equity < 0:
             raise ValueError("equity no puede ser negativa")
@@ -1014,13 +1052,20 @@ class RiskEngine:
     ) -> Optional[str]:
 
         if account.equity <= account.protected_floor:
-            return "equity_at_or_below_protected_floor"
+            return "broker_equity_at_or_below_protected_floor"
 
-        if (
-            account.daily_pnl_pct
-            <= -self.config.daily_loss_limit_pct
-        ):
-            return "daily_loss_limit"
+        if account.strategy_capital_mxn is not None:
+            if (
+                account.strategy_equity_mxn is None
+                or account.strategy_daily_pnl_pct is None
+            ):
+                return "strategy_risk_metrics_missing"
+            if account.strategy_equity_mxn <= 0:
+                return "strategy_equity_at_or_below_zero"
+            if account.strategy_daily_pnl_pct <= -self.config.daily_loss_limit_pct:
+                return "strategy_daily_loss_limit"
+        elif account.daily_pnl_pct <= -self.config.daily_loss_limit_pct:
+            return "broker_daily_loss_limit"
 
         if (
             account.trades_today
@@ -1829,18 +1874,19 @@ class RocketTraderCore:
         self.drawdown_guard = None
         configured_drawdown_path = (
             drawdown_guard_path
-            or os.getenv("ROCKET_TRADER_DRAWDOWN_GUARD_PATH")
+            or os.getenv("ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH")
         )
         if require_persistent_drawdown_guard and not configured_drawdown_path:
             raise RuntimeError(
                 "SAFETY STOP: RocketTraderCore requiere "
-                "ROCKET_TRADER_DRAWDOWN_GUARD_PATH apuntando a almacenamiento "
-                "durable para persistir el high-water mark y el bloqueo por drawdown."
+                "ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH apuntando a almacenamiento "
+                "durable para persistir el high-water mark de estrategia en MXN."
             )
         if configured_drawdown_path:
             self.drawdown_guard = PersistentDrawdownGuard(
                 state_path=configured_drawdown_path,
                 max_drawdown_pct=max_drawdown_pct,
+                equity_currency="MXN",
             )
 
     def evaluate_and_maybe_execute(
@@ -1855,39 +1901,10 @@ class RocketTraderCore:
 
         if self.drawdown_guard is not None:
             try:
-                drawdown = self.drawdown_guard.evaluate(account.equity)
-                if not drawdown.allowed:
-                    decision = Decision(
-                        decision_id=stable_id(
-                            "drawdown_lock",
-                            {
-                                "symbol": snapshot.symbol,
-                                "timestamp": snapshot.timestamp,
-                                "equity": account.equity,
-                            },
-                        ),
-                        timestamp=utc_now(),
-                        status=DecisionStatus.KILL_SWITCH,
-                        evidence_class=EvidenceClass.INSUFFICIENT,
-                        symbol=snapshot.symbol,
-                        side=Side.HOLD,
-                        quantity=0.0,
-                        entry_price=snapshot.price,
-                        stop_price=None,
-                        take_profit_price=None,
-                        combined_score=0.0,
-                        signal_score=signal.score,
-                        benchmark_score=0.0,
-                        benchmark_confidence=0.0,
-                        adaptive_multiplier=0.0,
-                        adaptive_reason="Persistent max-drawdown lock.",
-                        reason=(
-                            f"persistent_drawdown_lock:{drawdown.reason}; "
-                            f"drawdown_pct={drawdown.drawdown_pct:.6f}; "
-                            f"limit_pct={drawdown.max_drawdown_pct:.6f}"
-                        ),
-                    )
-                else:
+                if (
+                    account.strategy_equity_mxn is None
+                    or account.strategy_daily_pnl_pct is None
+                ):
                     decision = self.decision_engine.evaluate(
                         account=account,
                         snapshot=snapshot,
@@ -1895,6 +1912,47 @@ class RocketTraderCore:
                         market_regime=market_regime,
                         news_impact=news_impact,
                     )
+                else:
+                    drawdown = self.drawdown_guard.evaluate(account.strategy_equity_mxn)
+                    if not drawdown.allowed:
+                        decision = Decision(
+                            decision_id=stable_id(
+                                "drawdown_lock",
+                                {
+                                    "symbol": snapshot.symbol,
+                                    "timestamp": snapshot.timestamp,
+                                    "strategy_equity_mxn": account.strategy_equity_mxn,
+                                },
+                            ),
+                            timestamp=utc_now(),
+                            status=DecisionStatus.KILL_SWITCH,
+                            evidence_class=EvidenceClass.INSUFFICIENT,
+                            symbol=snapshot.symbol,
+                            side=Side.HOLD,
+                            quantity=0.0,
+                            entry_price=snapshot.price,
+                            stop_price=None,
+                            take_profit_price=None,
+                            combined_score=0.0,
+                            signal_score=signal.score,
+                            benchmark_score=0.0,
+                            benchmark_confidence=0.0,
+                            adaptive_multiplier=0.0,
+                            adaptive_reason="Persistent max-drawdown lock.",
+                            reason=(
+                                f"persistent_drawdown_lock:{drawdown.reason}; "
+                                f"drawdown_pct={drawdown.drawdown_pct:.6f}; "
+                                f"limit_pct={drawdown.max_drawdown_pct:.6f}"
+                            ),
+                        )
+                    else:
+                        decision = self.decision_engine.evaluate(
+                            account=account,
+                            snapshot=snapshot,
+                            signal=signal,
+                            market_regime=market_regime,
+                            news_impact=news_impact,
+                        )
             except DrawdownGuardError as exc:
                 decision = Decision(
                     decision_id=stable_id(
@@ -2113,7 +2171,7 @@ def self_test() -> Dict[str, Any]:
         )
     except RuntimeError as exc:
         production_drawdown_guarded = (
-            "ROCKET_TRADER_DRAWDOWN_GUARD_PATH" in str(exc)
+            "ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH" in str(exc)
         )
     assert production_drawdown_guarded is True
 
@@ -2127,6 +2185,8 @@ def self_test() -> Dict[str, Any]:
             observed_at=datetime.now(timezone.utc),
             source="OFFLINE_TEST_FIXTURE",
         ),
+        strategy_equity_mxn=1000.0,
+        strategy_daily_pnl_pct=0.0,
         protected_floor=0.0,
     )
 
@@ -2164,6 +2224,8 @@ def self_test() -> Dict[str, Any]:
             observed_at=datetime.now(timezone.utc),
             source="OFFLINE_TEST_FIXTURE",
         ),
+        strategy_equity_mxn=100000.0,
+        strategy_daily_pnl_pct=0.0,
     )
     low_score_signal = dataclasses.replace(signal, score=0.59)
     low_confidence_signal = dataclasses.replace(signal, confidence=0.59)
@@ -2209,6 +2271,8 @@ def self_test() -> Dict[str, Any]:
             observed_at=datetime.now(timezone.utc),
             source="OFFLINE_TEST_FIXTURE",
         ),
+        strategy_equity_mxn=6000.0,
+        strategy_daily_pnl_pct=0.0,
     )
     larger_budget_decision = core.evaluate_and_maybe_execute(
         account=larger_account,
@@ -2225,15 +2289,71 @@ def self_test() -> Dict[str, Any]:
         equity=1000.0,
         cash=1000.0,
         strategy_capital_mxn=6000.0,
+        strategy_equity_mxn=6000.0,
+        strategy_daily_pnl_pct=0.0,
     )
-    missing_fx_decision = core.evaluate_and_maybe_execute(
+    missing_fx_decision = core.decision_engine.evaluate(
         account=missing_fx_account,
         snapshot=snapshot,
         signal=signal,
-        execute=False,
     )
     assert missing_fx_decision.status == DecisionStatus.REJECTED
     assert missing_fx_decision.quantity == 0.0
+
+    missing_strategy_metrics_account = AccountState(
+        equity=1000.0,
+        cash=1000.0,
+        strategy_capital_mxn=6000.0,
+        fx_quote=FXQuote(
+            mxn_per_usd=Decimal("18.00"),
+            observed_at=datetime.now(timezone.utc),
+            source="OFFLINE_TEST_FIXTURE",
+        ),
+    )
+    missing_strategy_metrics_decision = core.decision_engine.evaluate(
+        account=missing_strategy_metrics_account,
+        snapshot=snapshot,
+        signal=signal,
+    )
+    assert missing_strategy_metrics_decision.status == DecisionStatus.KILL_SWITCH
+    assert missing_strategy_metrics_decision.reason == "strategy_risk_metrics_missing"
+
+    # Strategy daily-loss protection must use the MXN allocation metrics,
+    # not the much larger virtual Paper account's USD equity denominator.
+    strategy_daily_loss_account = dataclasses.replace(
+        account, strategy_daily_pnl_pct=-0.06
+    )
+    strategy_daily_loss_decision = core.decision_engine.evaluate(
+        account=strategy_daily_loss_account,
+        snapshot=snapshot,
+        signal=signal,
+    )
+    assert strategy_daily_loss_decision.status == DecisionStatus.KILL_SWITCH
+    assert strategy_daily_loss_decision.reason == "strategy_daily_loss_limit"
+
+    # Non-finite account and strategy risk inputs must be rejected at the boundary.
+    invalid_account_inputs_rejected = True
+    for invalid_kwargs in (
+        {"equity": float("nan")},
+        {"strategy_capital_mxn": float("nan")},
+        {"strategy_equity_mxn": float("nan")},
+        {"strategy_daily_pnl_pct": float("nan")},
+    ):
+        values = {
+            "equity": 1000.0,
+            "cash": 1000.0,
+            "strategy_capital_mxn": 1000.0,
+            "strategy_equity_mxn": 1000.0,
+            "strategy_daily_pnl_pct": 0.0,
+        }
+        values.update(invalid_kwargs)
+        try:
+            AccountState(**values)
+        except (TypeError, ValueError):
+            continue
+        invalid_account_inputs_rejected = False
+        break
+    assert invalid_account_inputs_rejected is True
 
     # The legacy Core Alpaca adapter must also block fractional equity brackets.
     fractional_adapter = object.__new__(AlpacaExecutionAdapter)
@@ -2396,13 +2516,13 @@ def self_test() -> Dict[str, Any]:
         core.drawdown_guard = PersistentDrawdownGuard(
             str(Path(drawdown_temp) / "drawdown.json"),
             max_drawdown_pct=0.10,
+            equity_currency="MXN",
         )
-        core.drawdown_guard.evaluate(account.equity)
+        core.drawdown_guard.evaluate(account.strategy_equity_mxn)
         drawdown_account = dataclasses.replace(
             account,
-            equity=account.equity * 0.89,
-            cash=account.cash * 0.89,
-            day_start_equity=account.equity * 0.89,
+            strategy_equity_mxn=account.strategy_equity_mxn * 0.89,
+            strategy_daily_pnl_pct=0.0,
         )
         drawdown_decision = core.evaluate_and_maybe_execute(
             account=drawdown_account,
@@ -2415,8 +2535,9 @@ def self_test() -> Dict[str, Any]:
         restarted_guard = PersistentDrawdownGuard(
             str(Path(drawdown_temp) / "drawdown.json"),
             max_drawdown_pct=0.10,
+            equity_currency="MXN",
         )
-        assert restarted_guard.evaluate(account.equity * 1.20).locked is True
+        assert restarted_guard.evaluate(account.strategy_equity_mxn * 1.20).locked is True
 
     # ------------------------------------------------
     # ADAPTIVE BLOCK
