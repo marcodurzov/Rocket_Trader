@@ -2319,15 +2319,16 @@ def self_test() -> Dict[str, Any]:
         {"strategy_equity_mxn": float("nan")},
         {"strategy_daily_pnl_pct": float("nan")},
     ):
+        values = {
+            "equity": 1000.0,
+            "cash": 1000.0,
+            "strategy_capital_mxn": 1000.0,
+            "strategy_equity_mxn": 1000.0,
+            "strategy_daily_pnl_pct": 0.0,
+        }
+        values.update(invalid_kwargs)
         try:
-            AccountState(
-                equity=1000.0,
-                cash=1000.0,
-                strategy_capital_mxn=1000.0,
-                strategy_equity_mxn=1000.0,
-                strategy_daily_pnl_pct=0.0,
-                **invalid_kwargs,
-            )
+            AccountState(**values)
         except (TypeError, ValueError):
             continue
         invalid_account_inputs_rejected = False
