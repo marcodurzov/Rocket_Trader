@@ -61,7 +61,7 @@ class PaperReconciliationTests(unittest.TestCase):
         self.assertEqual(result["ledger_operating_capital_mxn"], "1000")
         self.assertEqual(result["strategy_equity_status"], "AVAILABLE")
         self.assertEqual(result["strategy_equity_mxn"], "1000")
-        self.assertEqual(result["strategy_unrealized_pnl_mxn"], "0.00")
+        self.assertEqual(result["strategy_unrealized_pnl_mxn"], "0")
         self.assertTrue(result["strategy_equity_snapshot_hash"])
 
     def test_position_mismatch_blocks_reconciliation(self):
@@ -100,8 +100,8 @@ class PaperReconciliationTests(unittest.TestCase):
             now=NOW,
         )
         self.assertEqual(result["strategy_equity_status"], "AVAILABLE")
-        self.assertEqual(result["strategy_unrealized_pnl_mxn"], "1800.00")
-        self.assertEqual(result["strategy_equity_mxn"], "2800.00")
+        self.assertEqual(result["strategy_unrealized_pnl_mxn"], "1800")
+        self.assertEqual(result["strategy_equity_mxn"], "2800")
 
     def test_missing_broker_market_value_blocks_strategy_equity_only(self):
         broker = FakeBroker(positions=[
