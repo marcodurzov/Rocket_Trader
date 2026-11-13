@@ -1479,3 +1479,24 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 2. Add a read-only Paper cash snapshot adapter and connect the cash-ledger report to `AlpacaPaperReconciliationGate`; preserve the separate fee status and position status.
 3. Extend activity handling for supported equity/crypto corporate actions and corrections only with tested reversible accounting. Unknown activity types must continue to block.
 4. Keep `OBSERVE_ONLY` and orders disabled until end-to-end Paper evidence confirms positions, cash, fees and equity parity.
+
+
+### 2026-11-13 continuation — PR #204 runtime wiring and Paper cash anchor admin
+
+- PR #204 merged to main at `1897b9683271fa8b14341527f5cd6864b3061aaf`.
+- Added `AlpacaPaperUSDCashLedger(initialize=False)` to validate existing cash DB tables, append-only triggers, integrity and persisted account ID read-only. Missing or damaged DBs are rejected rather than recreated/repaired.
+- The observer runtime now supports optional `ROCKET_TRADER_CASH_LEDGER_ENABLED`; default is **false**. If explicitly enabled, it requires both the existing cash DB and Activity SSE inbox, requires `ALPACA_PAPER=true`, `ALPACA_LIVE_ENABLED=false`, `ROCKET_TRADER_EXECUTION_MODE=PAPER`, and obtains the active USD Paper account ID using a read-only `get_account()` call. It wires the existing cash ledger/inbox into the Paper reconciliation gate.
+- Added `rocket_trader_paper_cash_ledger_admin.py` to create the first immutable cash anchor. It verifies the local SSE inbox, captures its cursor before one read-only Paper `get_account()` snapshot, and records the broker cash anchor. Creating a new DB requires explicit `--initialize-db`; later rebases require explicit confirmation and a reason. It does not claim coverage or fee reconciliation.
+- Compose paths and image packaging updated. Runtime integration remains disabled by default; the runtime still passes `activity_coverage_complete=false` and `fee_reconciliation_complete=false`, so enabling the diagnostic path does not make the account gate complete.
+- Validation on PR and post-merge main succeeded: Paper reconciliation 12 tests + USD cash ledger 24 tests + Activity SSE consumer 26 tests; runtime/accounting suite passed 16 offline test modules (35, 10, 29, 10, 8, 6, 19, 12, 9, 12, 24, 5, 11, 11, 9 and 28 tests); Compose validation and Paper observer image build passed.
+- GHCR image published (not deployed): `ghcr.io/marcodurzov/rocket_trader:1897b9683271fa8b14341527f5cd6864b3061aaf`, digest `sha256:e5ea8ad71efe154bf4e80aa43db6857520c502b085507d6bf44b9c3f63c1d083`.
+- No persistent host was identified or accessed, no admin anchor command was run, no actual Paper account query was performed, no account activity was ingested from the user's environment, and no deployment/order/Live action occurred. Runtime remains OBSERVE_ONLY; progress remains **58%**.
+
+### Next blockers — real Paper evidence and metric eligibility
+
+1. Identify the actual persistent deployment host/volume and confirm the Activity SSE consumer and observer share the same durable `/app/data` volume. Do not assume a host or path from the repository alone.
+2. Run the Activity SSE consumer and confirm its durable inbox is healthy and replayed; local hash-chain validity alone is not proof of complete broker history.
+3. Run the Paper cash anchor admin command once on the real host after reviewing the cash snapshot and inbox cursor. Keep `ROCKET_TRADER_CASH_LEDGER_ENABLED=false` until the operator approves enabling the diagnostic integration.
+4. Implement a durable, cursor-bound coverage attestation that can be invalidated on SSE disconnect/drop/replay failure, plus fee-to-fill allocation attestation from the fee resolver. The current runtime intentionally asserts neither.
+5. Perform the read-only Paper account activity/cash/equity audit and prove position, cash, equity and fee parity across multiple sessions. Only then connect strategy equity/daily P&L metrics to Core risk and consider any capped Paper order test.
+6. Keep all Live order paths disabled. No backtest result or offline test is evidence of future profitability.
