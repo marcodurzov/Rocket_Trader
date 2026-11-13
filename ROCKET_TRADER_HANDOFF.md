@@ -1443,3 +1443,21 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Post-merge main CI also passed: Core Risk Safety `43355107307`, Drawdown Guard `43355107281`, Capital Policy `43355107324`, Crypto Paper Execution `43355107330`, Earned Growth `43355107424`, Paper Reconciliation `43355107410`, Activity Stager `43355107288`, and Engine/Capital Regression `43355107341`.
 - Critical integration gap remains: no current runtime caller produces the required durable MXN strategy-equity and daily-P&L metrics from reconciled positions, FIFO MXN cost basis and current market marks. Core therefore rejects new entries until that producer is implemented. This is intentional fail-closed behavior, not a completed trading integration.
 - No Paper account query, order, account mutation, persistent-host deployment or Live action occurred. Progress remains **58%**.
+
+
+### 2026-11-13 continuation — PR #198 MXN strategy-equity and session-return calculator
+
+- PR #198 merged to main at `011748ab192284797e3fa1c9e1551edc34915b7e`.
+- New `rocket_trader_strategy_equity.py` calculates strategy equity as the local ledger's operating capital plus unrealized P&L on FIFO open positions. It requires broker position quantities to match the ledger, a USD mark no older than two minutes for every open position, and a fresh timestamped FX quote. Unrealized MXN P&L uses current market value converted at current FX less each lot's persisted MXN FIFO cost basis.
+- Session P&L is flow-adjusted and expressed as a fraction (e.g. -0.05 = -5%), matching Core's `RiskConfig` convention. The opening baseline must be explicitly sourced as `VERIFIED_SESSION_OPEN` or `PREVIOUS_SESSION_CLOSE`; net external flows are a separate session input, not embedded in the opening baseline.
+- Metrics remain `OBSERVATION_ONLY_RECONCILIATION_INCOMPLETE` unless account reconciliation, cash/equity reconciliation and fee reconciliation are all explicitly clear. The module always returns `orders_enabled=false` and does not call a broker, mutate accounts, or wire into Core/runtime.
+- Dedicated workflow `43500526480` passed all 13 offline tests, including MXN mark-to-market, external-flow adjustment, fractional daily-return units, FX/mark freshness, position parity, baseline validity and independent cash/fee/account gates.
+- Important remaining integration work: this PR provides the calculator, not a durable baseline database or a production caller. The runtime is still OBSERVE_ONLY, no strategy metrics are being supplied to Core, and new entries remain blocked. Do not treat the module's ability to calculate metrics as proof of account-level reconciliation.
+- No real Paper API query, order, deployment or Live action occurred. Progress remains **58%**.
+
+### Next implementation gates
+
+1. Build a durable USD broker-cash ledger with explicit coverage of fills, fees, deposits/withdrawals, dividends/interest, journals, corporate actions and unknown activity codes. Unknown/unclassified activity must block parity, not be silently ignored.
+2. Reconcile broker cash/equity against that ledger and allocate every fee to the relevant execution or retain an explicit unresolved status.
+3. Persist verified session-opening equity and session external flows, then connect the calculator to the Paper observer. Only after these checks can Core receive `strategy_equity_mxn` and flow-adjusted `strategy_daily_pnl_pct`.
+4. Keep the observer `OBSERVE_ONLY` and orders disabled until the full Paper accounting chain is validated end to end.

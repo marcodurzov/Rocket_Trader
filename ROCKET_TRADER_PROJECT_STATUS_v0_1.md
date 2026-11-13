@@ -1059,3 +1059,14 @@ Core now requires finite `strategy_equity_mxn` and `strategy_daily_pnl_pct` when
 Validation: Core Risk Safety, Drawdown Guard (9 tests), Engine/Capital Regression, Paper Execution Safety, Crypto Paper Execution Safety, Capital Policy, Earned Growth and offline Paper activity static checks passed. All corresponding post-merge workflows on main passed. The real Paper audit job was skipped on the PR event.
 
 No runtime component currently supplies the complete durable strategy equity/daily P&L metrics. Core therefore remains blocked from new entries until that producer is integrated. No Paper account query, order, deployment or Live action occurred. Progress remains 58%.
+
+
+## 2026-11-13 — PR #198: MXN strategy-equity and session-return calculator
+
+PR #198 (`011748ab192284797e3fa1c9e1551edc34915b7e`) adds a deterministic calculator for MXN strategy equity and flow-adjusted session P&L. It marks local FIFO positions using broker USD marks and current FX, subtracts each lot's persisted MXN cost basis, and adds unrealized P&L to operating capital. Position quantities must match the local ledger; marks must be timestamped and no older than two minutes; FX must be fresh. Daily P&L is a fraction compatible with Core risk thresholds and excludes separately supplied session net external flows.
+
+The calculator remains observation-only until account, USD cash/equity and fee reconciliation are all explicitly complete. It always sets `orders_enabled=false` and is not yet wired to Core or the observer. The session baseline must be loaded from durable storage by a future caller; this PR does not implement that store or production integration.
+
+Validation: dedicated workflow `43500526480` passed 13 offline tests. No Paper account query, order, deployment or Live action occurred. Progress remains 58%.
+
+Next gates: implement durable USD cash/activity accounting with unknown activity quarantine; reconcile broker cash/equity; resolve/allocate all fees; persist session baselines and flows; integrate the calculator into the observer only after the reconciliation chain is complete.
