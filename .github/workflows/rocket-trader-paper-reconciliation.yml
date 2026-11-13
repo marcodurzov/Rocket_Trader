@@ -4,14 +4,9 @@ on:
   push:
     branches:
       - main
-      - "feat/paper-account-reconciliation-gate"
     paths:
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_paper_reconciliation_test.py"
-      - "rocket_trader_alpaca_cash_ledger.py"
-      - "rocket_trader_alpaca_cash_ledger_test.py"
-      - "rocket_trader_alpaca_activity_sse_consumer.py"
-      - "rocket_trader_alpaca_activity_sse_consumer_test.py"
       - "rocket_trader_alpaca_cash_ledger.py"
       - "rocket_trader_alpaca_cash_ledger_test.py"
       - "rocket_trader_alpaca_activity_sse_consumer.py"
@@ -27,6 +22,10 @@ on:
     paths:
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_paper_reconciliation_test.py"
+      - "rocket_trader_alpaca_cash_ledger.py"
+      - "rocket_trader_alpaca_cash_ledger_test.py"
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
+      - "rocket_trader_alpaca_activity_sse_consumer_test.py"
       - "rocket_trader_currency.py"
       - ".github/workflows/rocket-trader-paper-reconciliation.yml"
   workflow_dispatch:
@@ -45,5 +44,9 @@ jobs:
           python-version: "3.12"
       - name: Compile
         run: python -m py_compile rocket_trader_paper_reconciliation.py rocket_trader_paper_reconciliation_test.py rocket_trader_alpaca_cash_ledger.py rocket_trader_alpaca_cash_ledger_test.py rocket_trader_alpaca_activity_sse_consumer.py rocket_trader_alpaca_activity_sse_consumer_test.py
-      - name: Run offline reconciliation tests
+      - name: Run offline Paper reconciliation tests
         run: python -m unittest -v rocket_trader_paper_reconciliation_test.py
+      - name: Run offline USD cash ledger tests
+        run: python -m unittest -v rocket_trader_alpaca_cash_ledger_test.py
+      - name: Run offline Activity SSE consumer tests
+        run: python -m unittest -v rocket_trader_alpaca_activity_sse_consumer_test.py
