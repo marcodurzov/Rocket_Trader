@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `d546ad771025888be2a34553c96ab4d08669f856` (PR #193 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `231332e16b3411cf660f2f5ec1eefdeac493d99d` (PR #194 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1447,3 +1447,18 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Review found that AlpacaPaperReconciliationGate returned status=RECONCILED when position quantities matched, although it only observed broker cash/equity and did not compare them to a local USD cash ledger. That label could be mistaken for full account reconciliation.
 - The proposed status is POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE; it separately reports position match, cash_reconciliation_status=NOT_IMPLEMENTED_NO_USD_CASH_LEDGER, account_reconciliation_complete=false, and that broker cash/equity are observations only. Position mismatches remain blocked.
 - Full cash/equity/P&L parity remains an open accounting requirement. No broker API call or account mutation is part of this change.
+
+
+### 2026-11-12 continuation — PR #194 position-only reconciliation status
+
+- PR #194 merged to main at `231332e16b3411cf660f2f5ec1eefdeac493d99d`.
+- `AlpacaPaperReconciliationGate` no longer emits `RECONCILED` when only position quantities match. It reports `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE`, separates position status from cash status, sets `account_reconciliation_complete=false`, and labels broker cash/equity as observations only.
+- The observer runtime now keeps the position-comparison component healthy when quantities match but keeps the overall container healthcheck false until full account cash/equity parity is implemented. Position mismatches remain errors.
+- Workflow `43353616669` passed all 7 Paper reconciliation tests. Workflow `43353616666` passed the offline runtime/accounting suite: 32 runtime, 10 telemetry, 29 ledger, 10 fill-bridge, 8 fee-resolver, 6 FX provider, 19 activity-stager, 12 cash bridge, 9 Paper activity reconciliation, 7 Paper position reconciliation, 11 regime observer, 11 regime selector, 9 news assessment and 28 ETF cross-check tests. Workflow `43353616693` passed 26 durable SSE tests and Compose validation. Workflow `43353616662` passed Compose, image build and packaging. Workflow `43353616687` passed 37 offline audit tests; its real Paper audit job was skipped on the PR event.
+- No broker activity query, order, account mutation, deployment or Live action occurred. Progress remains **58%**.
+
+### Remaining operational gates
+
+- Run the manual read-only Paper activity audit through GitHub Actions `workflow_dispatch` with the configured Paper secrets. A PR or push check is intentionally not a real account query.
+- Identify the actual persistent ledger location before any FX-accounting migration. The new accounting method blocks legacy ledgers with fills or immutable monthly closes; no persistent ledger has been accessed or migrated.
+- Implement durable USD cash/settlement/fee accounting and broker-to-ledger parity before the Paper observer can report overall health as ready. The current position comparison alone is not enough.
