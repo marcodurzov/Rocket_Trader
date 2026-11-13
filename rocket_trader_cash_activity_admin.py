@@ -10,8 +10,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
+import sys
+from pathlib import Path
+from urllib.parse import quote
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
 from rocket_trader_alpaca_cash_activity_bridge import AlpacaCashActivityBridge
@@ -28,6 +32,78 @@ def _fx_from_args(args):
     if raw.endswith("Z"):
         raw = raw[:-1] + "+00:00"
     return LedgerFX(Decimal(args.fx_rate), datetime.fromisoformat(raw), args.fx_source)
+
+
+def _require_existing_state(ledger_path: str, stager_path: str) -> None:
+    """Refuse to initialize a missing, empty, or wrong persistent database."""
+    ledger_file = Path(ledger_path).expanduser()
+    stager_file = Path(stager_path).expanduser()
+    if not ledger_file.is_file():
+        raise ValueError("Existing realized-P&L ledger database is missing; refusing to create a replacement.")
+    if not stager_file.is_file():
+        raise ValueError("Existing activity-stager database is missing; refusing to create a replacement.")
+    if ledger_file.resolve() == stager_file.resolve():
+        raise ValueError("Ledger and activity-stager databases must be separate files.")
+
+    def read_tables(path: Path):
+        uri = "file:" + quote(str(path.resolve()), safe="/") + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        try:
+            names = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()}
+            triggers = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            ).fetchall()}
+            return names, triggers, conn
+        except Exception:
+            conn.close()
+            raise
+
+    ledger_tables, ledger_triggers, ledger_conn = read_tables(ledger_file)
+    try:
+        required = {"ledger_meta", "ledger_events", "monthly_closes"}
+        if not required.issubset(ledger_tables):
+            raise ValueError("Existing realized-P&L ledger is missing required tables; refusing initialization.")
+        required_triggers = {
+            "ledger_events_no_update", "ledger_events_no_delete",
+            "monthly_closes_no_update", "monthly_closes_no_delete",
+        }
+        if not required_triggers.issubset(ledger_triggers):
+            raise ValueError("Existing realized-P&L ledger is missing append-only triggers; refusing initialization.")
+        meta = dict(ledger_conn.execute("SELECT key,value FROM ledger_meta").fetchall())
+        if meta.get("schema_version") != "1":
+            raise ValueError("Existing realized-P&L ledger schema version is missing or unsupported.")
+        configured_policy = {
+            "initial_capital_mxn": os.getenv("ROCKET_TRADER_INITIAL_CAPITAL_MXN", "1000.00"),
+            "milestone_mxn": os.getenv("ROCKET_TRADER_MILESTONE_MXN", "100000.00"),
+        }
+        for key, configured_value in configured_policy.items():
+            try:
+                stored_value = Decimal(meta[key])
+                expected_value = Decimal(configured_value)
+            except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
+                raise ValueError("Existing realized-P&L ledger capital policy metadata is missing or invalid.") from exc
+            if stored_value != expected_value:
+                raise ValueError("Configured capital policy differs from the existing realized-P&L ledger.")
+        initial = ledger_conn.execute(
+            "SELECT 1 FROM ledger_events WHERE event_id='SYSTEM-INITIAL-CAPITAL' AND event_type='INITIAL_CAPITAL'"
+        ).fetchone()
+        if not initial:
+            raise ValueError("Existing realized-P&L ledger has no initial-capital event; refusing initialization.")
+    finally:
+        ledger_conn.close()
+
+    stager_tables, stager_triggers, stager_conn = read_tables(stager_file)
+    try:
+        required = {"staged_activities", "activity_stager_meta"}
+        if not required.issubset(stager_tables):
+            raise ValueError("Existing activity-stager database is missing required tables; refusing initialization.")
+        required_triggers = {"staged_activities_no_update", "staged_activities_no_delete"}
+        if not required_triggers.issubset(stager_triggers):
+            raise ValueError("Existing activity-stager database is missing append-only triggers; refusing initialization.")
+    finally:
+        stager_conn.close()
 
 
 def main() -> int:
@@ -51,6 +127,12 @@ def main() -> int:
         "ROCKET_TRADER_ACTIVITY_STAGER_DB",
         os.path.join(parent, "rocket_trader_activity_stager.sqlite3"),
     )
+    try:
+        _require_existing_state(ledger_path, stager_path)
+    except (OSError, sqlite3.Error, ValueError) as exc:
+        print(f"Cash activity admin refused unsafe persistent state: {exc}", file=sys.stderr)
+        return 1
+
     ledger = RealizedPnLLedger(
         ledger_path,
         initial_capital_mxn=os.getenv("ROCKET_TRADER_INITIAL_CAPITAL_MXN", "1000.00"),

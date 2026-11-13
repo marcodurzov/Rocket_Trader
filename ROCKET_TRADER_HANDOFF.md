@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `15ee36705909b3a15fb7d722a1d342191422b06e` (PR #188 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `5d9dc98ffa99763cd66095dca51da9e0575ecdbf` (PR #189 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1395,3 +1395,10 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 - The read-only audit no longer returns top-level SUCCESS when fill quantities/prices match but fee activities remain unallocated or unknown. It now reports `fill_reconciliation_status=ALL_ORDERS_MATCHED`, `fee_reconciliation_status=UNRESOLVED`, and `status=FILLS_MATCHED_FEES_UNRESOLVED` with exit code 2. A fill mismatch remains exit code 1; preflight/provider failures remain exit code 1.
 - Workflow `43351716511` passed 28 activity-reader tests. Workflow `43351716505` passed compile and 37 audit/SSE/reconciliation tests. Its live Paper API audit job was skipped because this was a pull-request event.
 - The manual workflow_dispatch remains the only real Paper account audit path. No live Paper query, order, account mutation or Live action occurred in PR checks.
+
+
+### 2026-11-12 continuation — cash activity admin persistent-state finding (PR pending)
+
+- Review found `rocket_trader_cash_activity_admin.py --list` constructed `RealizedPnLLedger` and `AlpacaPaperActivityStager` before checking that the configured persistent databases existed. Both constructors initialize schemas, so a missing path could silently become a fresh empty ledger/stager and present a misleading empty review state.
+- The proposed guard checks existing files, separate paths, required tables, ledger schema version and initial-capital event using read-only SQLite connections before constructing either component. Missing/empty/corrupt state fails closed without creating or modifying replacement databases.
+- Offline tests cover missing files, empty SQLite files and listing with valid existing state. No broker network call is part of this CLI.
