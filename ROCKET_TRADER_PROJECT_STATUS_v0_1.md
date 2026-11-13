@@ -1053,3 +1053,8 @@ Validation: 7 Paper reconciliation tests passed; observer runtime/accounting sui
 ## 2026-11-13 — Strategy risk denominators (PR pending)
 
 The Core previously used broker Paper equity in USD as the denominator for daily-loss and persistent drawdown protection even though the strategy allocation and sizing budget are in MXN. A large virtual Paper account could make those limits ineffective relative to the strategy's MXN 1,000 seed. The proposed guard requires strategy equity and daily P&L metrics in MXN, fails closed when absent, and stores a currency-marked MXN drawdown high-water mark. No current runtime integration supplies a complete durable strategy-equity snapshot yet, so entries remain blocked until that integration is implemented.
+
+
+## 2026-11-13 — MXN strategy risk denominators (PR pending)
+
+Core daily-loss and persistent drawdown controls previously used Alpaca broker equity in USD even though strategy sizing used an allocated capital balance in MXN. A large virtual Paper balance could make those percentage limits ineffective relative to the MXN 1,000 strategy. The proposed correction requires explicit current strategy equity and daily P&L metrics in MXN, fails closed when missing, and marks the persistent drawdown state currency as MXN. The existing USD broker floor remains an additional emergency control. No current runtime integration supplies the required durable strategy risk metrics, so entries remain blocked until that integration is complete.
