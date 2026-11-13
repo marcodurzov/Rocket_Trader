@@ -78,7 +78,7 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         report = self.ledger.reconcile(
             broker_cash_usd="998", broker_account_id=ACCOUNT,
             observed_at=NOW, activity_coverage_complete=True,
-            fee_reconciliation_complete=True,
+            fee_reconciliation_complete=False,
         )
         self.assertEqual(report["fee_reconciliation_status"], "UNRESOLVED")
         self.assertEqual(report["pending_fee_allocation_count"], 1)
