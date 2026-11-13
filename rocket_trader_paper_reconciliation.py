@@ -84,6 +84,8 @@ class AlpacaPaperReconciliationGate:
         fee_reconciliation_reference: Optional[str] = None,
         fee_reconciliation_checked_at: Optional[datetime] = None,
     ) -> Dict[str, Any]:
+        if not isinstance(fx_quote, FXQuote):
+            raise PaperReconciliationError("A validated FXQuote is required")
         current = now
         if current is not None and (current.tzinfo is None or current.utcoffset() is None):
             raise PaperReconciliationError("now must be timezone-aware")
