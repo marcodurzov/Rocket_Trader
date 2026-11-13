@@ -22,9 +22,9 @@ services:
       ROCKET_TRADER_LEDGER_INBOX_DB: /app/data/rocket_trader_fill_inbox.sqlite3
       ROCKET_TRADER_INITIAL_CAPITAL_MXN: "1000.00"
       ROCKET_TRADER_MILESTONE_MXN: "100000.00"
-      ROCKET_TRADER_CASH_LEDGER_ENABLED: "false"
-      ROCKET_TRADER_CASH_LEDGER_DB: /app/data/rocket_trader_paper_cash.sqlite3
-      ROCKET_TRADER_ACTIVITY_SSE_DB: /app/data/rocket_trader_activity_sse.sqlite3
+      ROCKET_TRADER_CASH_LEDGER_ENABLED: ${ROCKET_TRADER_CASH_LEDGER_ENABLED:-false}
+      ROCKET_TRADER_CASH_LEDGER_DB: ${ROCKET_TRADER_CASH_LEDGER_DB:-/app/data/rocket_trader_paper_cash.sqlite3}
+      ROCKET_TRADER_ACTIVITY_SSE_DB: ${ROCKET_TRADER_ACTIVITY_SSE_DB:-/app/data/rocket_trader_activity_sse.sqlite3}
     volumes:
       - rocket_trader_data:/app/data
     healthcheck:
