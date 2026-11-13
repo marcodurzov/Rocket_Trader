@@ -287,6 +287,7 @@ class RealizedPnLLedger:
             events = source.execute(
                 "SELECT event_id,event_type,occurred_at,payload_json,payload_hash FROM ledger_events ORDER BY seq"
             ).fetchall()
+            source_max_seq = source.execute("SELECT MAX(seq) FROM ledger_events").fetchone()[0]
             if not any(
                 row["event_id"] == "SYSTEM-INITIAL-CAPITAL" and row["event_type"] == "INITIAL_CAPITAL"
                 for row in events
@@ -328,8 +329,14 @@ class RealizedPnLLedger:
             try:
                 source.backup(target)
                 integrity = target.execute("PRAGMA integrity_check").fetchone()[0]
-                if integrity != "ok":
-                    raise LedgerError("SQLite backup integrity check failed")
+                backup_event_count = target.execute("SELECT COUNT(*) FROM ledger_events").fetchone()[0]
+                backup_max_seq = target.execute("SELECT MAX(seq) FROM ledger_events").fetchone()[0]
+                if (
+                    integrity != "ok"
+                    or backup_event_count != len(events)
+                    or backup_max_seq != source_max_seq
+                ):
+                    raise LedgerError("SQLite backup integrity or event-count verification failed")
             finally:
                 target.close()
         finally:
@@ -348,6 +355,10 @@ class RealizedPnLLedger:
                 raise LedgerError("Ledger accounting method changed during migration")
             if conn.execute("SELECT 1 FROM monthly_closes LIMIT 1").fetchone():
                 raise LedgerError("A monthly close appeared during migration; migration refused")
+            current_event_count = conn.execute("SELECT COUNT(*) FROM ledger_events").fetchone()[0]
+            current_max_seq = conn.execute("SELECT MAX(seq) FROM ledger_events").fetchone()[0]
+            if current_event_count != len(events) or current_max_seq != source_max_seq:
+                raise LedgerError("Ledger changed after backup; migration refused")
             conn.execute(
                 "INSERT INTO ledger_meta(key,value) VALUES(?,?)",
                 (PNL_ACCOUNTING_METHOD_KEY, PNL_ACCOUNTING_METHOD),
@@ -362,6 +373,7 @@ class RealizedPnLLedger:
                     "to_method": PNL_ACCOUNTING_METHOD,
                     "backup_sha256": backup_digest,
                     "legacy_fill_count": fill_count,
+                    "legacy_event_count": len(events),
                     "monthly_closes_present": False,
                 },
             )
