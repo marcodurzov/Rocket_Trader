@@ -301,6 +301,78 @@ class AlpacaPaperUSDCashLedger:
             "cash_delta_usd": None if cash_delta is None else str(cash_delta),
         }
 
+    def ingest_from_activity_sse_inbox(
+        self,
+        *,
+        inbox_db_path: str,
+        page_size: int = 1000,
+    ) -> Dict[str, Any]:
+        """Verify and idempotently ingest every staged Activity SSE payload.
+
+        Inbox hash-chain validity proves local integrity, not completeness of
+        the broker stream. This method therefore never sets the coverage flag;
+        a separate successful replay/catch-up attestation is required by
+        reconcile().
+        """
+        if not isinstance(inbox_db_path, str) or not inbox_db_path.strip():
+            raise PaperCashLedgerError("A durable Activity SSE inbox path is required")
+        if not isinstance(page_size, int) or not 1 <= page_size <= 10000:
+            raise PaperCashLedgerError("page_size must be from 1 to 10000")
+        from rocket_trader_alpaca_activity_sse_consumer import (
+            ActivitySSEConsumerError, DurableActivitySSEInbox,
+        )
+
+        inbox_path = Path(inbox_db_path).expanduser().resolve()
+        if not inbox_path.is_file():
+            raise PaperCashLedgerError("Activity SSE inbox database does not exist")
+        try:
+            inbox = DurableActivitySSEInbox(str(inbox_path), initialize=False)
+            integrity = inbox.verify()
+        except (ActivitySSEConsumerError, sqlite3.Error, ValueError) as exc:
+            raise PaperCashLedgerError("Activity SSE inbox integrity verification failed") from exc
+        if not isinstance(integrity, dict) or integrity.get("valid") is not True:
+            raise PaperCashLedgerError("Activity SSE inbox integrity check failed: hash chain/cursor is invalid")
+
+        uri = f"file:{inbox_path.as_posix()}?mode=ro"
+        staged = duplicates = 0
+        last_sequence = 0
+        try:
+            with sqlite3.connect(uri, uri=True, timeout=30) as conn:
+                conn.execute("PRAGMA query_only=ON")
+                while True:
+                    rows = conn.execute(
+                        """SELECT sequence,payload_json FROM activity_sse_events
+                           WHERE sequence>? ORDER BY sequence LIMIT ?""",
+                        (last_sequence, page_size),
+                    ).fetchall()
+                    if not rows:
+                        break
+                    for sequence, payload_json in rows:
+                        try:
+                            payload = json.loads(payload_json)
+                        except (TypeError, ValueError) as exc:
+                            raise PaperCashLedgerError(
+                                "Verified Activity SSE payload could not be decoded"
+                            ) from exc
+                        result = self.ingest_activity(payload)
+                        if result["status"] == "STAGED":
+                            staged += 1
+                        else:
+                            duplicates += 1
+                        last_sequence = int(sequence)
+        except sqlite3.Error as exc:
+            raise PaperCashLedgerError("Could not read Activity SSE inbox in read-only mode") from exc
+        return {
+            "status": "INBOX_INGESTED_COVERAGE_NOT_ATTESTED",
+            "staged_count": staged,
+            "duplicate_count": duplicates,
+            "last_sequence": last_sequence,
+            "activity_cursor": integrity.get("cursor"),
+            "inbox_integrity_valid": True,
+            "activity_coverage_complete": False,
+            "orders_enabled": False,
+        }
+
     def reconcile(
         self,
         *,
@@ -308,7 +380,11 @@ class AlpacaPaperUSDCashLedger:
         broker_account_id: str,
         observed_at: Any,
         activity_coverage_complete: bool,
+        activity_coverage_reference: Optional[str] = None,
+        activity_coverage_checked_at: Optional[Any] = None,
         fee_reconciliation_complete: bool = False,
+        fee_reconciliation_reference: Optional[str] = None,
+        fee_reconciliation_checked_at: Optional[Any] = None,
         tolerance_usd: Any = "0.01",
     ) -> Dict[str, Any]:
         current_cash = _decimal(broker_cash_usd, "broker_cash_usd")
@@ -318,6 +394,22 @@ class AlpacaPaperUSDCashLedger:
             raise PaperCashLedgerError("Broker cash and tolerance cannot be negative")
         if not isinstance(activity_coverage_complete, bool) or not isinstance(fee_reconciliation_complete, bool):
             raise PaperCashLedgerError("Reconciliation completeness flags must be booleans")
+        coverage_reference = str(activity_coverage_reference or "").strip()
+        coverage_checked_at = None
+        fee_reference = str(fee_reconciliation_reference or "").strip()
+        fee_checked_at = None
+        if activity_coverage_complete:
+            if not coverage_reference or activity_coverage_checked_at is None:
+                raise PaperCashLedgerError(
+                    "Complete activity coverage requires a traceable reference and checked_at timestamp"
+                )
+            coverage_checked_at = _iso(_timestamp(activity_coverage_checked_at, "activity coverage checked_at"))
+        if fee_reconciliation_complete:
+            if not activity_coverage_complete or not fee_reference or fee_reconciliation_checked_at is None:
+                raise PaperCashLedgerError(
+                    "Complete fee reconciliation requires complete activity coverage, a reference and checked_at"
+                )
+            fee_checked_at = _iso(_timestamp(fee_reconciliation_checked_at, "fee reconciliation checked_at"))
         if str(broker_account_id).strip() != self.account_id:
             raise PaperCashLedgerError("Broker account ID does not match cash ledger")
 
@@ -405,5 +497,9 @@ class AlpacaPaperUSDCashLedger:
             "difference_usd": str(difference),
             "tolerance_usd": str(tolerance),
             "activity_coverage_complete": activity_coverage_complete,
+            "activity_coverage_reference": coverage_reference or None,
+            "activity_coverage_checked_at": coverage_checked_at,
+            "fee_reconciliation_reference": fee_reference or None,
+            "fee_reconciliation_checked_at": fee_checked_at,
             "orders_enabled": False,
         }
