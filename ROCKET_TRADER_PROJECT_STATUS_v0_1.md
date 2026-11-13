@@ -1041,3 +1041,10 @@ No persistent ledger was accessed/migrated and no real Paper query, order, accou
 ## 2026-11-12 — Paper position reconciliation status correction (PR pending)
 
 The Paper reconciliation gate previously returned RECONCILED when positions matched, despite not reconciling broker USD cash/equity to a local USD cash ledger. The proposed output explicitly distinguishes position match from full account reconciliation and reports cash reconciliation as not implemented. Full cash/equity/P&L parity remains a blocker. No broker query, order or account mutation is added.
+
+
+## 2026-11-12 — PR #194: position match is not full account reconciliation
+
+PR #194 (`231332e16b3411cf660f2f5ec1eefdeac493d99d`) removes the misleading `RECONCILED` status from the Paper position gate. Matching broker position quantities now produce `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE`; broker cash/equity are observations only, and full account reconciliation remains false. The runtime healthcheck keeps overall readiness false until USD cash/settlement/fee parity is implemented, while still distinguishing a healthy position comparison from a position mismatch.
+
+Validation: 7 Paper reconciliation tests passed; observer runtime/accounting suites passed (including 32 runtime tests, 29 ledger tests, 19 activity-stager tests and 28 ETF cross-check tests); 26 durable SSE tests passed; container build/packaging passed; 37 offline audit tests passed. The actual Paper audit job was skipped on PR events. No real Paper query or order occurred. Progress remains 58%.
