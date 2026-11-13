@@ -385,12 +385,25 @@ class AlpacaPaperUSDCashLedger:
         fee_reconciliation_complete: bool = False,
         fee_reconciliation_reference: Optional[str] = None,
         fee_reconciliation_checked_at: Optional[Any] = None,
+        broker_equity_usd: Optional[Any] = None,
+        broker_positions_market_value_usd: Optional[Any] = None,
+        equity_tolerance_usd: Optional[Any] = None,
         tolerance_usd: Any = "0.01",
     ) -> Dict[str, Any]:
         current_cash = _decimal(broker_cash_usd, "broker_cash_usd")
         current_time = _timestamp(observed_at, "broker cash observed_at")
         tolerance = _decimal(tolerance_usd, "tolerance_usd")
-        if current_cash < 0 or tolerance < 0:
+        equity_inputs_provided = broker_equity_usd is not None or broker_positions_market_value_usd is not None
+        if equity_inputs_provided and (broker_equity_usd is None or broker_positions_market_value_usd is None):
+            raise PaperCashLedgerError("Broker equity and position market value must be provided together")
+        broker_equity = None if broker_equity_usd is None else _decimal(broker_equity_usd, "broker_equity_usd")
+        position_market_value = None if broker_positions_market_value_usd is None else _decimal(
+            broker_positions_market_value_usd, "broker_positions_market_value_usd"
+        )
+        equity_tolerance = tolerance if equity_tolerance_usd is None else _decimal(
+            equity_tolerance_usd, "equity_tolerance_usd"
+        )
+        if current_cash < 0 or tolerance < 0 or equity_tolerance < 0 or (broker_equity is not None and broker_equity < 0) or (position_market_value is not None and position_market_value < 0):
             raise PaperCashLedgerError("Broker cash and tolerance cannot be negative")
         if not isinstance(activity_coverage_complete, bool) or not isinstance(fee_reconciliation_complete, bool):
             raise PaperCashLedgerError("Reconciliation completeness flags must be booleans")
@@ -473,6 +486,26 @@ class AlpacaPaperUSDCashLedger:
         # The independent fee resolver owns allocation evidence. Its explicit
         # completion flag may clear candidates that this cash mirror cannot
         # allocate by itself (e.g. volume fees without parent_id).
+        if broker_equity is None or position_market_value is None:
+            equity_status = "NOT_PROVIDED"
+            expected_equity = None
+            equity_difference = None
+        elif status != "RECONCILED":
+            equity_status = "CASH_RECONCILIATION_INCOMPLETE"
+            expected_equity = expected_cash + position_market_value
+            equity_difference = broker_equity - expected_equity
+        else:
+            expected_equity = expected_cash + position_market_value
+            equity_difference = broker_equity - expected_equity
+            equity_status = (
+                "RECONCILED"
+                if abs(equity_difference) <= equity_tolerance
+                else "EQUITY_BALANCE_MISMATCH"
+            )
+        account_cash_equity_complete = (
+            status == "RECONCILED" and equity_status == "RECONCILED"
+        )
+
         fee_status = (
             "RECONCILED"
             if fee_reconciliation_complete is True and activity_coverage_complete and not unsupported
@@ -483,6 +516,13 @@ class AlpacaPaperUSDCashLedger:
             "status": status,
             "cash_reconciliation_status": status,
             "account_cash_reconciliation_complete": status == "RECONCILED",
+            "account_equity_reconciliation_status": equity_status,
+            "account_cash_equity_reconciliation_complete": account_cash_equity_complete,
+            "expected_account_equity_usd": None if expected_equity is None else str(expected_equity),
+            "broker_equity_usd": None if broker_equity is None else str(broker_equity),
+            "broker_positions_market_value_usd": None if position_market_value is None else str(position_market_value),
+            "equity_difference_usd": None if equity_difference is None else str(equity_difference),
+            "equity_tolerance_usd": str(equity_tolerance),
             "fee_reconciliation_status": fee_status,
             "fee_activity_count": len(fee_rows),
             "pending_fee_allocation_count": 0 if fee_status == "RECONCILED" else len(pending_fees),
