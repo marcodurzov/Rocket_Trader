@@ -8,6 +8,8 @@ on:
     paths:
       - "rocket_trader_alpaca_activity_stager.py"
       - "rocket_trader_alpaca_activity_stager_test.py"
+      - "ROCKET_TRADER_HANDOFF.md"
+      - "ROCKET_TRADER_PROJECT_STATUS_v0_1.md"
       - ".github/workflows/rocket-trader-activity-stager.yml"
   pull_request:
     branches:

@@ -257,8 +257,8 @@ class AlpacaPaperActivityStager:
         }
 
     def sync(self, *, max_pages: int = 10) -> Dict[str, Any]:
-        if max_pages < 1:
-            raise ActivityIngestionError("max_pages must be >= 1")
+        if isinstance(max_pages, bool) or not isinstance(max_pages, int) or max_pages < 1:
+            raise ActivityIngestionError("max_pages must be a positive integer")
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT value FROM activity_stager_meta WHERE key='cursor'"
@@ -266,9 +266,13 @@ class AlpacaPaperActivityStager:
         cursor = row["value"] if row else None
         totals = Counter()
         pages = 0
+        pagination_complete = False
+        sync_status = "PAGE_LIMIT_REACHED"
         for _ in range(max_pages):
             rows = self.fetch_page(cursor, self.page_size)
             if not rows:
+                pagination_complete = True
+                sync_status = "EXHAUSTED"
                 break
             result = self.stage_page(rows)
             totals.update({
@@ -276,9 +280,15 @@ class AlpacaPaperActivityStager:
                 "duplicates": result["duplicates"],
                 "blocked": result["blocked"],
             })
-            cursor = result["last_activity_id"] or cursor
+            next_cursor = result["last_activity_id"] or cursor
             pages += 1
+            if next_cursor == cursor:
+                sync_status = "CURSOR_STALLED"
+                break
+            cursor = next_cursor
             if len(rows) < self.page_size:
+                pagination_complete = True
+                sync_status = "EXHAUSTED"
                 break
         report = self.report()
         report.update({
@@ -287,6 +297,10 @@ class AlpacaPaperActivityStager:
             "duplicates_this_sync": totals["duplicates"],
             "blocked_this_sync": totals["blocked"],
             "cursor": cursor,
+            "pagination_complete": pagination_complete,
+            "sync_complete": pagination_complete,
+            "sync_status": sync_status,
+            "orders_enabled": False,
         })
         return report
 

@@ -43,6 +43,43 @@ class ActivityStagerTests(unittest.TestCase):
             db_path=self.db, fetch_page=fetch, page_size=page_size
         )
 
+    def test_full_final_page_at_page_limit_is_explicitly_incomplete(self):
+        stager = self.make([[fill("fill-1")]], page_size=1)
+        report = stager.sync(max_pages=1)
+        self.assertEqual(report["pages_fetched"], 1)
+        self.assertEqual(report["sync_status"], "PAGE_LIMIT_REACHED")
+        self.assertFalse(report["pagination_complete"])
+        self.assertFalse(report["sync_complete"])
+
+    def test_short_page_proves_pagination_exhausted(self):
+        stager = self.make([[fill("fill-1")]], page_size=2)
+        report = stager.sync(max_pages=1)
+        self.assertEqual(report["sync_status"], "EXHAUSTED")
+        self.assertTrue(report["pagination_complete"])
+
+    def test_empty_first_page_proves_pagination_exhausted(self):
+        stager = self.make([[]], page_size=1)
+        report = stager.sync(max_pages=1)
+        self.assertEqual(report["pages_fetched"], 0)
+        self.assertEqual(report["sync_status"], "EXHAUSTED")
+        self.assertTrue(report["pagination_complete"])
+
+    def test_repeated_cursor_is_not_reported_as_complete(self):
+        stager = self.make([[fill("fill-1")], [fill("fill-1")]], page_size=1)
+        first = stager.sync(max_pages=1)
+        self.assertFalse(first["sync_complete"])
+        second = stager.sync(max_pages=1)
+        self.assertEqual(second["sync_status"], "CURSOR_STALLED")
+        self.assertFalse(second["sync_complete"])
+        self.assertEqual(second["duplicates_this_sync"], 1)
+
+    def test_max_pages_must_be_positive_integer_not_boolean(self):
+        stager = self.make([[]])
+        for value in (0, -1, True, 1.5, "2"):
+            with self.subTest(value=value):
+                with self.assertRaises(ActivityIngestionError):
+                    stager.sync(max_pages=value)
+
     def test_stages_fill_but_never_marks_it_ledger_ready(self):
         stager = self.make([[fill()]])
         report = stager.sync()
