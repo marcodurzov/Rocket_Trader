@@ -331,7 +331,7 @@ class AlpacaPaperUSDCashLedger:
         except (ActivitySSEConsumerError, sqlite3.Error, ValueError) as exc:
             raise PaperCashLedgerError("Activity SSE inbox integrity verification failed") from exc
         if not isinstance(integrity, dict) or integrity.get("valid") is not True:
-            raise PaperCashLedgerError("Activity SSE inbox hash chain/cursor is invalid")
+            raise PaperCashLedgerError("Activity SSE inbox integrity check failed: hash chain/cursor is invalid")
 
         uri = f"file:{inbox_path.as_posix()}?mode=ro"
         staged = duplicates = 0
