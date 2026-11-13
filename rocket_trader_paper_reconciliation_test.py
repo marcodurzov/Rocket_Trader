@@ -39,7 +39,7 @@ class PaperReconciliationTests(unittest.TestCase):
             "open_positions": positions or {},
         }
 
-    def test_matching_crypto_position_reconciles_without_authorizing_orders(self):
+    def test_matching_crypto_position_is_not_full_account_reconciliation(self):
         broker = FakeBroker(positions=[
             SimpleNamespace(symbol="BTCUSD", qty="0.0099")
         ])
