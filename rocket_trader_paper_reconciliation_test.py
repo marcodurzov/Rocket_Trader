@@ -3,24 +3,29 @@
 """Offline tests for read-only Paper account/position reconciliation."""
 
 import unittest
+import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 
 from rocket_trader_currency import FXQuote
+from rocket_trader_alpaca_cash_ledger import AlpacaPaperUSDCashLedger
+from rocket_trader_alpaca_activity_sse_consumer import DurableActivitySSEInbox
 from rocket_trader_paper_reconciliation import (
     AlpacaPaperReconciliationGate, PaperReconciliationError,
 )
 
 
 NOW = datetime(2026, 11, 9, 16, 0, tzinfo=timezone.utc)
+ACCOUNT = "paper-account-1"
 FX = FXQuote(Decimal("18"), NOW, "OFFLINE_TEST_FIXTURE")
 
 
 class FakeBroker:
     def __init__(self, *, account=None, positions=None):
         self.account = account or SimpleNamespace(
-            status="ACTIVE", currency="USD", trading_blocked=False,
+            id=ACCOUNT, status="ACTIVE", currency="USD", trading_blocked=False,
             cash="100", equity="120",
         )
         self.positions = positions or []
@@ -38,6 +43,105 @@ class PaperReconciliationTests(unittest.TestCase):
             "operating_capital_mxn": capital,
             "open_positions": positions or {},
         }
+
+    def _cash_reconciliation_fixture(self, *, broker_equity="100", broker_cash="90"):
+        tmp = tempfile.TemporaryDirectory()
+        cash_db = os.path.join(tmp.name, "paper-cash.sqlite3")
+        inbox_db = os.path.join(tmp.name, "activity-inbox.sqlite3")
+        cash_ledger = AlpacaPaperUSDCashLedger(cash_db, account_id=ACCOUNT)
+        cash_ledger.record_anchor(
+            anchor_id="anchor-1", cash_usd="100",
+            observed_at=NOW - timedelta(minutes=10),
+            source_reference="offline-paper-account-snapshot",
+            activity_cursor_before_snapshot=None,
+        )
+        inbox = DurableActivitySSEInbox(inbox_db)
+        inbox.stage({
+            "account_id": ACCOUNT,
+            "event_id": "00000000000000000000000001",
+            "ref_id": "trade-1",
+            "activity_type": "TRD",
+            "activity_subtype": None,
+            "status": "executed",
+            "at": (NOW - timedelta(minutes=5)).isoformat(),
+            "executed_at": (NOW - timedelta(minutes=5)).isoformat(),
+            "currency": "USD",
+            "net_amount": "-10",
+            "details": {"side": "buy", "execution_type": "fill"},
+        })
+        broker = FakeBroker(
+            account=SimpleNamespace(
+                id=ACCOUNT, status="ACTIVE", currency="USD", trading_blocked=False,
+                cash=broker_cash, equity=broker_equity,
+            ),
+            positions=[SimpleNamespace(
+                symbol="SPY", qty="1", current_price="10", market_value="10"
+            )],
+        )
+        gate = AlpacaPaperReconciliationGate(
+            broker, cash_ledger=cash_ledger, activity_sse_inbox_path=inbox_db,
+        )
+        return tmp, gate
+
+    def test_full_position_cash_and_equity_reconciliation_passes(self):
+        tmp, gate = self._cash_reconciliation_fixture()
+        self.addCleanup(tmp.cleanup)
+        result = gate.reconcile(
+            ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
+            fx_quote=FX, now=NOW,
+            activity_coverage_complete=True,
+            activity_coverage_reference="offline-replay-catchup-1",
+            activity_coverage_checked_at=NOW,
+            fee_reconciliation_complete=True,
+            fee_reconciliation_reference="offline-fee-audit-1",
+            fee_reconciliation_checked_at=NOW,
+        )
+        self.assertEqual(result["status"], "RECONCILED")
+        self.assertTrue(result["positions_match"])
+        self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
+        self.assertEqual(result["account_equity_reconciliation_status"], "RECONCILED")
+        self.assertEqual(result["fee_reconciliation_status"], "RECONCILED")
+        self.assertTrue(result["account_reconciliation_complete"])
+        self.assertFalse(result["orders_enabled"])
+
+    def test_equity_mismatch_blocks_full_paper_reconciliation(self):
+        tmp, gate = self._cash_reconciliation_fixture(broker_equity="101")
+        self.addCleanup(tmp.cleanup)
+        result = gate.reconcile(
+            ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
+            fx_quote=FX, now=NOW,
+            activity_coverage_complete=True,
+            activity_coverage_reference="offline-replay-catchup-1",
+            activity_coverage_checked_at=NOW,
+        )
+        self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
+        self.assertEqual(result["account_equity_reconciliation_status"], "EQUITY_BALANCE_MISMATCH")
+        self.assertFalse(result["account_reconciliation_complete"])
+
+    def test_position_mismatch_blocks_full_reconciliation_even_when_cash_equity_match(self):
+        tmp, gate = self._cash_reconciliation_fixture()
+        self.addCleanup(tmp.cleanup)
+        result = gate.reconcile(
+            ledger_snapshot=self.snapshot({"SPY": {"quantity": "2"}}),
+            fx_quote=FX, now=NOW,
+            activity_coverage_complete=True,
+            activity_coverage_reference="offline-replay-catchup-1",
+            activity_coverage_checked_at=NOW,
+        )
+        self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
+        self.assertEqual(result["account_equity_reconciliation_status"], "RECONCILED")
+        self.assertFalse(result["account_reconciliation_complete"])
+        self.assertEqual(result["status"], "POSITION_MISMATCH")
+
+    def test_incomplete_activity_coverage_keeps_full_reconciliation_blocked(self):
+        tmp, gate = self._cash_reconciliation_fixture()
+        self.addCleanup(tmp.cleanup)
+        result = gate.reconcile(
+            ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
+            fx_quote=FX, now=NOW,
+        )
+        self.assertEqual(result["cash_reconciliation_status"], "ACTIVITY_HISTORY_INCOMPLETE")
+        self.assertFalse(result["account_reconciliation_complete"])
 
     def test_matching_crypto_position_is_not_full_account_reconciliation(self):
         broker = FakeBroker(positions=[
