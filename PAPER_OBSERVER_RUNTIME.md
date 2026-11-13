@@ -178,3 +178,8 @@ A missing event, changed payload, unresolved fee/FX or failed inbox entry leaves
 Official schema references:
 - https://docs.alpaca.markets/us/docs/account-activities
 - https://docs.alpaca.markets/us/docs/activity-sse
+
+
+## Position health versus account readiness
+
+The Paper observer may report its **position comparison component** as healthy when broker and FIFO-ledger quantities match. That is not equivalent to full account readiness: the healthcheck separately requires `account_reconciliation_complete=true`, which remains false until a durable USD cash/settlement/fee ledger is implemented and reconciled. A matching position set must not make the overall observer healthcheck green while cash/account parity is absent.

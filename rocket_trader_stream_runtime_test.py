@@ -447,7 +447,14 @@ class StreamRuntimeTests(unittest.TestCase):
                     and fx_quote.mxn_per_usd == Decimal("18.5")
                     and now.tzinfo is not None
                 )
-                return {"environment": "PAPER", "status": "RECONCILED", "positions_match": True}
+                return {
+                    "environment": "PAPER",
+                    "status": "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE",
+                    "position_reconciliation_status": "MATCHED",
+                    "positions_match": True,
+                    "cash_reconciliation_status": "NOT_IMPLEMENTED_NO_USD_CASH_LEDGER",
+                    "account_reconciliation_complete": False,
+                }
         gate = Gate()
         config = RuntimeConfig(
             api_key="key", secret_key="secret", db_path=self.db,
@@ -459,9 +466,10 @@ class StreamRuntimeTests(unittest.TestCase):
         )
         report = runtime._reconcile_paper_positions()
         self.assertTrue(gate.assertion)
-        self.assertEqual(report["status"], "RECONCILED")
+        self.assertEqual(report["status"], "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE")
         self.assertEqual(
-            self.recorder.latest_position_reconciliation()["status"], "RECONCILED"
+            self.recorder.latest_position_reconciliation()["status"],
+            "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE",
         )
         health = self.recorder.health(max_age_seconds=120)
         self.assertTrue(health["components"]["position_reconciliation"]["healthy"])

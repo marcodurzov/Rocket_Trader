@@ -446,7 +446,7 @@ class AlpacaPaperObserverRuntime:
         )
         self.last_position_reconciliation = report
         self.recorder.record_position_reconciliation(report)
-        if report.get("status") == "RECONCILED" and report.get("positions_match") is True:
+        if report.get("positions_match") is True:
             self.recorder.heartbeat(
                 "position_reconciliation", "HEALTHY", now.isoformat()
             )
@@ -854,10 +854,18 @@ def main() -> int:
             result["position_reconciliation_healthy"] = (
                 position_component.get("healthy", False)
                 and latest_reconciliation is not None
-                and latest_reconciliation.get("status") == "RECONCILED"
+                and latest_reconciliation.get("position_reconciliation_status") == "MATCHED"
                 and latest_reconciliation.get("positions_match") is True
             )
-            result["healthy"] = result["healthy"] and result["position_reconciliation_healthy"]
+            result["account_reconciliation_complete"] = (
+                latest_reconciliation is not None
+                and latest_reconciliation.get("account_reconciliation_complete") is True
+            )
+            result["healthy"] = (
+                result["healthy"]
+                and result["position_reconciliation_healthy"]
+                and result["account_reconciliation_complete"]
+            )
         print(json.dumps(result, indent=2))
         return 0 if result["healthy"] else 1
     runtime = AlpacaPaperObserverRuntime(

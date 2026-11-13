@@ -39,7 +39,7 @@ class PaperReconciliationTests(unittest.TestCase):
             "open_positions": positions or {},
         }
 
-    def test_matching_crypto_position_reconciles_without_authorizing_orders(self):
+    def test_matching_crypto_position_is_not_full_account_reconciliation(self):
         broker = FakeBroker(positions=[
             SimpleNamespace(symbol="BTCUSD", qty="0.0099")
         ])
@@ -47,9 +47,16 @@ class PaperReconciliationTests(unittest.TestCase):
         result = AlpacaPaperReconciliationGate(broker).reconcile(
             ledger_snapshot=ledger, fx_quote=FX, now=NOW
         )
-        self.assertEqual(result["status"], "RECONCILED")
+        self.assertEqual(result["status"], "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE")
         self.assertFalse(result["orders_enabled"])
         self.assertFalse(result["paper_buying_power_used_as_capital"])
+        self.assertFalse(result["account_reconciliation_complete"])
+        self.assertEqual(result["position_reconciliation_status"], "MATCHED")
+        self.assertEqual(
+            result["cash_reconciliation_status"],
+            "NOT_IMPLEMENTED_NO_USD_CASH_LEDGER",
+        )
+        self.assertTrue(result["broker_cash_equity_observed_only"])
         self.assertEqual(result["ledger_operating_capital_mxn"], "1000")
 
     def test_position_mismatch_blocks_reconciliation(self):
@@ -122,7 +129,7 @@ class PaperReconciliationTests(unittest.TestCase):
             ledger_snapshot=self.snapshot({"BTC/USD": {"quantity": "0.01"}}),
             fx_quote=FX, now=NOW,
         )
-        self.assertEqual(result["status"], "RECONCILED")
+        self.assertEqual(result["status"], "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE")
 
 
 if __name__ == "__main__":
