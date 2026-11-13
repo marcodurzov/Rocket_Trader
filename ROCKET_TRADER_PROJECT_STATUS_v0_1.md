@@ -1070,3 +1070,11 @@ The calculator remains observation-only until account, USD cash/equity and fee r
 Validation: dedicated workflow `43500526480` passed 13 offline tests. No Paper account query, order, deployment or Live action occurred. Progress remains 58%.
 
 Next gates: implement durable USD cash/activity accounting with unknown activity quarantine; reconcile broker cash/equity; resolve/allocate all fees; persist session baselines and flows; integrate the calculator into the observer only after the reconciliation chain is complete.
+
+## 2026-11-13 — PR #200: append-only USD Paper cash ledger foundation
+
+PR #200 (`db08010e0beb9a1e722f7858248e1adbe27827c6`) adds an account-bound, append-only USD cash mirror based on Alpaca Activity SSE. It records immutable broker-cash anchors and cash activity events, applies only supported USD `net_amount` events, and validates trade cash sign against buy/sell side. Unknown activity codes/currencies, missing amounts, non-final events, trade sign conflicts and correction/bust events block cash reconciliation. Reconciliation also requires a complete activity-history assertion and broker cash match. Fee reconciliation remains separate and can only be cleared by an independent fee resolver.
+
+Re-anchoring requires explicit confirmation and a traceable reason. Dedicated PR workflow `43501382436` and post-merge workflow `43501471471` each passed 14 offline tests.
+
+This is not yet connected to the durable Activity SSE inbox, Paper reconciliation gate, or observer runtime. No real Paper data or account was accessed. Activity coverage must not be marked complete without a successful replay/catch-up and dropped-message verification. Position corporate actions, corrections/busts, fee allocation, durable session baselines and Core integration remain open. Progress remains 58%.
