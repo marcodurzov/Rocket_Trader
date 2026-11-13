@@ -243,7 +243,7 @@ def main() -> int:
         report["completed_at"] = datetime.now(timezone.utc).isoformat()
         _write_report(report)
         # Exit 2 means the query completed but accounting evidence remains unresolved.
-        return 2
+        return 2 if fills_matched else 1
 
     except Exception as exc:
         # Our own validation/reconciliation messages are deliberately safe to
