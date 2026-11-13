@@ -527,7 +527,7 @@ class AccountState:
     strategy_equity_mxn: Optional[float] = None
     strategy_daily_pnl_pct: Optional[float] = None
 
-    positions: Dict[str, Position = field(default_factory=dict)
+    positions: Dict[str, Position] = field(default_factory=dict)
 
     day_start_equity: Optional[float] = None
 
