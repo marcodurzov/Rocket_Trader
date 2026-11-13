@@ -1050,11 +1050,6 @@ PR #194 (`231332e16b3411cf660f2f5ec1eefdeac493d99d`) removes the misleading `REC
 Validation: 7 Paper reconciliation tests passed; observer runtime/accounting suites passed (including 32 runtime tests, 29 ledger tests, 19 activity-stager tests and 28 ETF cross-check tests); 26 durable SSE tests passed; container build/packaging passed; 37 offline audit tests passed. The actual Paper audit job was skipped on PR events. No real Paper query or order occurred. Progress remains 58%.
 
 
-## 2026-11-13 — Strategy risk denominators (PR pending)
-
-The Core previously used broker Paper equity in USD as the denominator for daily-loss and persistent drawdown protection even though the strategy allocation and sizing budget are in MXN. A large virtual Paper account could make those limits ineffective relative to the strategy's MXN 1,000 seed. The proposed guard requires strategy equity and daily P&L metrics in MXN, fails closed when absent, and stores a currency-marked MXN drawdown high-water mark. No current runtime integration supplies a complete durable strategy-equity snapshot yet, so entries remain blocked until that integration is implemented.
-
-
 ## 2026-11-13 — PR #196: strategy risk limits use MXN strategy metrics
 
 PR #196 (`9b2ef94616c48dccc0c67444903a7fbed41b3809`) corrects a risk-denominator mismatch. Core previously used Alpaca Paper account equity in USD for daily loss and persistent drawdown, while sizing used the separate MXN strategy allocation. With a large virtual Paper balance, percentage loss limits could be ineffective relative to the strategy's MXN 1,000 capital.
