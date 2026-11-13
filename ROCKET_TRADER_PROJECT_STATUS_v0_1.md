@@ -1037,3 +1037,7 @@ A version marker (`FIFO_MXN_ENTRY_AND_EXIT_FX_V2`) prevents silent reinterpretat
 Validation: 29 ledger tests passed; 37 Paper audit offline tests passed (real Paper audit skipped on PR event); fill-ledger bridge passed 29 ledger + 10 bridge + 8 fee tests; cash bridge passed 12 + 7 admin + 29 ledger tests; durable SSE passed 26 tests; observer runtime and container builds passed. Post-merge CI passed, and the Paper Observer image was published to GHCR at digest `sha256:e58d3d4aa6cf9da80e68dbcf3088bb11cddf1af560f0c3ca8252d3872a172a00`. This is image publication, not deployment.
 
 No persistent ledger was accessed/migrated and no real Paper query, order, account mutation or Live action occurred. Progress remains 58%.
+ 
+## 2026-11-12 — Paper position reconciliation status correction (PR pending)
+
+The Paper reconciliation gate previously returned RECONCILED when positions matched, despite not reconciling broker USD cash/equity to a local USD cash ledger. The proposed output explicitly distinguishes position match from full account reconciliation and reports cash reconciliation as not implemented. Full cash/equity/P&L parity remains a blocker. No broker query, order or account mutation is added.
