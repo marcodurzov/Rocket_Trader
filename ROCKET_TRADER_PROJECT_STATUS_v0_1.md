@@ -1019,3 +1019,10 @@ Validation:
 No real Paper query, order, account mutation, persistent-host deployment or Live action occurred. Progress remains 58%.
 
 The next evidence gate is a manual read-only Paper audit dispatch. Fill reconciliation and fee reconciliation are now reported separately; a missing fee record remains unknown rather than being treated as zero.
+
+
+## 2026-11-12 — FX-aware MXN realized P&L methodology correction (PR pending)
+
+The current ledger's prior formula converted USD realized P&L at the exit FX only. That omits FX movement on the entry cost basis. For a USD 1,000 BUY at 18 MXN/USD followed by a USD 1,000 SELL at 20 MXN/USD, USD P&L is zero but MXN P&L is +2,000; the prior formula reported zero. The proposed FIFO method stores each BUY lot's cost basis in MXN at entry FX and converts net SELL proceeds at exit FX, with entry/exit fees included at their respective FX rates.
+
+Legacy ledger databases are protected by an accounting-method marker and explicit migration. Migration is refused when immutable monthly closes exist; it validates event hashes and fill FX metadata, requires stopped writers, and creates a verified SQLite backup. No deployed/persistent database was accessed or migrated. This PR does not authorize orders or Live trading.
