@@ -1432,3 +1432,10 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Run the manual read-only Paper activity audit through GitHub Actions `workflow_dispatch` with the configured Paper secrets. A PR or push check is intentionally not a real account query.
 - Identify the actual persistent ledger location before any FX-accounting migration. The new accounting method blocks legacy ledgers with fills or immutable monthly closes; no persistent ledger has been accessed or migrated.
 - Implement durable USD cash/settlement/fee accounting and broker-to-ledger parity before the Paper observer can report overall health as ready. The current position comparison alone is not enough.
+
+
+### 2026-11-13 continuation — strategy risk denominators (PR pending)
+
+- Review found the Core used Alpaca broker `equity` (USD) for both the daily-loss limit and persistent max-drawdown guard while position sizing used a separate strategy allocation in MXN. With a large virtual Paper balance, the drawdown denominator could be orders of magnitude larger than the strategy's MXN 1,000 allocation, making the strategy-level loss guards ineffective.
+- The proposed change requires `strategy_equity_mxn` and `strategy_daily_pnl_pct` whenever `strategy_capital_mxn` is configured; missing values fail closed. The persistent strategy drawdown guard uses a currency-marked MXN high-water mark and a dedicated `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH`. Broker USD equity floor remains an additional account-level emergency guard.
+- No caller currently provides a complete durable strategy-equity/daily-P&L snapshot from matched broker positions, FIFO MXN cost basis and current marks. Until that integration exists, the Core will reject new entries rather than fall back to broker USD equity. No orders or Live actions are authorized.
