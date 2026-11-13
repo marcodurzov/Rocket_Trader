@@ -977,11 +977,11 @@ Validation:
 Progress remains 58% engineering/evidence maturity. The next unresolved gate is actual read-only Paper activity evidence, followed by durable restart recovery, delayed fee allocation, correction/bust handling and complete broker/ledger reconciliation.
 
 
-## 2026-11-12 — Activity stager pagination completeness guard (PR pending)
+## 2026-11-12 — PR #187 activity stager pagination completeness
 
 A code review identified that `AlpacaPaperActivityStager.sync(max_pages=...)` could stop at the configured page cap with a full final page without reporting that more activities might remain. This risks confusing a deliberately bounded scan with complete recovery.
 
-The pending change adds explicit `pagination_complete`, `sync_complete` and `sync_status` fields. Only an empty page or a short page marks the scan `EXHAUSTED`; hitting the page cap while the last page is full reports `PAGE_LIMIT_REACHED`; a non-advancing cursor reports `CURSOR_STALLED`. Invalid `max_pages` types/values are rejected. Regression tests cover these cases.
+PR #187 added explicit `pagination_complete`, `sync_complete` and `sync_status` fields. Only an empty page or a short page marks the scan `EXHAUSTED`; hitting the page cap while the last page is full reports `PAGE_LIMIT_REACHED`; a non-advancing cursor reports `CURSOR_STALLED`. Invalid `max_pages` types/values are rejected. Regression tests cover these cases.
 
 This is not evidence of a successful real Paper API pull. No order, broker account mutation or Live action is introduced.
 
@@ -1000,9 +1000,9 @@ PR #188 (`15ee36705909b3a15fb7d722a1d342191422b06e`) removes a misleading top-le
 Validation: workflow `43351716511` passed 28 activity-reader tests; workflow `43351716505` passed compile and 37 audit/SSE/reconciliation tests. The actual Paper API audit job was skipped on PR events. Progress remains 58%.
 
 
-## 2026-11-12 — Cash activity admin persistent-state guard (PR pending)
+## 2026-11-12 — PR #190 cash activity admin persistent-state guard
 
-The cash activity admin CLI previously could initialize a fresh empty ledger or activity-stager database when a configured persistent file was missing. This could hide lost durable state behind an apparently empty report. The pending guard checks existing files and required schema via read-only SQLite before constructing the components, and refuses missing/empty/invalid state without creating replacement files. Offline tests cover missing files, empty databases and a valid pre-existing state. No broker API call or account mutation is added.
+The cash activity admin CLI previously could initialize a fresh empty ledger or activity-stager database when a configured persistent file was missing. PR #190 now checks existing files and required schema via read-only SQLite before constructing the components, and refuses missing/empty/invalid state without creating replacement files. Offline tests cover missing files, empty databases and a valid pre-existing state. No broker API call or account mutation is added.
 
 
 ## 2026-11-12 — PR #190: fail-closed cash-admin persistent state
@@ -1021,9 +1021,9 @@ No real Paper query, order, account mutation, persistent-host deployment or Live
 The next evidence gate is a manual read-only Paper audit dispatch. Fill reconciliation and fee reconciliation are now reported separately; a missing fee record remains unknown rather than being treated as zero.
 
 
-## 2026-11-12 — FX-aware MXN realized P&L methodology correction (PR pending)
+## 2026-11-12 — PR #192 FX-aware MXN realized P&L methodology
 
-The current ledger's prior formula converted USD realized P&L at the exit FX only. That omits FX movement on the entry cost basis. For a USD 1,000 BUY at 18 MXN/USD followed by a USD 1,000 SELL at 20 MXN/USD, USD P&L is zero but MXN P&L is +2,000; the prior formula reported zero. The proposed FIFO method stores each BUY lot's cost basis in MXN at entry FX and converts net SELL proceeds at exit FX, with entry/exit fees included at their respective FX rates.
+The prior formula converted USD realized P&L at the exit FX only. PR #192 corrected this: each BUY lot's cost basis is stored in MXN at entry FX and net SELL proceeds are converted at exit FX, with entry/exit fees included at their respective FX rates. For a USD 1,000 BUY at 18 MXN/USD followed by a USD 1,000 SELL at 20 MXN/USD, USD P&L is zero but MXN P&L is +2,000.
 
 Legacy ledger databases are protected by an accounting-method marker and explicit migration. Migration is refused when immutable monthly closes exist; it validates event hashes and fill FX metadata, requires stopped writers, and creates a verified SQLite backup. No deployed/persistent database was accessed or migrated. This PR does not authorize orders or Live trading.
 
@@ -1038,6 +1038,13 @@ Validation: 29 ledger tests passed; 37 Paper audit offline tests passed (real Pa
 
 No persistent ledger was accessed/migrated and no real Paper query, order, account mutation or Live action occurred. Progress remains 58%.
  
-## 2026-11-12 — Paper position reconciliation status correction (PR pending)
+## 2026-11-12 — PR #194 Paper position reconciliation status correction
 
 The Paper reconciliation gate previously returned RECONCILED when positions matched, despite not reconciling broker USD cash/equity to a local USD cash ledger. The proposed output explicitly distinguishes position match from full account reconciliation and reports cash reconciliation as not implemented. Full cash/equity/P&L parity remains a blocker. No broker query, order or account mutation is added.
+
+
+## 2026-11-12 — PR #194: position match is not full account reconciliation
+
+PR #194 (`231332e16b3411cf660f2f5ec1eefdeac493d99d`) removes the misleading `RECONCILED` status from the Paper position gate. Matching broker position quantities now produce `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE`; broker cash/equity are observations only, and full account reconciliation remains false. The runtime healthcheck keeps overall readiness false until USD cash/settlement/fee parity is implemented, while still distinguishing a healthy position comparison from a position mismatch.
+
+Validation: 7 Paper reconciliation tests passed; observer runtime/accounting suites passed (including 32 runtime tests, 29 ledger tests, 19 activity-stager tests and 28 ETF cross-check tests); 26 durable SSE tests passed; container build/packaging passed; 37 offline audit tests passed. The actual Paper audit job was skipped on PR events. No real Paper query or order occurred. Progress remains 58%.

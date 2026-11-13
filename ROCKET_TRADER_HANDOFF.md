@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
+**Last updated:** 2026-11-12 (PRs #187–#194 merged; activity, accounting and reconciliation controls hardened)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `d546ad771025888be2a34553c96ab4d08669f856` (PR #193 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `231332e16b3411cf660f2f5ec1eefdeac493d99d` (PR #194 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1373,14 +1373,6 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 **Next gate:** execute and inspect the read-only Paper audit on main with explicit bounded order/fee windows, then verify the returned real activity records and the durable restart/recovery path. Keep order submission disabled while fee allocation, corrections/busts and full cash/position reconciliation remain incomplete.
 
 
-### 2026-11-12 continuation — activity stager pagination completeness guard (PR pending)
-
-- Code review found that the Paper activity stager could exhaust its configured `max_pages` while the final page was full and still return an ordinary report without an explicit incomplete-pagination status. A caller could mistake a bounded partial history scan for a complete account-activity recovery.
-- The proposed change makes pagination completeness explicit: an empty page or short page proves exhaustion; a full page at the page cap reports `PAGE_LIMIT_REACHED`; a repeated cursor reports `CURSOR_STALLED`. `sync_complete` and `pagination_complete` are false unless exhaustion is observed. Invalid max_pages values (including booleans) are rejected.
-- Offline regression tests cover full-page cap, short-page exhaustion, empty-page exhaustion, repeated cursor and invalid limits.
-- This is an engineering guard only. It does not prove real Paper API ingestion, full account history, or restart recovery. No broker orders or account mutations are performed.
-
- 
 ### 2026-11-12 continuation — PR #187 activity pagination completeness
 
 - PR #187 merged to main at 875772afba86ba249849194a3213055dd23fee8d.
@@ -1397,13 +1389,6 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 - The manual workflow_dispatch remains the only real Paper account audit path. No live Paper query, order, account mutation or Live action occurred in PR checks.
 
 
-### 2026-11-12 continuation — cash activity admin persistent-state finding (PR pending)
-
-- Review found `rocket_trader_cash_activity_admin.py --list` constructed `RealizedPnLLedger` and `AlpacaPaperActivityStager` before checking that the configured persistent databases existed. Both constructors initialize schemas, so a missing path could silently become a fresh empty ledger/stager and present a misleading empty review state.
-- The proposed guard checks existing files, separate paths, required tables, ledger schema version and initial-capital event using read-only SQLite connections before constructing either component. Missing/empty/corrupt state fails closed without creating or modifying replacement databases.
-- Offline tests cover missing files, empty SQLite files and listing with valid existing state. No broker network call is part of this CLI.
-
-
 ### 2026-11-12 continuation — PR #190 cash-admin persistent-state guard
 
 - PR #190 merged to main at `29b9cd41c0eca876b888a1fb9a0eea34aa60f4d0`.
@@ -1416,14 +1401,6 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 ### Current operational blocker
 
 The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub Actions with the configured Paper secrets and the known bounded order window. Its fee-window end now defaults to the workflow start time in UTC if left blank. The audit is expected to return a review-required status until fees are linked and allocated to individual fills; do not treat matched fill prices as complete P&L accounting.
-
-
-### 2026-11-12 continuation — MXN FIFO ledger FX methodology review (PR pending)
-
-- Review found that the ledger calculated MXN realized P&L as USD P&L multiplied only by the SELL fill's FX rate. This omits FX movement on the BUY cost basis. Example: buy USD 1,000 when USD/MXN is 18, sell USD 1,000 when it is 20. USD trading P&L is zero, but MXN capital gains MXN 2,000. The old formula reported zero.
-- Proposed correction stores FIFO lot cost basis in both USD and MXN at each BUY's entry FX, converts net SELL proceeds at the SELL's exit FX, and calculates realized MXN P&L as exit proceeds in MXN minus entry cost basis in MXN. Entry and exit fees are converted at their respective fill-time FX.
-- Legacy ledgers are not silently restated. The proposed accounting-method marker blocks old ledgers with fills or monthly closes until an explicit migration. Migration verifies hashes and fill FX evidence, requires stopped writers and a verified SQLite backup, and refuses to migrate ledgers with immutable monthly closes.
-- No existing persistent database was accessed or migrated. This is an accounting-code correction under review; it does not authorize orders or Live trading.
 
 
 ### 2026-11-12 continuation — PR #192 FX-aware MXN FIFO accounting
@@ -1442,8 +1419,16 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 3. Run the manual read-only Paper activity audit through GitHub Actions `workflow_dispatch`. The PR/push static checks skip the real Paper query by design. The audit now distinguishes matched fills from unresolved fees and will not claim full reconciliation when fee linkage/allocation is missing.
 
  
-### 2026-11-12 continuation — Paper position status was overstated (PR pending)
+### 2026-11-12 continuation — PR #194 position-only reconciliation status
 
-- Review found that AlpacaPaperReconciliationGate returned status=RECONCILED when position quantities matched, although it only observed broker cash/equity and did not compare them to a local USD cash ledger. That label could be mistaken for full account reconciliation.
-- The proposed status is POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE; it separately reports position match, cash_reconciliation_status=NOT_IMPLEMENTED_NO_USD_CASH_LEDGER, account_reconciliation_complete=false, and that broker cash/equity are observations only. Position mismatches remain blocked.
-- Full cash/equity/P&L parity remains an open accounting requirement. No broker API call or account mutation is part of this change.
+- PR #194 merged to main at `231332e16b3411cf660f2f5ec1eefdeac493d99d`.
+- `AlpacaPaperReconciliationGate` no longer emits `RECONCILED` when only position quantities match. It reports `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE`, separates position status from cash status, sets `account_reconciliation_complete=false`, and labels broker cash/equity as observations only.
+- The observer runtime now keeps the position-comparison component healthy when quantities match but keeps the overall container healthcheck false until full account cash/equity parity is implemented. Position mismatches remain errors.
+- Workflow `43353616669` passed all 7 Paper reconciliation tests. Workflow `43353616666` passed the offline runtime/accounting suite: 32 runtime, 10 telemetry, 29 ledger, 10 fill-bridge, 8 fee-resolver, 6 FX provider, 19 activity-stager, 12 cash bridge, 9 Paper activity reconciliation, 7 Paper position reconciliation, 11 regime observer, 11 regime selector, 9 news assessment and 28 ETF cross-check tests. Workflow `43353616693` passed 26 durable SSE tests and Compose validation. Workflow `43353616662` passed Compose, image build and packaging. Workflow `43353616687` passed 37 offline audit tests; its real Paper audit job was skipped on the PR event.
+- No broker activity query, order, account mutation, deployment or Live action occurred. Progress remains **58%**.
+
+### Remaining operational gates
+
+- Run the manual read-only Paper activity audit through GitHub Actions `workflow_dispatch` with the configured Paper secrets. A PR or push check is intentionally not a real account query.
+- Identify the actual persistent ledger location before any FX-accounting migration. The new accounting method blocks legacy ledgers with fills or immutable monthly closes; no persistent ledger has been accessed or migrated.
+- Implement durable USD cash/settlement/fee accounting and broker-to-ledger parity before the Paper observer can report overall health as ready. The current position comparison alone is not enough.
