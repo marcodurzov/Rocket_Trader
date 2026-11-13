@@ -83,6 +83,16 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         self.assertEqual(report["fee_reconciliation_status"], "UNRESOLVED")
         self.assertEqual(report["pending_fee_allocation_count"], 1)
 
+    def test_external_fee_resolver_can_explicitly_clear_fee_allocation(self):
+        self.ledger.ingest_activity(event(1, "FEE", amount="-2"))
+        report = self.ledger.reconcile(
+            broker_cash_usd="998", broker_account_id=ACCOUNT,
+            observed_at=NOW, activity_coverage_complete=True,
+            fee_reconciliation_complete=True,
+        )
+        self.assertEqual(report["fee_reconciliation_status"], "RECONCILED")
+        self.assertEqual(report["pending_fee_allocation_count"], 1)
+
     def test_non_usd_zero_cash_fee_does_not_change_usd_cash_but_remains_unallocated(self):
         self.ledger.ingest_activity(event(1, "CFEE", amount="0", currency="ETH"))
         report = self.ledger.reconcile(
@@ -161,6 +171,17 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
                 observed_at=NOW - timedelta(minutes=11),
                 source_reference="paper-account-snapshot-2",
             )
+        with self.assertRaisesRegex(PaperCashLedgerError, "explicit rebase confirmation"):
+            self.ledger.record_anchor(
+                anchor_id="anchor-2", cash_usd="1000",
+                observed_at=NOW, source_reference="paper-account-snapshot-2",
+            )
+        rebased = self.ledger.record_anchor(
+            anchor_id="anchor-2", cash_usd="1000", observed_at=NOW,
+            source_reference="paper-account-snapshot-2",
+            rebase_confirmed=True, rebase_reason="Operator-reviewed broker cash mismatch closure",
+        )
+        self.assertEqual(rebased["status"], "ANCHORED")
         with sqlite3.connect(self.db) as conn:
             with self.assertRaises(sqlite3.IntegrityError):
                 conn.execute("UPDATE paper_cash_anchors SET cash_usd='0' WHERE anchor_id='anchor-1'")
