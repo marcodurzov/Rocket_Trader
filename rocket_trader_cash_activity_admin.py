@@ -52,16 +52,25 @@ def _require_existing_state(ledger_path: str, stager_path: str) -> None:
             names = {row[0] for row in conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()}
-            return names, conn
+            triggers = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            ).fetchall()}
+            return names, triggers, conn
         except Exception:
             conn.close()
             raise
 
-    ledger_tables, ledger_conn = read_tables(ledger_file)
+    ledger_tables, ledger_triggers, ledger_conn = read_tables(ledger_file)
     try:
         required = {"ledger_meta", "ledger_events", "monthly_closes"}
         if not required.issubset(ledger_tables):
             raise ValueError("Existing realized-P&L ledger is missing required tables; refusing initialization.")
+        required_triggers = {
+            "ledger_events_no_update", "ledger_events_no_delete",
+            "monthly_closes_no_update", "monthly_closes_no_delete",
+        }
+        if not required_triggers.issubset(ledger_triggers):
+            raise ValueError("Existing realized-P&L ledger is missing append-only triggers; refusing initialization.")
         meta = dict(ledger_conn.execute("SELECT key,value FROM ledger_meta").fetchall())
         if meta.get("schema_version") != "1":
             raise ValueError("Existing realized-P&L ledger schema version is missing or unsupported.")
@@ -85,11 +94,14 @@ def _require_existing_state(ledger_path: str, stager_path: str) -> None:
     finally:
         ledger_conn.close()
 
-    stager_tables, stager_conn = read_tables(stager_file)
+    stager_tables, stager_triggers, stager_conn = read_tables(stager_file)
     try:
         required = {"staged_activities", "activity_stager_meta"}
         if not required.issubset(stager_tables):
             raise ValueError("Existing activity-stager database is missing required tables; refusing initialization.")
+        required_triggers = {"staged_activities_no_update", "staged_activities_no_delete"}
+        if not required_triggers.issubset(stager_triggers):
+            raise ValueError("Existing activity-stager database is missing append-only triggers; refusing initialization.")
     finally:
         stager_conn.close()
 
