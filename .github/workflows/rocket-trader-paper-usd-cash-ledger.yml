@@ -9,8 +9,6 @@ on:
       - "rocket_trader_alpaca_cash_ledger_test.py"
       - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_activity_sse_consumer_test.py"
-      - "rocket_trader_alpaca_activity_sse_consumer.py"
-      - "rocket_trader_alpaca_activity_sse_consumer_test.py"
       - ".github/workflows/rocket-trader-paper-usd-cash-ledger.yml"
   pull_request:
     branches:
@@ -18,6 +16,8 @@ on:
     paths:
       - "rocket_trader_alpaca_cash_ledger.py"
       - "rocket_trader_alpaca_cash_ledger_test.py"
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
+      - "rocket_trader_alpaca_activity_sse_consumer_test.py"
       - ".github/workflows/rocket-trader-paper-usd-cash-ledger.yml"
 
 permissions:
