@@ -79,6 +79,40 @@ class CashActivityAdminStateTests(unittest.TestCase):
             ).fetchone()
         self.assertIsNone(row)
 
+    def test_missing_ledger_append_only_trigger_fails_without_repair(self):
+        RealizedPnLLedger(self.ledger_path)
+        AlpacaPaperActivityStager(
+            db_path=self.stager_path,
+            fetch_page=lambda _cursor, _size: [],
+        )
+        with sqlite3.connect(self.ledger_path) as conn:
+            conn.execute("DROP TRIGGER ledger_events_no_delete")
+        code, _output, err = self.invoke_list()
+        self.assertEqual(code, 1)
+        self.assertIn("missing append-only triggers", err)
+        with sqlite3.connect(self.ledger_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='ledger_events_no_delete'"
+            ).fetchone()
+        self.assertIsNone(row)
+
+    def test_missing_stager_append_only_trigger_fails_without_repair(self):
+        RealizedPnLLedger(self.ledger_path)
+        AlpacaPaperActivityStager(
+            db_path=self.stager_path,
+            fetch_page=lambda _cursor, _size: [],
+        )
+        with sqlite3.connect(self.stager_path) as conn:
+            conn.execute("DROP TRIGGER staged_activities_no_update")
+        code, _output, err = self.invoke_list()
+        self.assertEqual(code, 1)
+        self.assertIn("missing append-only triggers", err)
+        with sqlite3.connect(self.stager_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='staged_activities_no_update'"
+            ).fetchone()
+        self.assertIsNone(row)
+
     def test_existing_valid_state_can_be_listed_without_broker_network(self):
         RealizedPnLLedger(self.ledger_path)
         AlpacaPaperActivityStager(
