@@ -545,15 +545,15 @@ class AccountState:
             ("protected_floor", self.protected_floor),
             ("realized_pnl_today", self.realized_pnl_today),
         ):
-            if not math.isfinite(float(value)):
-                raise ValueError(f"{field_name} debe ser finito")
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError(f"{field_name} debe ser numérico y finito")
         if self.equity < 0 or self.cash < 0 or self.protected_floor < 0:
             raise ValueError("equity, cash y protected_floor no pueden ser negativos")
         if self.strategy_capital_mxn is not None:
-            if not math.isfinite(self.strategy_capital_mxn) or self.strategy_capital_mxn < 0:
+            if isinstance(self.strategy_capital_mxn, bool) or not isinstance(self.strategy_capital_mxn, (int, float)) or not math.isfinite(self.strategy_capital_mxn) or self.strategy_capital_mxn < 0:
                 raise ValueError("strategy_capital_mxn debe ser finito y no negativo")
         if self.day_start_equity is not None:
-            if not math.isfinite(self.day_start_equity) or self.day_start_equity <= 0:
+            if isinstance(self.day_start_equity, bool) or not isinstance(self.day_start_equity, (int, float)) or not math.isfinite(self.day_start_equity) or self.day_start_equity <= 0:
                 raise ValueError("day_start_equity debe ser finito y positivo")
 
         if self.fx_quote is not None and self.strategy_capital_mxn is None:
@@ -563,10 +563,10 @@ class AccountState:
             raise ValueError("fx_quote debe ser una instancia FXQuote validada")
 
         if self.strategy_equity_mxn is not None:
-            if self.strategy_capital_mxn is None or not math.isfinite(self.strategy_equity_mxn) or self.strategy_equity_mxn <= 0:
+            if self.strategy_capital_mxn is None or isinstance(self.strategy_equity_mxn, bool) or not isinstance(self.strategy_equity_mxn, (int, float)) or not math.isfinite(self.strategy_equity_mxn) or self.strategy_equity_mxn <= 0:
                 raise ValueError("strategy_equity_mxn requires explicit strategy capital and must be finite/positive")
         if self.strategy_daily_pnl_pct is not None:
-            if self.strategy_capital_mxn is None or not math.isfinite(self.strategy_daily_pnl_pct):
+            if self.strategy_capital_mxn is None or isinstance(self.strategy_daily_pnl_pct, bool) or not isinstance(self.strategy_daily_pnl_pct, (int, float)) or not math.isfinite(self.strategy_daily_pnl_pct):
                 raise ValueError("strategy_daily_pnl_pct requires explicit strategy capital and must be finite")
         for field_name, value in (("trades_today", self.trades_today), ("consecutive_losses", self.consecutive_losses)):
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -575,7 +575,9 @@ class AccountState:
             if not isinstance(position, Position) or symbol != position.symbol:
                 raise ValueError("positions must map symbols to matching Position records")
             if (
-                not math.isfinite(position.quantity) or position.quantity <= 0
+                isinstance(position.quantity, bool) or not isinstance(position.quantity, (int, float))
+                or not math.isfinite(position.quantity) or position.quantity <= 0
+                or isinstance(position.entry_price, bool) or not isinstance(position.entry_price, (int, float))
                 or not math.isfinite(position.entry_price) or position.entry_price <= 0
             ):
                 raise ValueError("position quantity and entry_price must be finite and positive")
