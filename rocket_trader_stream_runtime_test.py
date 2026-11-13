@@ -426,6 +426,104 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertEqual(result["status"], "BLOCKED_PENDING_LEDGER_EVENTS")
         self.assertFalse(bridge.fx_called)
 
+    def test_position_reconciliation_persists_strategy_daily_risk_metrics(self):
+        class FakeLedger:
+            def __init__(self):
+                self.recorded = None
+
+            def snapshot(self):
+                return {"open_positions": {}, "accounting_method": "FIFO_MXN_ENTRY_AND_EXIT_FX_V2"}
+
+            def record_strategy_equity_mark(self, **kwargs):
+                self.recorded = kwargs
+                return {
+                    "strategy_equity_mxn": "1000.00",
+                    "strategy_daily_pnl_pct": "0.02",
+                    "strategy_daily_baseline_mxn": "980.00",
+                    "strategy_risk_metrics_status": "AVAILABLE",
+                }
+
+        class FakeBridge:
+            def __init__(self):
+                self.ledger = FakeLedger()
+
+            def status(self):
+                return {"pending_or_failed": 0}
+
+            def fx_resolver(self, _now):
+                return "FX_FIXTURE"
+
+        class FakeGate:
+            def reconcile(self, **_kwargs):
+                return {
+                    "environment": "PAPER",
+                    "status": "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE",
+                    "positions_match": True,
+                    "strategy_equity_status": "AVAILABLE",
+                    "strategy_equity_mxn": "1000",
+                    "strategy_equity_snapshot_hash": "snapshot-hash",
+                    "orders_enabled": False,
+                }
+
+        bridge = FakeBridge()
+        when = datetime(2026, 11, 12, 16, 0, tzinfo=timezone.utc)
+        report = reconcile_paper_positions(
+            reconciliation_gate=FakeGate(),
+            fill_ledger_bridge=bridge,
+            now=when,
+        )
+        self.assertEqual(report["strategy_risk_metrics_status"], "AVAILABLE")
+        self.assertEqual(report["strategy_equity_mxn"], 1000.0)
+        self.assertEqual(report["strategy_daily_pnl_pct"], 0.02)
+        self.assertEqual(
+            bridge.ledger.recorded,
+            {
+                "equity_mxn": "1000",
+                "occurred_at": when,
+                "source": "PAPER_POSITION_RECONCILIATION",
+                "position_snapshot_hash": "snapshot-hash",
+            },
+        )
+        self.assertFalse(report["orders_enabled"])
+
+    def test_position_reconciliation_blocks_strategy_metrics_when_daily_baseline_fails(self):
+        class FakeLedger:
+            def snapshot(self):
+                return {"open_positions": {}, "accounting_method": "FIFO_MXN_ENTRY_AND_EXIT_FX_V2"}
+
+            def record_strategy_equity_mark(self, **_kwargs):
+                raise RuntimeError("Cannot establish daily strategy baseline after same-day fills")
+
+        class FakeBridge:
+            ledger = FakeLedger()
+
+            def status(self):
+                return {"pending_or_failed": 0}
+
+            def fx_resolver(self, _now):
+                return "FX_FIXTURE"
+
+        class FakeGate:
+            def reconcile(self, **_kwargs):
+                return {
+                    "environment": "PAPER",
+                    "status": "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE",
+                    "positions_match": True,
+                    "strategy_equity_status": "AVAILABLE",
+                    "strategy_equity_mxn": "1000",
+                    "strategy_equity_snapshot_hash": "snapshot-hash",
+                    "orders_enabled": False,
+                }
+
+        report = reconcile_paper_positions(
+            reconciliation_gate=FakeGate(),
+            fill_ledger_bridge=FakeBridge(),
+            now=datetime(2026, 11, 12, 16, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(report["strategy_risk_metrics_status"], "BLOCKED")
+        self.assertIn("same-day fills", report["strategy_risk_metrics_error"])
+        self.assertFalse(report["orders_enabled"])
+
     def test_position_reconciliation_persists_read_only_broker_result(self):
         now = datetime.now(timezone.utc)
         class Ledger:
