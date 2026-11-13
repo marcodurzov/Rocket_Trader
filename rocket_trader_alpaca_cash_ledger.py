@@ -381,7 +381,11 @@ class AlpacaPaperUSDCashLedger:
         # The independent fee resolver owns allocation evidence. Its explicit
         # completion flag may clear candidates that this cash mirror cannot
         # allocate by itself (e.g. volume fees without parent_id).
-        fee_status = "RECONCILED" if fee_reconciliation_complete is True else "UNRESOLVED"
+        fee_status = (
+            "RECONCILED"
+            if fee_reconciliation_complete is True and activity_coverage_complete and not unsupported
+            else "UNRESOLVED"
+        )
         return {
             "environment": "PAPER",
             "status": status,
@@ -389,7 +393,8 @@ class AlpacaPaperUSDCashLedger:
             "account_cash_reconciliation_complete": status == "RECONCILED",
             "fee_reconciliation_status": fee_status,
             "fee_activity_count": len(fee_rows),
-            "pending_fee_allocation_count": len(pending_fees),
+            "pending_fee_allocation_count": 0 if fee_status == "RECONCILED" else len(pending_fees),
+            "fee_candidates_without_local_parent_count": len(pending_fees),
             "anchor_id": anchor["anchor_id"],
             "anchor_cash_usd": anchor["cash_usd"],
             "anchor_observed_at": anchor["observed_at"],
