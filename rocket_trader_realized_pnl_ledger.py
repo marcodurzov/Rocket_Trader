@@ -570,6 +570,156 @@ class RealizedPnLLedger:
                 )
         return self._append(fill_id, "FILL", occurred_at, payload)
 
+    def record_strategy_equity_mark(
+        self,
+        *,
+        equity_mxn: Any,
+        occurred_at: Optional[datetime] = None,
+        source: str,
+        position_snapshot_hash: str,
+    ) -> Dict[str, str]:
+        """Persist a marked-to-market MXN strategy equity observation.
+
+        The first valid mark on a UTC day is the daily baseline. It is refused
+        if same-day FILL events already exist, because that would omit earlier
+        intraday P&L. Later marks calculate daily P&L from that immutable base.
+        """
+        current = occurred_at or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise LedgerError("Strategy equity mark timestamp must be timezone-aware")
+        equity = _money(_d(equity_mxn, "strategy_equity_mxn"))
+        if equity <= 0:
+            raise LedgerError("Strategy equity mark must be positive")
+        source = str(source or "").strip()
+        snapshot_hash = str(position_snapshot_hash or "").strip()
+        if not source or not snapshot_hash:
+            raise LedgerError("Strategy equity mark requires source and position snapshot hash")
+        current_utc = current.astimezone(timezone.utc)
+        daily_key = current_utc.date().isoformat()
+        occurred_text = _utc(current_utc)
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                mark_rows = conn.execute(
+                    "SELECT event_id,occurred_at,payload_json,payload_hash "
+                    "FROM ledger_events WHERE event_type='STRATEGY_EQUITY_MARK' ORDER BY seq"
+                ).fetchall()
+                marks = []
+                for row in mark_rows:
+                    payload = json.loads(row["payload_json"])
+                    canonical = json.dumps(
+                        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                    )
+                    if hashlib.sha256(canonical.encode("utf-8")).hexdigest() != row["payload_hash"]:
+                        raise LedgerError("Strategy equity mark event hash mismatch")
+                    if payload.get("daily_key") != daily_key:
+                        continue
+                    mark_time = datetime.fromisoformat(
+                        str(payload.get("observed_at", row["occurred_at"])).replace("Z", "+00:00")
+                    )
+                    if mark_time.tzinfo is None or mark_time.utcoffset() is None:
+                        raise LedgerError("Persisted strategy equity mark has a naive timestamp")
+                    marks.append((mark_time.astimezone(timezone.utc), payload))
+
+                baseline = next(
+                    ((mark_time, payload) for mark_time, payload in marks
+                     if payload.get("mark_type") == "DAY_START"),
+                    None,
+                )
+                if baseline is None:
+                    fill_rows = conn.execute(
+                        "SELECT occurred_at FROM ledger_events WHERE event_type='FILL'"
+                    ).fetchall()
+                    for fill_row in fill_rows:
+                        fill_time = datetime.fromisoformat(
+                            str(fill_row["occurred_at"]).replace("Z", "+00:00")
+                        )
+                        if fill_time.tzinfo is None or fill_time.utcoffset() is None:
+                            raise LedgerError("Persisted fill has a naive timestamp")
+                        fill_utc = fill_time.astimezone(timezone.utc)
+                        if fill_utc.date().isoformat() == daily_key and fill_utc <= current_utc:
+                            raise LedgerError(
+                                "Cannot establish daily strategy baseline after same-day fills"
+                            )
+                    mark_type = "DAY_START"
+                    baseline_equity = equity
+                    baseline_time = current_utc
+                else:
+                    baseline_time, baseline_payload = baseline
+                    if any(
+                        fill_time.date().isoformat() == daily_key and fill_time < baseline_time
+                        for fill_time in (
+                            datetime.fromisoformat(
+                                str(row["occurred_at"]).replace("Z", "+00:00")
+                            ).astimezone(timezone.utc)
+                            for row in conn.execute(
+                                "SELECT occurred_at FROM ledger_events WHERE event_type='FILL'"
+                            ).fetchall()
+                        )
+                    ):
+                        raise LedgerError(
+                            "Same-day fills precede the persisted strategy daily baseline"
+                        )
+                    if marks:
+                        latest_time, latest_payload = marks[-1]
+                        if current_utc < latest_time:
+                            raise LedgerError("Strategy equity marks cannot be appended out of order")
+                        if current_utc == latest_time:
+                            if (
+                                _d(latest_payload.get("equity_mxn"), "persisted strategy equity")
+                                != equity
+                                or latest_payload.get("position_snapshot_hash") != snapshot_hash
+                            ):
+                                raise LedgerError(
+                                    "Conflicting strategy equity marks share the same timestamp"
+                                )
+                    mark_type = "INTRADAY"
+                    baseline_equity = _money(
+                        _d(baseline_payload.get("equity_mxn"), "daily baseline equity")
+                    )
+
+                payload = {
+                    "daily_key": daily_key,
+                    "mark_type": mark_type,
+                    "equity_mxn": str(equity),
+                    "source": source,
+                    "observed_at": occurred_text,
+                    "position_snapshot_hash": snapshot_hash,
+                    "baseline_policy": "FIRST_VALID_POSITION_RECONCILIATION_MARK_UTC_DAY",
+                }
+                canonical = json.dumps(
+                    payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                )
+                event_id = "STRATEGY-EQUITY-MARK-" + hashlib.sha256(
+                    canonical.encode("utf-8")
+                ).hexdigest()[:24]
+                self._append_conn(
+                    conn,
+                    event_id=event_id,
+                    event_type="STRATEGY_EQUITY_MARK",
+                    occurred_at=current_utc,
+                    payload=payload,
+                )
+                conn.execute("COMMIT")
+                daily_pnl_pct = (equity - baseline_equity) / baseline_equity
+                return {
+                    "strategy_equity_mxn": str(equity),
+                    "strategy_daily_baseline_mxn": str(baseline_equity),
+                    "strategy_daily_baseline_at": _utc(baseline_time),
+                    "strategy_daily_pnl_pct": str(daily_pnl_pct),
+                    "strategy_daily_key": daily_key,
+                    "strategy_risk_metrics_status": "AVAILABLE",
+                    "strategy_daily_baseline_policy": "FIRST_VALID_POSITION_RECONCILIATION_MARK_UTC_DAY",
+                }
+            except Exception:
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
+                raise
+            finally:
+                conn.close()
+
     def _events(self) -> list[Dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
