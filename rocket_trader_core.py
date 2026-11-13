@@ -1912,45 +1912,45 @@ class RocketTraderCore:
                     )
                 else:
                     drawdown = self.drawdown_guard.evaluate(account.strategy_equity_mxn)
-                if not drawdown.allowed:
-                    decision = Decision(
-                        decision_id=stable_id(
-                            "drawdown_lock",
-                            {
-                                "symbol": snapshot.symbol,
-                                "timestamp": snapshot.timestamp,
-                                "strategy_equity_mxn": account.strategy_equity_mxn,
-                            },
-                        ),
-                        timestamp=utc_now(),
-                        status=DecisionStatus.KILL_SWITCH,
-                        evidence_class=EvidenceClass.INSUFFICIENT,
-                        symbol=snapshot.symbol,
-                        side=Side.HOLD,
-                        quantity=0.0,
-                        entry_price=snapshot.price,
-                        stop_price=None,
-                        take_profit_price=None,
-                        combined_score=0.0,
-                        signal_score=signal.score,
-                        benchmark_score=0.0,
-                        benchmark_confidence=0.0,
-                        adaptive_multiplier=0.0,
-                        adaptive_reason="Persistent max-drawdown lock.",
-                        reason=(
-                            f"persistent_drawdown_lock:{drawdown.reason}; "
-                            f"drawdown_pct={drawdown.drawdown_pct:.6f}; "
-                            f"limit_pct={drawdown.max_drawdown_pct:.6f}"
-                        ),
-                    )
-                else:
-                    decision = self.decision_engine.evaluate(
-                        account=account,
-                        snapshot=snapshot,
-                        signal=signal,
-                        market_regime=market_regime,
-                        news_impact=news_impact,
-                    )
+                    if not drawdown.allowed:
+                        decision = Decision(
+                            decision_id=stable_id(
+                                "drawdown_lock",
+                                {
+                                    "symbol": snapshot.symbol,
+                                    "timestamp": snapshot.timestamp,
+                                    "strategy_equity_mxn": account.strategy_equity_mxn,
+                                },
+                            ),
+                            timestamp=utc_now(),
+                            status=DecisionStatus.KILL_SWITCH,
+                            evidence_class=EvidenceClass.INSUFFICIENT,
+                            symbol=snapshot.symbol,
+                            side=Side.HOLD,
+                            quantity=0.0,
+                            entry_price=snapshot.price,
+                            stop_price=None,
+                            take_profit_price=None,
+                            combined_score=0.0,
+                            signal_score=signal.score,
+                            benchmark_score=0.0,
+                            benchmark_confidence=0.0,
+                            adaptive_multiplier=0.0,
+                            adaptive_reason="Persistent max-drawdown lock.",
+                            reason=(
+                                f"persistent_drawdown_lock:{drawdown.reason}; "
+                                f"drawdown_pct={drawdown.drawdown_pct:.6f}; "
+                                f"limit_pct={drawdown.max_drawdown_pct:.6f}"
+                            ),
+                        )
+                    else:
+                        decision = self.decision_engine.evaluate(
+                            account=account,
+                            snapshot=snapshot,
+                            signal=signal,
+                            market_regime=market_regime,
+                            news_impact=news_impact,
+                        )
             except DrawdownGuardError as exc:
                 decision = Decision(
                     decision_id=stable_id(
