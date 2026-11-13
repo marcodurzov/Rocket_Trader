@@ -143,6 +143,33 @@ class PaperReconciliationTests(unittest.TestCase):
         self.assertEqual(result["cash_reconciliation_status"], "ACTIVITY_HISTORY_INCOMPLETE")
         self.assertFalse(result["account_reconciliation_complete"])
 
+    def test_missing_cash_anchor_keeps_integrated_gate_incomplete(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cash_ledger = AlpacaPaperUSDCashLedger(
+            os.path.join(tmp.name, "cash.sqlite3"), account_id=ACCOUNT,
+        )
+        inbox_path = os.path.join(tmp.name, "inbox.sqlite3")
+        DurableActivitySSEInbox(inbox_path)
+        broker = FakeBroker(
+            account=SimpleNamespace(
+                id=ACCOUNT, status="ACTIVE", currency="USD", trading_blocked=False,
+                cash="100", equity="110",
+            ),
+            positions=[SimpleNamespace(
+                symbol="SPY", qty="1", current_price="10", market_value="10"
+            )],
+        )
+        result = AlpacaPaperReconciliationGate(
+            broker, cash_ledger=cash_ledger, activity_sse_inbox_path=inbox_path,
+        ).reconcile(
+            ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
+            fx_quote=FX, now=NOW,
+        )
+        self.assertEqual(result["cash_reconciliation_status"], "NOT_RECONCILED")
+        self.assertEqual(result["account_equity_reconciliation_status"], "CASH_ANCHOR_REQUIRED")
+        self.assertFalse(result["account_reconciliation_complete"])
+
     def test_matching_crypto_position_is_not_full_account_reconciliation(self):
         broker = FakeBroker(positions=[
             SimpleNamespace(symbol="BTCUSD", qty="0.0099")
