@@ -111,6 +111,8 @@ def calculate_strategy_equity_metrics(
     account, cash/equity, and fee reconciliation gates are explicitly clear.
     """
     current = _utc(now or datetime.now(timezone.utc), "now")
+    if not isinstance(max_fx_age, timedelta) or max_fx_age <= timedelta(0):
+        raise StrategyEquityMetricsError("max_fx_age must be a positive timedelta")
     if not isinstance(fx_quote, FXQuote):
         raise StrategyEquityMetricsError("A validated FXQuote is required")
     fx_time = _utc(fx_quote.observed_at, "FX observed_at")
@@ -157,6 +159,13 @@ def calculate_strategy_equity_metrics(
             _get(position, "current_price", _get(position, "current_price_usd")),
             f"{symbol} current USD mark",
         )
+        currency = str(_get(position, "currency", "USD")).strip().upper()
+        mark_time = _utc(_get(position, "mark_observed_at"), f"{symbol} mark_observed_at")
+        mark_age = current - mark_time
+        if mark_age < timedelta(0) or mark_age > timedelta(minutes=2):
+            raise StrategyEquityMetricsError(f"{symbol} market mark is future-dated or stale")
+        if currency != "USD":
+            raise StrategyEquityMetricsError(f"{symbol} mark currency must be USD")
         if qty <= 0 or price <= 0:
             raise StrategyEquityMetricsError("Broker position quantity and mark must be positive")
         observed[symbol] = {"quantity": qty, "price_usd": price}
@@ -194,7 +203,8 @@ def calculate_strategy_equity_metrics(
         - session_baseline.equity_mxn
         - session_baseline.net_external_flows_mxn
     )
-    daily_pnl_pct = flow_adjusted_change / session_baseline.equity_mxn * Decimal("100")
+    # Core RiskConfig expresses percentage limits as fractions (0.05 = 5%).
+    daily_pnl_pct = flow_adjusted_change / session_baseline.equity_mxn
 
     cash_status = str(cash_reconciliation_status).strip().upper()
     fee_status = str(fee_reconciliation_status).strip().upper()
@@ -210,8 +220,10 @@ def calculate_strategy_equity_metrics(
         "session_id": session_baseline.session_id,
         "observed_at": current.isoformat(),
         "accounting_method": _get(ledger_snapshot, "accounting_method", "UNKNOWN"),
-        "strategy_equity_mxn": str(equity_mxn),
-        "strategy_daily_pnl_pct": str(daily_pnl_pct),
+        "strategy_equity_mxn": float(equity_mxn),
+        "strategy_equity_mxn_exact": str(equity_mxn),
+        "strategy_daily_pnl_pct": float(daily_pnl_pct),
+        "strategy_daily_pnl_fraction_exact": str(daily_pnl_pct),
         "operating_capital_mxn": str(operating),
         "market_value_usd": str(market_value_usd),
         "market_value_mxn": str(market_value_mxn),
