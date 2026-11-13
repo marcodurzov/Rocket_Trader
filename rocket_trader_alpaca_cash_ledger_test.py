@@ -272,6 +272,42 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(PaperCashLedgerError, "integrity"):
             self.ledger.ingest_from_activity_sse_inbox(inbox_db_path=inbox_path)
 
+    def test_reconciles_broker_equity_against_cash_plus_position_market_value(self):
+        self.ledger.ingest_activity(event(1, "DIV", amount="5"))
+        report = self.ledger.reconcile(
+            broker_cash_usd="1005", broker_account_id=ACCOUNT,
+            observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
+            broker_equity_usd="1105",
+            broker_positions_market_value_usd="100",
+        )
+        self.assertEqual(report["cash_reconciliation_status"], "RECONCILED")
+        self.assertEqual(report["account_equity_reconciliation_status"], "RECONCILED")
+        self.assertTrue(report["account_cash_equity_reconciliation_complete"])
+        self.assertEqual(report["expected_account_equity_usd"], "1105")
+
+    def test_equity_mismatch_prevents_full_account_reconciliation(self):
+        report = self.ledger.reconcile(
+            broker_cash_usd="1000", broker_account_id=ACCOUNT,
+            observed_at=NOW, activity_coverage_complete=True,
+            activity_coverage_reference="test-catch-up-proof",
+            activity_coverage_checked_at=NOW,
+            broker_equity_usd="1010",
+            broker_positions_market_value_usd="5",
+        )
+        self.assertEqual(report["cash_reconciliation_status"], "RECONCILED")
+        self.assertEqual(report["account_equity_reconciliation_status"], "EQUITY_BALANCE_MISMATCH")
+        self.assertFalse(report["account_cash_equity_reconciliation_complete"])
+
+    def test_equity_parity_is_not_claimed_without_both_equity_inputs(self):
+        report = self.ledger.reconcile(
+            broker_cash_usd="1000", broker_account_id=ACCOUNT,
+            observed_at=NOW, activity_coverage_complete=False,
+        )
+        self.assertEqual(report["account_equity_reconciliation_status"], "NOT_PROVIDED")
+        self.assertFalse(report["account_cash_equity_reconciliation_complete"])
+
     def test_broker_account_id_mismatch_is_rejected(self):
         with self.assertRaisesRegex(PaperCashLedgerError, "does not match"):
             self.ledger.reconcile(
