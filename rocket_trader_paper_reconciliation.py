@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Read-only Alpaca Paper account/position reconciliation gate.
+"""Read-only Alpaca Paper position comparison; cash/equity are observations only.
 
 Broker account equity/cash remain USD. Strategy capital remains MXN and comes
-only from the realized-P&L ledger. This module never infers strategy capital
-from Paper buying power and never submits or modifies orders.
+only from the realized-P&L ledger. This module does not reconcile broker cash
+against a local USD cash ledger, does not infer strategy capital from Paper
+buying power, and never submits or modifies orders.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ def _symbol(symbol: str) -> str:
 
 
 class AlpacaPaperReconciliationGate:
-    """Compare broker-reported Paper positions with the local FIFO ledger."""
+    """Compare Paper positions; explicitly do not claim full account reconciliation."""
 
     def __init__(
         self,
