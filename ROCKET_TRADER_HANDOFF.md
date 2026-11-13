@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `d2c837c87c812107c3ac5016c6447d049ecb5fb7` (PR #191 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `b7eb353f11c29158bc79da9f3c603ca6aae21ad1` (PR #192 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1424,3 +1424,19 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Proposed correction stores FIFO lot cost basis in both USD and MXN at each BUY's entry FX, converts net SELL proceeds at the SELL's exit FX, and calculates realized MXN P&L as exit proceeds in MXN minus entry cost basis in MXN. Entry and exit fees are converted at their respective fill-time FX.
 - Legacy ledgers are not silently restated. The proposed accounting-method marker blocks old ledgers with fills or monthly closes until an explicit migration. Migration verifies hashes and fill FX evidence, requires stopped writers and a verified SQLite backup, and refuses to migrate ledgers with immutable monthly closes.
 - No existing persistent database was accessed or migrated. This is an accounting-code correction under review; it does not authorize orders or Live trading.
+
+
+### 2026-11-12 continuation — PR #192 FX-aware MXN FIFO accounting
+
+- PR #192 merged to main at `b7eb353f11c29158bc79da9f3c603ca6aae21ad1`.
+- The ledger now calculates each FIFO BUY lot's MXN cost basis using that fill's entry FX and calculates net SELL proceeds using the SELL fill's exit FX. This correctly captures USD/MXN movement in MXN strategy P&L, while USD trading P&L remains separately reported. Entry fees are included in the BUY cost basis at entry FX; exit fees reduce SELL proceeds at exit FX.
+- The ledger exposes `FIFO_MXN_ENTRY_AND_EXIT_FX_V2` as an accounting-method marker. Legacy ledgers with fills or immutable monthly closes are blocked rather than silently restated. The explicit migration utility validates event hashes and fill FX metadata, requires stopped writers, creates/verifies a SQLite backup, checks the source event count did not change, and refuses existing immutable monthly closes.
+- PR workflow `43352962052` passed 29 ledger tests. Workflow `43352962165` passed 37 offline Paper activity/audit tests; the live Paper audit job was skipped on the PR event. Workflow `43352962126` passed 29 ledger, 10 fill-bridge and 8 fee-resolver tests. Workflow `43352962149` passed 12 cash-bridge, 7 cash-admin and 29 ledger tests. Workflow `43352962076` passed 26 durable Activity SSE tests. Runtime workflow `43352962320` and container workflow `43352962176` passed. All corresponding post-merge workflows on main completed successfully.
+- The Paper Observer image was published to GHCR (not deployed): `ghcr.io/marcodurzov/rocket_trader:b7eb353f11c29158bc79da9f3c603ca6aae21ad1`, digest `sha256:e58d3d4aa6cf9da80e68dbcf3088bb11cddf1af560f0c3ca8252d3872a172a00` (workflow `43353066858`).
+- No existing persistent ledger was accessed or migrated. No Paper account activity query, order, account mutation, persistent-host deployment or Live action occurred. Progress remains **58%**.
+
+### Accounting migration and Paper evidence gates
+
+1. Identify the actual persistent ledger path and stop every process writing to it before considering migration. Do not infer the path from the repository or container image.
+2. If the ledger has legacy fills but no accounting-method marker and no immutable monthly close, run the explicit migration utility only after reviewing its backup and stopped-writer requirements. If immutable monthly closes exist, stop: a manual restatement/reconciliation plan is required; automatic migration is deliberately prohibited.
+3. Run the manual read-only Paper activity audit through GitHub Actions `workflow_dispatch`. The PR/push static checks skip the real Paper query by design. The audit now distinguishes matched fills from unresolved fees and will not claim full reconciliation when fee linkage/allocation is missing.
