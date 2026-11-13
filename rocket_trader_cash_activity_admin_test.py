@@ -62,6 +62,23 @@ class CashActivityAdminStateTests(unittest.TestCase):
                 ).fetchall()
             self.assertEqual(tables, [])
 
+    def test_missing_capital_policy_metadata_fails_without_repair(self):
+        RealizedPnLLedger(self.ledger_path)
+        AlpacaPaperActivityStager(
+            db_path=self.stager_path,
+            fetch_page=lambda _cursor, _size: [],
+        )
+        with sqlite3.connect(self.ledger_path) as conn:
+            conn.execute("DELETE FROM ledger_meta WHERE key='milestone_mxn'")
+        code, _output, err = self.invoke_list()
+        self.assertEqual(code, 1)
+        self.assertIn("capital policy metadata", err)
+        with sqlite3.connect(self.ledger_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM ledger_meta WHERE key='milestone_mxn'"
+            ).fetchone()
+        self.assertIsNone(row)
+
     def test_existing_valid_state_can_be_listed_without_broker_network(self):
         RealizedPnLLedger(self.ledger_path)
         AlpacaPaperActivityStager(
