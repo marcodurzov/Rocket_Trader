@@ -261,9 +261,11 @@ python rocket_trader_ledger_accounting_migration.py \
 The backup path must not already exist and its parent directory must exist. The utility verifies event hashes and fill-time FX evidence, creates and checks a consistent SQLite backup, rechecks that the source event count did not change, then appends an immutable migration event. It refuses any ledger with existing immutable monthly closes; those require a separately reviewed manual restatement. Never run this against a live writer or an unknown/replacement database.
 
  
-## 15. Paper position reconciliation is not full account reconciliation
+## 15. Paper position, cash and equity reconciliation
 
-AlpacaPaperReconciliationGate currently verifies that broker-reported positions match the local FIFO ledger. It observes broker cash/equity in USD but does not compare them to a local USD cash ledger (none is implemented). Therefore a matching position set is reported as POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE, not RECONCILED; account_reconciliation_complete remains false. Do not treat this gate as cash, equity or full P&L parity. Full account reconciliation requires a durable USD cash/settlement/fee ledger and explicit broker-to-ledger comparison.
+`AlpacaPaperReconciliationGate` can now compare broker positions against the FIFO ledger and, when explicitly configured with an existing USD cash ledger plus the durable Activity SSE inbox, reconcile broker cash and account equity. The cash ledger applies only supported activity types; unknown codes, corrections/busts, missing amounts, incomplete history or cash/equity mismatches keep the gate incomplete.
+
+The runtime cash-ledger integration is opt-in and disabled by default. Even when enabled, the runtime currently does not assert activity-history coverage or fee reconciliation. It therefore reports the observed cash/equity comparison as incomplete until independent, traceable replay/catch-up and fee-audit attestations are integrated. Position parity alone is never described as full account reconciliation, and the gate never enables orders.
 
 
 ## 16. Optional USD Paper cash ledger anchor and runtime wiring
