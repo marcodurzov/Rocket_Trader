@@ -975,3 +975,12 @@ Validation:
 - No broker orders, account mutations, deployments or Live actions occurred.
 
 Progress remains 58% engineering/evidence maturity. The next unresolved gate is actual read-only Paper activity evidence, followed by durable restart recovery, delayed fee allocation, correction/bust handling and complete broker/ledger reconciliation.
+
+
+## 2026-11-12 — Activity stager pagination completeness guard (PR pending)
+
+A code review identified that `AlpacaPaperActivityStager.sync(max_pages=...)` could stop at the configured page cap with a full final page without reporting that more activities might remain. This risks confusing a deliberately bounded scan with complete recovery.
+
+The pending change adds explicit `pagination_complete`, `sync_complete` and `sync_status` fields. Only an empty page or a short page marks the scan `EXHAUSTED`; hitting the page cap while the last page is full reports `PAGE_LIMIT_REACHED`; a non-advancing cursor reports `CURSOR_STALLED`. Invalid `max_pages` types/values are rejected. Regression tests cover these cases.
+
+This is not evidence of a successful real Paper API pull. No order, broker account mutation or Live action is introduced.
