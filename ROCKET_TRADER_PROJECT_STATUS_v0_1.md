@@ -1053,3 +1053,14 @@ Validation: 7 Paper reconciliation tests passed; observer runtime/accounting sui
 ## 2026-11-13 — Strategy risk denominators (PR pending)
 
 The Core previously used broker Paper equity in USD as the denominator for daily-loss and persistent drawdown protection even though the strategy allocation and sizing budget are in MXN. A large virtual Paper account could make those limits ineffective relative to the strategy's MXN 1,000 seed. The proposed guard requires strategy equity and daily P&L metrics in MXN, fails closed when absent, and stores a currency-marked MXN drawdown high-water mark. No current runtime integration supplies a complete durable strategy-equity snapshot yet, so entries remain blocked until that integration is implemented.
+
+
+## 2026-11-13 — PR #196: strategy risk limits use MXN strategy metrics
+
+PR #196 (`9b2ef94616c48dccc0c67444903a7fbed41b3809`) corrects a risk-denominator mismatch. Core previously used Alpaca Paper account equity in USD for daily loss and persistent drawdown, while sizing used the separate MXN strategy allocation. With a large virtual Paper balance, percentage loss limits could be ineffective relative to the strategy's MXN 1,000 capital.
+
+Core now requires finite `strategy_equity_mxn` and `strategy_daily_pnl_pct` whenever strategy capital is configured; missing metrics block entries. Persistent drawdown state records its currency and uses the dedicated `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH` in MXN. Existing USD guard state is rejected. Non-finite account and position risk inputs are also rejected.
+
+Validation: Core Risk Safety, Drawdown Guard (9 tests), Engine/Capital Regression, Paper Execution Safety, Crypto Paper Execution Safety, Capital Policy, Earned Growth and offline Paper activity static checks passed. All corresponding post-merge workflows on main passed. The real Paper audit job was skipped on the PR event.
+
+No runtime component currently supplies the complete durable strategy equity/daily P&L metrics. Core therefore remains blocked from new entries until that producer is integrated. No Paper account query, order, deployment or Live action occurred. Progress remains 58%.
