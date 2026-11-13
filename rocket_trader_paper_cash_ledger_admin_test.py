@@ -118,12 +118,13 @@ class PaperCashLedgerAdminTests(unittest.TestCase):
 
     def test_invalid_inbox_is_rejected_before_broker_call(self):
         client = FakePaperClient(self.account)
-        with open(self.inbox_db, "wb") as handle:
+        corrupt_inbox = os.path.join(self.tmp.name, "corrupt-inbox.sqlite3")
+        with open(corrupt_inbox, "wb") as handle:
             handle.write(b"not a sqlite database")
         with self.assertRaisesRegex(PaperCashLedgerError, "integrity"):
             create_paper_cash_anchor(
                 client=client,
-                inbox_db_path=self.inbox_db,
+                inbox_db_path=corrupt_inbox,
                 cash_db_path=self.cash_db,
                 initialize_db=True,
                 now=NOW,
