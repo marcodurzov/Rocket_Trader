@@ -57,6 +57,8 @@ def _write_report(report: Dict[str, Any]) -> None:
             "## Alpaca Paper read-only activity audit",
             "",
             f"- Status: **{report.get('status', 'UNKNOWN')}**",
+            f"- Fill reconciliation: **{report.get('fill_reconciliation_status', 'UNKNOWN')}**",
+            f"- Fee reconciliation: **{report.get('fee_reconciliation_status', 'UNKNOWN')}**",
             f"- Symbol: {report.get('symbol', 'UNKNOWN')}",
             f"- Orders found: {report.get('order_count', 0)}",
             f"- Fill reconciliations matched: {report.get('matched_order_count', 0)}",
@@ -222,10 +224,26 @@ def main() -> int:
         report["order_count"] = len(orders)
         report["matched_order_count"] = matched
         report["unmatched_order_count"] = len(orders) - matched
-        report["status"] = "SUCCESS" if matched == len(orders) else "RECONCILIATION_REQUIRES_REVIEW"
+        fills_matched = matched == len(orders)
+        report["fill_reconciliation_status"] = (
+            "ALL_ORDERS_MATCHED" if fills_matched else "REQUIRES_REVIEW"
+        )
+        # This audit gathers account-level fee candidates only. It does not
+        # prove allocation to individual executions or post fees to the P&L
+        # ledger. An empty fee query is unknown, not zero-cost evidence.
+        report["fee_reconciliation_status"] = "UNRESOLVED"
+        report["status"] = (
+            "FILLS_MATCHED_FEES_UNRESOLVED"
+            if fills_matched else "RECONCILIATION_REQUIRES_REVIEW"
+        )
+        report["review_reason"] = (
+            "Fee activities are not linked and allocated to individual fills; "
+            "no returned fee records does not establish zero fees."
+        )
         report["completed_at"] = datetime.now(timezone.utc).isoformat()
         _write_report(report)
-        return 0 if report["status"] == "SUCCESS" else 1
+        # Exit 2 means the query completed but accounting evidence remains unresolved.
+        return 2 if fills_matched else 1
 
     except Exception as exc:
         # Our own validation/reconciliation messages are deliberately safe to

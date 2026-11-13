@@ -12,6 +12,8 @@ on:
       - ".github/workflows/rocket-trader-paper-activity-audit.yml"
       - "rocket_trader_alpaca_activity_reconciliation.py"
       - "rocket_trader_execution_event_ledger.py"
+      - "ROCKET_TRADER_HANDOFF.md"
+      - "ROCKET_TRADER_PROJECT_STATUS_v0_1.md"
   push:
     branches:
       - main

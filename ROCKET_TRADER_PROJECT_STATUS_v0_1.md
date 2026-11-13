@@ -984,3 +984,10 @@ A code review identified that `AlpacaPaperActivityStager.sync(max_pages=...)` co
 The pending change adds explicit `pagination_complete`, `sync_complete` and `sync_status` fields. Only an empty page or a short page marks the scan `EXHAUSTED`; hitting the page cap while the last page is full reports `PAGE_LIMIT_REACHED`; a non-advancing cursor reports `CURSOR_STALLED`. Invalid `max_pages` types/values are rejected. Regression tests cover these cases.
 
 This is not evidence of a successful real Paper API pull. No order, broker account mutation or Live action is introduced.
+
+ 
+## 2026-11-12 — PR #187: explicit Paper activity pagination completeness
+
+PR #187 (875772afba86ba249849194a3213055dd23fee8d) prevents a bounded account-activity scan from being mistaken for a complete history retrieval. The stager now differentiates EXHAUSTED, PAGE_LIMIT_REACHED and CURSOR_STALLED; only an empty/short page proves pagination exhaustion.
+
+Validation: workflow 43351364962 passed all 19 activity-stager tests; 43351365053 successfully validated Compose, built the Paper Observer image and verified packaged modules; 43351364942 passed 28 offline runtime tests. No live Paper API activity query was executed by these PR checks. Progress remains 58%.

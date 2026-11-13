@@ -94,13 +94,16 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
     def test_read_only_paper_audit_matches_fill_and_preserves_fee_unknown(self):
         with patch.object(audit, "TradingClient", FakeAuditClient):
             result = audit.main()
-        self.assertEqual(result, 0)
+        self.assertEqual(result, 2)
         client = FakeAuditClient.instances[-1]
         self.assertTrue(client.paper)
         report = json.loads(Path(self.report).read_text(encoding="utf-8"))
-        self.assertEqual(report["status"], "SUCCESS")
+        self.assertEqual(report["status"], "FILLS_MATCHED_FEES_UNRESOLVED")
+        self.assertEqual(report["fill_reconciliation_status"], "ALL_ORDERS_MATCHED")
+        self.assertEqual(report["fee_reconciliation_status"], "UNRESOLVED")
         self.assertEqual(report["matched_order_count"], 1)
         self.assertEqual(report["fee_evidence_status"], "NO_RECORDS_FEES_UNKNOWN")
+        self.assertIn("does not establish zero fees", report["review_reason"])
 
     def test_average_price_mismatch_prevents_success_status(self):
         class WrongAveragePriceClient(FakeAuditClient):
@@ -188,9 +191,11 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
 
         with patch.object(audit, "TradingClient", AccountWideFeeClient):
             result = audit.main()
-        self.assertEqual(result, 0)
+        self.assertEqual(result, 2)
         report = json.loads(Path(self.report).read_text(encoding="utf-8"))
-        self.assertEqual(report["status"], "SUCCESS")
+        self.assertEqual(report["status"], "FILLS_MATCHED_FEES_UNRESOLVED")
+        self.assertEqual(report["fill_reconciliation_status"], "ALL_ORDERS_MATCHED")
+        self.assertEqual(report["fee_reconciliation_status"], "UNRESOLVED")
         self.assertEqual(report["matched_order_count"], 1)
         self.assertEqual(report["unclassified_fee_activity_count"], 1)
         self.assertEqual(report["fee_evidence_status"], "UNCLASSIFIED_OR_INCOMPLETE_RECORDS")
