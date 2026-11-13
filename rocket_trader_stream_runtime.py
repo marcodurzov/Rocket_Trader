@@ -788,7 +788,8 @@ def build_position_reconciliation_gate(config: RuntimeConfig, fill_ledger_bridge
                 )
             account = client.get_account()
             account_id = str(_field(account, "id", "")).strip()
-            currency = str(_field(account, "currency", "USD")).strip().upper()
+            currency_value = _field(account, "currency", None)
+            currency = str(getattr(currency_value, "value", currency_value) or "").strip().upper()
             if not account_id or currency != "USD":
                 raise RuntimeConfigurationError(
                     "Paper account ID and USD account currency are required for cash reconciliation."
