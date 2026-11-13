@@ -144,11 +144,18 @@ class AlpacaPaperReconciliationGate:
             raise PaperReconciliationError("Broker cash/equity cannot be negative")
 
         capital_usd_reference = capital_mxn / fx_quote.mxn_per_usd
-        reconciled = not differences
+        positions_match = not differences
         return {
             "environment": "PAPER",
-            "status": "RECONCILED" if reconciled else "POSITION_MISMATCH",
-            "positions_match": reconciled,
+            "status": (
+                "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE"
+                if positions_match else "POSITION_MISMATCH"
+            ),
+            "position_reconciliation_status": "MATCHED" if positions_match else "MISMATCH",
+            "positions_match": positions_match,
+            "cash_reconciliation_status": "NOT_IMPLEMENTED_NO_USD_CASH_LEDGER",
+            "account_reconciliation_complete": False,
+            "broker_cash_equity_observed_only": True,
             "position_differences": differences,
             "ledger_operating_capital_mxn": str(capital_mxn),
             "ledger_capital_usd_reference": str(capital_usd_reference),
