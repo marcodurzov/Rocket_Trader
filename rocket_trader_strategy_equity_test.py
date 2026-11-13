@@ -28,7 +28,7 @@ def fixture(**overrides):
             },
         },
         "broker_positions": [
-            {"symbol": "BTC/USD", "qty": "0.01", "current_price": "10000"}
+            {"symbol": "BTC/USD", "qty": "0.01", "current_price": "10000", "currency": "USD", "mark_observed_at": NOW - timedelta(seconds=30)}
         ],
         "fx_quote": FXQuote(Decimal("18"), NOW - timedelta(minutes=1), "TEST_FX"),
         "session_baseline": StrategySessionBaseline(
@@ -50,7 +50,7 @@ class StrategyEquityMetricsTests(unittest.TestCase):
         report = calculate_strategy_equity_metrics(**fixture())
         self.assertEqual(Decimal(report["market_value_mxn"]), Decimal("1800"))
         self.assertEqual(Decimal(report["unrealized_pnl_mxn"]), Decimal("300"))
-        self.assertEqual(Decimal(report["strategy_equity_mxn"]), Decimal("1300"))
+        self.assertEqual(Decimal(str(report["strategy_equity_mxn"])), Decimal("1300"))
 
     def test_flow_adjusted_daily_pnl_excludes_external_deposits(self):
         data = fixture()
@@ -64,8 +64,8 @@ class StrategyEquityMetricsTests(unittest.TestCase):
             "VERIFIED_SESSION_OPEN", Decimal("200"),
         )
         report = calculate_strategy_equity_metrics(**data)
-        self.assertEqual(Decimal(report["strategy_equity_mxn"]), Decimal("1200"))
-        self.assertEqual(Decimal(report["strategy_daily_pnl_pct"]), Decimal("0"))
+        self.assertEqual(Decimal(str(report["strategy_equity_mxn"])), Decimal("1200"))
+        self.assertEqual(Decimal(str(report["strategy_daily_pnl_pct"])), Decimal("0"))
 
     def test_position_mismatch_fails_closed(self):
         data = fixture(broker_positions=[])
@@ -110,10 +110,37 @@ class StrategyEquityMetricsTests(unittest.TestCase):
     def test_negative_or_nonfinite_position_marks_are_rejected(self):
         for mark in ("0", "-1", "NaN", "Infinity"):
             data = fixture(broker_positions=[
-                {"symbol": "BTC/USD", "qty": "0.01", "current_price": mark}
+                {"symbol": "BTC/USD", "qty": "0.01", "current_price": mark, "currency": "USD", "mark_observed_at": NOW - timedelta(seconds=30)}
             ])
             with self.subTest(mark=mark), self.assertRaises(StrategyEquityMetricsError):
                 calculate_strategy_equity_metrics(**data)
+
+    def test_daily_pnl_is_fraction_compatible_with_core_risk_config(self):
+        data = fixture()
+        data["ledger_snapshot"] = {"operating_capital_mxn": "900", "open_positions": {}}
+        data["broker_positions"] = []
+        data["session_baseline"] = StrategySessionBaseline(
+            "2026-11-13", Decimal("1000"), NOW - timedelta(hours=1),
+            "VERIFIED_SESSION_OPEN", Decimal("0"),
+        )
+        report = calculate_strategy_equity_metrics(**data)
+        self.assertAlmostEqual(report["strategy_daily_pnl_pct"], -0.10, places=8)
+
+    def test_stale_market_mark_fails_closed(self):
+        data = fixture(broker_positions=[{
+            "symbol": "BTC/USD", "qty": "0.01", "current_price": "10000",
+            "currency": "USD", "mark_observed_at": NOW - timedelta(minutes=3),
+        }])
+        with self.assertRaisesRegex(StrategyEquityMetricsError, "mark is"):
+            calculate_strategy_equity_metrics(**data)
+
+    def test_non_usd_position_mark_fails_closed(self):
+        data = fixture(broker_positions=[{
+            "symbol": "BTC/USD", "qty": "0.01", "current_price": "10000",
+            "currency": "EUR", "mark_observed_at": NOW - timedelta(seconds=30),
+        }])
+        with self.assertRaisesRegex(StrategyEquityMetricsError, "currency must be USD"):
+            calculate_strategy_equity_metrics(**data)
 
     def test_future_baseline_is_rejected(self):
         data = fixture(session_baseline=StrategySessionBaseline(
