@@ -6,7 +6,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from rocket_trader_realized_pnl_ledger import (
@@ -353,6 +353,62 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             LedgerFX(Decimal("18"), datetime(2026, 11, 9), "fixture")
         with self.assertRaises(LedgerError):
             LedgerFX(Decimal("18"), NOW, " ")
+
+    def test_strategy_equity_marks_persist_daily_baseline_and_pnl(self):
+        first_time = NOW
+        next_time = NOW + timedelta(minutes=5)
+        first = self.ledger.record_strategy_equity_mark(
+            equity_mxn="1000",
+            occurred_at=first_time,
+            source="PAPER_POSITION_RECONCILIATION",
+            position_snapshot_hash="snapshot-1",
+        )
+        second = self.ledger.record_strategy_equity_mark(
+            equity_mxn="1050",
+            occurred_at=next_time,
+            source="PAPER_POSITION_RECONCILIATION",
+            position_snapshot_hash="snapshot-2",
+        )
+        self.assertEqual(first["strategy_daily_baseline_mxn"], "1000.00")
+        self.assertEqual(first["strategy_daily_pnl_pct"], "0")
+        self.assertEqual(second["strategy_daily_baseline_mxn"], "1000.00")
+        self.assertEqual(second["strategy_equity_mxn"], "1050.00")
+        self.assertEqual(second["strategy_daily_pnl_pct"], "0.05")
+        self.assertEqual(self.ledger.snapshot().operating_capital_mxn, Decimal("1000.00"))
+
+        next_day = self.ledger.record_strategy_equity_mark(
+            equity_mxn="1030",
+            occurred_at=datetime(2026, 11, 10, 16, 0, tzinfo=timezone.utc),
+            source="PAPER_POSITION_RECONCILIATION",
+            position_snapshot_hash="snapshot-3",
+        )
+        self.assertEqual(next_day["strategy_daily_baseline_mxn"], "1030.00")
+        self.assertEqual(next_day["strategy_daily_pnl_pct"], "0")
+
+    def test_strategy_daily_baseline_refuses_to_start_after_same_day_fill(self):
+        self.fill("same-day-before-baseline", "BUY", "0.01", "10000", month_time=NOW)
+        with self.assertRaisesRegex(LedgerError, "after same-day fills"):
+            self.ledger.record_strategy_equity_mark(
+                equity_mxn="1000",
+                occurred_at=NOW + timedelta(minutes=5),
+                source="PAPER_POSITION_RECONCILIATION",
+                position_snapshot_hash="snapshot-after-fill",
+            )
+
+    def test_strategy_equity_mark_rejects_conflicting_same_timestamp(self):
+        self.ledger.record_strategy_equity_mark(
+            equity_mxn="1000",
+            occurred_at=NOW,
+            source="PAPER_POSITION_RECONCILIATION",
+            position_snapshot_hash="snapshot-1",
+        )
+        with self.assertRaisesRegex(LedgerError, "Conflicting strategy equity marks"):
+            self.ledger.record_strategy_equity_mark(
+                equity_mxn="1001",
+                occurred_at=NOW,
+                source="PAPER_POSITION_RECONCILIATION",
+                position_snapshot_hash="snapshot-2",
+            )
 
     def test_legacy_ledger_requires_explicit_fx_accounting_migration(self):
         buy_time = datetime(2026, 11, 9, 15, 0, tzinfo=timezone.utc)
