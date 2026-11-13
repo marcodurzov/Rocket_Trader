@@ -764,6 +764,8 @@ def build_position_reconciliation_gate(config: RuntimeConfig, fill_ledger_bridge
         cash_ledger = None
         inbox_path = None
         if enabled in {"1", "true", "yes", "on"}:
+            if os.getenv("ALPACA_PAPER", "false").strip().lower() != "true":
+                raise RuntimeConfigurationError("ALPACA_PAPER=true is required for Paper cash reconciliation.")
             if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
                 raise RuntimeConfigurationError("Cash reconciliation is Paper-only; ALPACA_LIVE_ENABLED must be false.")
             execution_mode = os.getenv("ROCKET_TRADER_EXECUTION_MODE", "PAPER").strip().upper()
@@ -790,7 +792,9 @@ def build_position_reconciliation_gate(config: RuntimeConfig, fill_ledger_bridge
             account_id = str(_field(account, "id", "")).strip()
             currency_value = _field(account, "currency", None)
             currency = str(getattr(currency_value, "value", currency_value) or "").strip().upper()
-            if not account_id or currency != "USD":
+            account_status_value = _field(account, "status", None)
+            account_status = str(getattr(account_status_value, "value", account_status_value) or "").strip().upper()
+            if not account_id or currency != "USD" or account_status != "ACTIVE":
                 raise RuntimeConfigurationError(
                     "Paper account ID and USD account currency are required for cash reconciliation."
                 )
