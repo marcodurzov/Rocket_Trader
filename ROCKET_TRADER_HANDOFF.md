@@ -3,7 +3,7 @@
 **Last updated:** 2026-11-12 (activity pagination completeness guard in review; PRs #181–#185 remain merged)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `5d9dc98ffa99763cd66095dca51da9e0575ecdbf` (PR #189 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `29b9cd41c0eca876b888a1fb9a0eea34aa60f4d0` (PR #190 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1402,3 +1402,17 @@ Immediate next gate: obtain and inspect the post-merge main workflow artifacts f
 - Review found `rocket_trader_cash_activity_admin.py --list` constructed `RealizedPnLLedger` and `AlpacaPaperActivityStager` before checking that the configured persistent databases existed. Both constructors initialize schemas, so a missing path could silently become a fresh empty ledger/stager and present a misleading empty review state.
 - The proposed guard checks existing files, separate paths, required tables, ledger schema version and initial-capital event using read-only SQLite connections before constructing either component. Missing/empty/corrupt state fails closed without creating or modifying replacement databases.
 - Offline tests cover missing files, empty SQLite files and listing with valid existing state. No broker network call is part of this CLI.
+
+
+### 2026-11-12 continuation — PR #190 cash-admin persistent-state guard
+
+- PR #190 merged to main at `29b9cd41c0eca876b888a1fb9a0eea34aa60f4d0`.
+- The operator CLI now checks both persistent SQLite files through read-only connections before constructing the ledger or activity stager. It requires distinct existing files, expected tables, ledger schema version 1, persisted capital policy values, the initial-capital event and all append-only triggers. Missing or damaged state is rejected without auto-creating or repairing replacement databases.
+- Cash bridge workflow `43352311234` passed 12 cash-activity bridge tests, 6 cash-admin state tests and 22 realized-P&L ledger tests.
+- Activity audit static-check workflow `43352311258` passed 37 offline audit/SSE/reconciliation tests; its live Paper audit job was skipped on the PR event.
+- Durable Activity SSE workflow `43352311255` passed 26 tests and Compose validation. Paper Observer Runtime workflow `43352311322` passed its full multi-module offline suite. Container workflow `43352311333` passed Compose validation, Docker image build and module packaging checks.
+- No Paper account activity query, order, broker account mutation, persistent-host deployment or Live action occurred. Progress remains **58%**.
+
+### Current operational blocker
+
+The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub Actions with the configured Paper secrets and the known bounded order window. Its fee-window end now defaults to the workflow start time in UTC if left blank. The audit is expected to return a review-required status until fees are linked and allocated to individual fills; do not treat matched fill prices as complete P&L accounting.
