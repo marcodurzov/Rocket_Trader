@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 
 from rocket_trader_alpaca_activity_sse_consumer import DurableActivitySSEInbox
@@ -35,7 +35,7 @@ class PaperCashLedgerAdminTests(unittest.TestCase):
         self.inbox_db = os.path.join(self.tmp.name, "activity.sqlite3")
         self.inbox = DurableActivitySSEInbox(self.inbox_db)
         self.account = SimpleNamespace(
-            id=ACCOUNT, currency="USD", cash="100.25", equity="120.50"
+            id=ACCOUNT, status="ACTIVE", currency="USD", cash="100.25", equity="120.50"
         )
 
     def tearDown(self):
@@ -101,11 +101,11 @@ class PaperCashLedgerAdminTests(unittest.TestCase):
                 now=NOW,
             )
         self.assertFalse(os.path.exists(self.cash_db))
-        self.assertEqual(client.calls, 1)
+        self.assertEqual(client.calls, 0)
 
     def test_non_usd_account_is_rejected(self):
         client = FakePaperClient(SimpleNamespace(
-            id=ACCOUNT, currency="EUR", cash="100", equity="100"
+            id=ACCOUNT, status="ACTIVE", currency="EUR", cash="100", equity="100"
         ))
         with self.assertRaisesRegex(PaperCashLedgerError, "USD account currency"):
             create_paper_cash_anchor(
