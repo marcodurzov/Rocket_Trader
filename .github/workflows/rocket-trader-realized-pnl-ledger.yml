@@ -10,6 +10,7 @@ on:
     paths:
       - "rocket_trader_realized_pnl_ledger.py"
       - "rocket_trader_realized_pnl_ledger_test.py"
+      - "rocket_trader_ledger_accounting_migration.py"
       - ".github/workflows/rocket-trader-realized-pnl-ledger.yml"
   pull_request:
     branches:
@@ -33,6 +34,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile
-        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_realized_pnl_ledger_test.py
+        run: python -m py_compile rocket_trader_realized_pnl_ledger.py rocket_trader_realized_pnl_ledger_test.py rocket_trader_ledger_accounting_migration.py
       - name: Run offline ledger tests
         run: python -m unittest -v rocket_trader_realized_pnl_ledger_test.py
