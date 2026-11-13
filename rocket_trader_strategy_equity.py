@@ -71,20 +71,17 @@ class StrategySessionBaseline:
     equity_mxn: Decimal
     observed_at: datetime
     source: str
-    net_external_flows_mxn: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         if not str(self.session_id).strip():
             raise StrategyEquityMetricsError("session_id is required")
         equity = _decimal(self.equity_mxn, "baseline equity_mxn")
-        flows = _decimal(self.net_external_flows_mxn, "baseline net_external_flows_mxn")
         if equity <= 0:
             raise StrategyEquityMetricsError("baseline equity_mxn must be positive")
         _utc(self.observed_at, "baseline observed_at")
         if str(self.source).strip().upper() not in {"VERIFIED_SESSION_OPEN", "PREVIOUS_SESSION_CLOSE"}:
             raise StrategyEquityMetricsError("baseline source must be a verified session opening or prior-session close")
         object.__setattr__(self, "equity_mxn", equity)
-        object.__setattr__(self, "net_external_flows_mxn", flows)
 
 
 def calculate_strategy_equity_metrics(
@@ -94,6 +91,7 @@ def calculate_strategy_equity_metrics(
     fx_quote: FXQuote,
     session_baseline: StrategySessionBaseline,
     session_id: str,
+    session_net_external_flows_mxn: Decimal,
     account_reconciliation_complete: bool,
     cash_reconciliation_status: str,
     fee_reconciliation_status: str,
@@ -126,6 +124,7 @@ def calculate_strategy_equity_metrics(
     baseline_time = _utc(session_baseline.observed_at, "baseline observed_at")
     if baseline_time > current:
         raise StrategyEquityMetricsError("Session baseline cannot be in the future")
+    session_flows = _decimal(session_net_external_flows_mxn, "session_net_external_flows_mxn")
     tolerance = _decimal(quantity_tolerance, "quantity_tolerance")
     if tolerance < 0:
         raise StrategyEquityMetricsError("quantity_tolerance cannot be negative")
@@ -201,7 +200,7 @@ def calculate_strategy_equity_metrics(
     flow_adjusted_change = (
         equity_mxn
         - session_baseline.equity_mxn
-        - session_baseline.net_external_flows_mxn
+        - session_flows
     )
     # Core RiskConfig expresses percentage limits as fractions (0.05 = 5%).
     daily_pnl_pct = flow_adjusted_change / session_baseline.equity_mxn
@@ -230,7 +229,7 @@ def calculate_strategy_equity_metrics(
         "fifo_cost_basis_mxn": str(fifo_cost_mxn),
         "unrealized_pnl_mxn": str(unrealized_pnl_mxn),
         "baseline_equity_mxn": str(session_baseline.equity_mxn),
-        "baseline_net_external_flows_mxn": str(session_baseline.net_external_flows_mxn),
+        "session_net_external_flows_mxn": str(session_flows),
         "fx_mxn_per_usd": str(fx_quote.mxn_per_usd),
         "fx_source": fx_quote.source,
         "fx_observed_at": fx_time.isoformat(),
