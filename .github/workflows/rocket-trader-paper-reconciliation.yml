@@ -9,6 +9,9 @@ on:
       - "rocket_trader_paper_reconciliation.py"
       - "rocket_trader_paper_reconciliation_test.py"
       - "rocket_trader_currency.py"
+      - "PAPER_OBSERVER_DEPLOYMENT.md"
+      - "ROCKET_TRADER_HANDOFF.md"
+      - "ROCKET_TRADER_PROJECT_STATUS_v0_1.md"
       - ".github/workflows/rocket-trader-paper-reconciliation.yml"
   pull_request:
     branches:
