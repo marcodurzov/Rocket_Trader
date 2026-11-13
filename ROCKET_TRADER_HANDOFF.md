@@ -1461,3 +1461,21 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 2. Reconcile broker cash/equity against that ledger and allocate every fee to the relevant execution or retain an explicit unresolved status.
 3. Persist verified session-opening equity and session external flows, then connect the calculator to the Paper observer. Only after these checks can Core receive `strategy_equity_mxn` and flow-adjusted `strategy_daily_pnl_pct`.
 4. Keep the observer `OBSERVE_ONLY` and orders disabled until the full Paper accounting chain is validated end to end.
+
+
+### 2026-11-13 continuation — PR #200 append-only USD Paper cash ledger foundation
+
+- PR #200 merged to main at `db08010e0beb9a1e722f7858248e1adbe27827c6`.
+- New `rocket_trader_alpaca_cash_ledger.py` maintains an immutable, account-bound USD cash anchor and append-only Activity SSE cash journal. It applies only explicitly supported USD `net_amount` events; for `TRD`, it also validates executed status, side and cash sign. It records supported zero-USD-cash events and non-USD zero-cash fees separately.
+- Unknown activity/currency codes, missing cash amounts, non-final events, sign conflicts and any correction/bust (`previous_id`) are quarantined and block cash parity. Reconciliation requires a fresh broker cash snapshot, matching account ID, explicit complete Activity SSE coverage and an exact cash match within tolerance. Cash parity and fee allocation are reported separately.
+- Later cash anchors require explicit rebase confirmation and a traceable reason; silent rebasing is blocked. Fee status can only be cleared by an independent fee resolver after complete activity coverage and no unsupported activity.
+- Dedicated workflow `43501382436` passed 14 offline tests; post-merge workflow `43501471471` passed the same 14 tests.
+- This is a ledger foundation only: it is not yet wired to `DurableActivitySSEInbox`, `AlpacaPaperReconciliationGate`, or the observer runtime. No live account snapshot, Activity SSE event, broker API request, order, account mutation, deployment or Live action was performed. The completeness flag must never be asserted without a real successful replay/catch-up and proof that no SSE messages were dropped.
+- Position corporate-action processing, correction/bust restatement, fee-to-fill allocation, durable session baseline storage and Core integration remain open. Progress remains **58%**.
+
+### Immediate next steps
+
+1. Add a read-only adapter that verifies the durable Activity SSE hash chain, reads staged payloads, and feeds the USD cash ledger idempotently.
+2. Add a read-only Paper cash snapshot adapter and connect the cash-ledger report to `AlpacaPaperReconciliationGate`; preserve the separate fee status and position status.
+3. Extend activity handling for supported equity/crypto corporate actions and corrections only with tested reversible accounting. Unknown activity types must continue to block.
+4. Keep `OBSERVE_ONLY` and orders disabled until end-to-end Paper evidence confirms positions, cash, fees and equity parity.
