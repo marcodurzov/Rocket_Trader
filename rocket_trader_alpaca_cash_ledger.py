@@ -383,6 +383,8 @@ class AlpacaPaperUSDCashLedger:
         activity_coverage_reference: Optional[str] = None,
         activity_coverage_checked_at: Optional[Any] = None,
         fee_reconciliation_complete: bool = False,
+        fee_reconciliation_reference: Optional[str] = None,
+        fee_reconciliation_checked_at: Optional[Any] = None,
         tolerance_usd: Any = "0.01",
     ) -> Dict[str, Any]:
         current_cash = _decimal(broker_cash_usd, "broker_cash_usd")
@@ -394,12 +396,20 @@ class AlpacaPaperUSDCashLedger:
             raise PaperCashLedgerError("Reconciliation completeness flags must be booleans")
         coverage_reference = str(activity_coverage_reference or "").strip()
         coverage_checked_at = None
+        fee_reference = str(fee_reconciliation_reference or "").strip()
+        fee_checked_at = None
         if activity_coverage_complete:
             if not coverage_reference or activity_coverage_checked_at is None:
                 raise PaperCashLedgerError(
                     "Complete activity coverage requires a traceable reference and checked_at timestamp"
                 )
             coverage_checked_at = _iso(_timestamp(activity_coverage_checked_at, "activity coverage checked_at"))
+        if fee_reconciliation_complete:
+            if not activity_coverage_complete or not fee_reference or fee_reconciliation_checked_at is None:
+                raise PaperCashLedgerError(
+                    "Complete fee reconciliation requires complete activity coverage, a reference and checked_at"
+                )
+            fee_checked_at = _iso(_timestamp(fee_reconciliation_checked_at, "fee reconciliation checked_at"))
         if str(broker_account_id).strip() != self.account_id:
             raise PaperCashLedgerError("Broker account ID does not match cash ledger")
 
@@ -489,5 +499,7 @@ class AlpacaPaperUSDCashLedger:
             "activity_coverage_complete": activity_coverage_complete,
             "activity_coverage_reference": coverage_reference or None,
             "activity_coverage_checked_at": coverage_checked_at,
+            "fee_reconciliation_reference": fee_reference or None,
+            "fee_reconciliation_checked_at": fee_checked_at,
             "orders_enabled": False,
         }
