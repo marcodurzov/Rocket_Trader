@@ -71,3 +71,8 @@ This clarification does not authorize a paid plan, does not establish full 10-ye
 Realized P&L is measured in MXN using the FX quote persisted with each fill: each FIFO BUY lot stores its USD and MXN cost basis at entry FX; each SELL converts net USD proceeds at exit FX. This captures both trading-price movement and USD/MXN movement. Fees on entry are included in entry cost basis; exit fees reduce proceeds at exit FX. A flat USD price can therefore produce an MXN gain or loss when FX moves.
 
 Legacy ledger databases are not silently reinterpreted. Existing FILL events without the FX-aware accounting-method marker require the explicit migration utility. Migration is blocked if immutable monthly closes exist, verifies the event hashes and fill-time FX evidence, requires the runtime writers to be stopped, and creates a verified SQLite backup before changing the accounting-method marker. Existing monthly closes require a separate manual restatement process.
+
+
+## Strategy risk denominators
+
+Broker-side Paper equity/cash are USD and must not be used as the denominator for strategy drawdown or daily loss when the allocated strategy capital is MXN 1,000. The Core now requires explicit `strategy_equity_mxn` and `strategy_daily_pnl_pct` whenever `strategy_capital_mxn` is set; missing metrics block entries. Its persistent strategy drawdown high-water mark is explicitly denominated in MXN and uses a dedicated `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH`. Do not reuse an old USD guard-state file for MXN; the currency marker makes that mismatch fail closed.
