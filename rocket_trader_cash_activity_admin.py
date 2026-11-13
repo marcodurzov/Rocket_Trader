@@ -19,7 +19,9 @@ from decimal import Decimal, InvalidOperation
 
 from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
 from rocket_trader_alpaca_cash_activity_bridge import AlpacaCashActivityBridge
-from rocket_trader_realized_pnl_ledger import LedgerFX, RealizedPnLLedger
+from rocket_trader_realized_pnl_ledger import (
+    LedgerFX, PNL_ACCOUNTING_METHOD, PNL_ACCOUNTING_METHOD_KEY, RealizedPnLLedger,
+)
 
 
 def _fx_from_args(args):
@@ -74,6 +76,18 @@ def _require_existing_state(ledger_path: str, stager_path: str) -> None:
         meta = dict(ledger_conn.execute("SELECT key,value FROM ledger_meta").fetchall())
         if meta.get("schema_version") != "1":
             raise ValueError("Existing realized-P&L ledger schema version is missing or unsupported.")
+        accounting_method = meta.get(PNL_ACCOUNTING_METHOD_KEY)
+        if accounting_method not in (None, PNL_ACCOUNTING_METHOD):
+            raise ValueError("Existing realized-P&L ledger accounting method is unsupported.")
+        if accounting_method is None:
+            legacy_activity = ledger_conn.execute(
+                "SELECT 1 FROM ledger_events WHERE event_type='FILL' LIMIT 1"
+            ).fetchone()
+            existing_close = ledger_conn.execute(
+                "SELECT 1 FROM monthly_closes LIMIT 1"
+            ).fetchone()
+            if legacy_activity or existing_close:
+                raise ValueError("Legacy ledger requires explicit FX-aware accounting migration.")
         configured_policy = {
             "initial_capital_mxn": os.getenv("ROCKET_TRADER_INITIAL_CAPITAL_MXN", "1000.00"),
             "milestone_mxn": os.getenv("ROCKET_TRADER_MILESTONE_MXN", "100000.00"),
