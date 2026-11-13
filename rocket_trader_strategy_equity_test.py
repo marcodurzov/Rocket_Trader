@@ -23,7 +23,7 @@ def fixture(**overrides):
             "open_positions": {
                 "BTC/USD": {
                     "quantity": "0.01",
-                    "fifo_cost_basis_mxn": "3600",
+                    "fifo_cost_basis_mxn": "1500",
                 }
             },
         },
@@ -49,8 +49,8 @@ class StrategyEquityMetricsTests(unittest.TestCase):
     def test_calculates_mxn_equity_from_operating_capital_and_unrealized_pnl(self):
         report = calculate_strategy_equity_metrics(**fixture())
         self.assertEqual(Decimal(report["market_value_mxn"]), Decimal("1800"))
-        self.assertEqual(Decimal(report["unrealized_pnl_mxn"), Decimal("-1800"))
-        self.assertEqual(Decimal(report["strategy_equity_mxn"]), Decimal("-800"))
+        self.assertEqual(Decimal(report["unrealized_pnl_mxn"]), Decimal("300"))
+        self.assertEqual(Decimal(report["strategy_equity_mxn"]), Decimal("1300"))
 
     def test_flow_adjusted_daily_pnl_excludes_external_deposits(self):
         data = fixture()
