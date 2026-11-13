@@ -2289,16 +2289,34 @@ def self_test() -> Dict[str, Any]:
         equity=1000.0,
         cash=1000.0,
         strategy_capital_mxn=6000.0,
+        strategy_equity_mxn=6000.0,
+        strategy_daily_pnl_pct=0.0,
     )
-    missing_fx_decision = core.evaluate_and_maybe_execute(
+    missing_fx_decision = core.decision_engine.evaluate(
         account=missing_fx_account,
         snapshot=snapshot,
         signal=signal,
-        execute=False,
     )
-    assert missing_fx_decision.status == DecisionStatus.KILL_SWITCH
+    assert missing_fx_decision.status == DecisionStatus.REJECTED
     assert missing_fx_decision.quantity == 0.0
-    assert missing_fx_decision.reason == "strategy_risk_metrics_missing"
+
+    missing_strategy_metrics_account = AccountState(
+        equity=1000.0,
+        cash=1000.0,
+        strategy_capital_mxn=6000.0,
+        fx_quote=FXQuote(
+            mxn_per_usd=Decimal("18.00"),
+            observed_at=datetime.now(timezone.utc),
+            source="OFFLINE_TEST_FIXTURE",
+        ),
+    )
+    missing_strategy_metrics_decision = core.decision_engine.evaluate(
+        account=missing_strategy_metrics_account,
+        snapshot=snapshot,
+        signal=signal,
+    )
+    assert missing_strategy_metrics_decision.status == DecisionStatus.KILL_SWITCH
+    assert missing_strategy_metrics_decision.reason == "strategy_risk_metrics_missing"
 
     # Strategy daily-loss protection must use the MXN allocation metrics,
     # not the much larger virtual Paper account's USD equity denominator.
