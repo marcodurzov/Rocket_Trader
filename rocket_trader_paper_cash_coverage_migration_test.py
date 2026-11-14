@@ -92,6 +92,42 @@ class CashCoverageMigrationTests(unittest.TestCase):
             )
         self.assertFalse(os.path.exists(self.backup))
 
+    def test_v1_coverage_database_upgrades_to_fee_audit_schema(self):
+        migrate_coverage_schema(
+            db_path=self.db, backup_path=self.backup, account_id=ACCOUNT,
+            confirm=True, no_writers_confirmed=True,
+        )
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER paper_fee_allocation_audits_no_update")
+            conn.execute("DROP TRIGGER paper_fee_allocation_audits_no_delete")
+            conn.execute("DROP TABLE paper_fee_allocation_audits")
+        fee_backup = os.path.join(self.tmp.name, "cash.pre-fee-audit.sqlite3")
+        result = migrate_coverage_schema(
+            db_path=self.db, backup_path=fee_backup, account_id=ACCOUNT,
+            confirm=True, no_writers_confirmed=True,
+        )
+        self.assertEqual(result["status"], "MIGRATED")
+        with sqlite3.connect(self.db) as conn:
+            tables = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            triggers = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger'"
+            )}
+        self.assertIn("paper_fee_allocation_audits", tables)
+        self.assertIn("paper_fee_allocation_audits_no_update", triggers)
+        self.assertIn("paper_activity_coverage_audits", tables)
+
+    def test_partial_fee_audit_schema_refuses_migration(self):
+        with sqlite3.connect(self.db) as conn:
+            conn.execute("DROP TRIGGER paper_fee_allocation_audits_no_update")
+        with self.assertRaisesRegex(CashCoverageMigrationError, "Partial fee-audit schema"):
+            migrate_coverage_schema(
+                db_path=self.db, backup_path=self.backup, account_id=ACCOUNT,
+                confirm=True, no_writers_confirmed=True,
+            )
+        self.assertFalse(os.path.exists(self.backup))
+
     def test_migration_is_idempotent_after_success(self):
         migrate_coverage_schema(
             db_path=self.db, backup_path=self.backup, account_id=ACCOUNT,
