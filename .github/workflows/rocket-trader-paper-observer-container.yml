@@ -7,6 +7,8 @@ on:
       - "Dockerfile.paper-observer"
       - "docker-compose.paper-observer.yml"
       - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_paper_account_reconciliation_test.py"
+      - "rocket_trader_paper_account_reconciliation.py"
       - "rocket_trader_news.py"
       - "rocket_trader_official_news.py"
       - "rocket_trader_alpaca_news_observer.py"
