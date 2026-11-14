@@ -62,6 +62,8 @@ class AlpacaActivityFeeResolverTests(unittest.TestCase):
         })
         self.assertEqual(Decimal(result["fee_usd"]), Decimal("0.00250000"))
         self.assertEqual(Decimal(result["fee_asset_qty"]), Decimal("-0.00000025"))
+        self.assertEqual(result["fee_activity_ids"], ["20261109::exec-buy"])
+        self.assertEqual(result["fee_activity_refs"], ["20261109::exec-buy"])
         self.assertIn("exec-buy", result["fee_source"])
 
     def test_crypto_sell_usd_fee_uses_negative_net_amount(self):
