@@ -156,6 +156,14 @@ class MarketRuntimeRecorder:
                         report_json TEXT NOT NULL
                     )
                 """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS paper_account_reconciliation (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        status TEXT NOT NULL,
+                        reconciled_at TEXT NOT NULL,
+                        report_json TEXT NOT NULL
+                    )
+                """)
         except Exception as exc:
             raise RuntimeStorageError("Could not initialize durable runtime database.") from exc
 
@@ -228,6 +236,25 @@ class MarketRuntimeRecorder:
         with self._connect() as conn:
             row = conn.execute(
                 """SELECT report_json FROM paper_position_reconciliation
+                   ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+        return json.loads(row["report_json"]) if row else None
+
+    def record_account_reconciliation(self, report: Dict[str, Any]) -> None:
+        status = str(report.get("account_evidence_status") or report.get("status") or "UNKNOWN").upper()
+        reconciled_at = str(report.get("reconciled_at") or report.get("account_snapshot_observed_at") or _utc_now())
+        payload = json.dumps(report, sort_keys=True, separators=(",", ":"), default=str)
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO paper_account_reconciliation(status,reconciled_at,report_json)
+                   VALUES(?,?,?)""",
+                (status, reconciled_at, payload),
+            )
+
+    def latest_account_reconciliation(self) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT report_json FROM paper_account_reconciliation
                    ORDER BY id DESC LIMIT 1"""
             ).fetchone()
         return json.loads(row["report_json"]) if row else None
@@ -398,6 +425,8 @@ class AlpacaPaperObserverRuntime:
         ledger_retry_interval_seconds: int = 900,
         activity_retry_interval_seconds: int = 900,
         position_reconciliation_interval_seconds: int = 60,
+        account_evidence_coordinator: Any = None,
+        account_reconciliation_interval_seconds: int = 900,
     ) -> None:
         if config.mode != "OBSERVE_ONLY":
             raise RuntimeConfigurationError("Only OBSERVE_ONLY is supported.")
@@ -413,6 +442,11 @@ class AlpacaPaperObserverRuntime:
         self.activity_stager = activity_stager
         self.cash_activity_bridge = cash_activity_bridge
         self.position_reconciliation_gate = position_reconciliation_gate
+        self.account_evidence_coordinator = account_evidence_coordinator
+        self.account_reconciliation_interval_seconds = max(
+            1, int(account_reconciliation_interval_seconds)
+        )
+        self.last_account_reconciliation_monotonic = 0.0
         self.position_reconciliation_interval_seconds = max(
             1, int(position_reconciliation_interval_seconds)
         )
@@ -456,6 +490,43 @@ class AlpacaPaperObserverRuntime:
                 str(report.get("status") or "position reconciliation failed"),
             )
         return report
+
+    def _reconcile_paper_account(self) -> Optional[Dict[str, Any]]:
+        if self.account_evidence_coordinator is None:
+            return None
+        try:
+            report = self.account_evidence_coordinator.reconcile()
+            report["reconciled_at"] = _utc_now()
+            report["orders_enabled"] = False
+            self.recorder.record_account_reconciliation(report)
+            if report.get("account_evidence_status") == "RECONCILED":
+                self.recorder.heartbeat(
+                    "account_reconciliation", "HEALTHY",
+                    report.get("account_snapshot_observed_at"),
+                )
+            else:
+                self.recorder.heartbeat(
+                    "account_reconciliation", "ERROR",
+                    report.get("account_snapshot_observed_at"),
+                    str(report.get("status") or "full Paper account reconciliation incomplete"),
+                )
+            return report
+        except Exception as exc:
+            report = {
+                "environment": "PAPER",
+                "status": "ACCOUNT_EVIDENCE_RECONCILIATION_ERROR",
+                "account_evidence_status": "INCOMPLETE",
+                "account_reconciliation_complete": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "orders_enabled": False,
+            }
+            self.recorder.record_account_reconciliation(report)
+            self.recorder.heartbeat(
+                "account_reconciliation", "ERROR",
+                last_error=f"Full Paper account evidence failed closed: {exc}",
+            )
+            return report
 
     def _sync_account_activities(self) -> Optional[Dict[str, Any]]:
         if self.activity_stager is None:
@@ -631,6 +702,10 @@ class AlpacaPaperObserverRuntime:
             self.recorder.heartbeat("account_activity", "STARTING")
             self._sync_account_activities()
             self.last_activity_retry_monotonic = time.monotonic()
+        if self.account_evidence_coordinator is not None:
+            self.recorder.heartbeat("account_reconciliation", "STARTING")
+            self._reconcile_paper_account()
+            self.last_account_reconciliation_monotonic = time.monotonic()
         if self.position_reconciliation_gate is not None:
             self.recorder.heartbeat("position_reconciliation", "STARTING")
             self._reconcile_paper_positions()
@@ -673,6 +748,16 @@ class AlpacaPaperObserverRuntime:
                         self.fill_ledger_bridge.retry_pending()
                         self.last_ledger_retry_monotonic = now_monotonic
                     self._update_ledger_health()
+                if self.account_evidence_coordinator is not None:
+                    now_monotonic = time.monotonic()
+                    if (
+                        now_monotonic - self.last_account_reconciliation_monotonic
+                        >= self.account_reconciliation_interval_seconds
+                    ):
+                        if self.activity_stager is not None:
+                            self._sync_account_activities()
+                        self._reconcile_paper_account()
+                        self.last_account_reconciliation_monotonic = now_monotonic
                 if self.position_reconciliation_gate is not None:
                     now_monotonic = time.monotonic()
                     if (
@@ -697,6 +782,58 @@ class AlpacaPaperObserverRuntime:
             # Preserve the causal failure state; STOPPED is only a normal shutdown state.
             if component not in self.failed_components:
                 self.recorder.heartbeat(component, "STOPPED", self.last_events.get(component))
+
+
+def build_paper_account_evidence_coordinator(
+    config: RuntimeConfig,
+    fill_ledger_bridge: Any,
+    reconciliation_gate: Any,
+):
+    """Build full account evidence only when the existing cash ledger is enabled."""
+    if fill_ledger_bridge is None or reconciliation_gate is None:
+        return None
+    cash_ledger = getattr(reconciliation_gate, "cash_ledger", None)
+    if cash_ledger is None:
+        return None
+    try:
+        from rocket_trader_paper_activity_coverage_audit import (
+            AlpacaPaperActivityCoverageAuditor,
+        )
+        from rocket_trader_paper_fee_allocation_audit import (
+            AlpacaPaperFeeAllocationAuditor,
+        )
+        from rocket_trader_paper_account_reconciliation import (
+            PaperAccountEvidenceCoordinator,
+        )
+        parent = Path(config.db_path).resolve().parent
+        inbox_path = os.getenv(
+            "ROCKET_TRADER_ACTIVITY_SSE_DB",
+            str(parent / "rocket_trader_activity_sse.sqlite3"),
+        )
+        coverage_auditor = AlpacaPaperActivityCoverageAuditor(
+            account_id=cash_ledger.account_id,
+            cash_ledger=cash_ledger,
+            inbox_db_path=inbox_path,
+            api_key=config.api_key,
+            api_secret=config.secret_key,
+        )
+        fee_auditor = AlpacaPaperFeeAllocationAuditor(
+            cash_ledger=cash_ledger,
+            realized_pnl_db_path=fill_ledger_bridge.ledger.db_path,
+            fill_bridge_db_path=fill_ledger_bridge.db_path,
+        )
+        return PaperAccountEvidenceCoordinator(
+            reconciliation_gate=reconciliation_gate,
+            fill_ledger_bridge=fill_ledger_bridge,
+            cash_ledger=cash_ledger,
+            activity_sse_inbox_path=inbox_path,
+            coverage_auditor=coverage_auditor,
+            fee_allocation_auditor=fee_auditor,
+        )
+    except Exception as exc:
+        raise RuntimeConfigurationError(
+            f"Could not initialize full Paper account evidence coordinator: {exc}"
+        ) from exc
 
 
 def build_fill_ledger_bridge(config: RuntimeConfig):
@@ -876,6 +1013,9 @@ def main() -> int:
     position_reconciliation_gate = build_position_reconciliation_gate(
         config, fill_ledger_bridge
     )
+    account_evidence_coordinator = build_paper_account_evidence_coordinator(
+        config, fill_ledger_bridge, position_reconciliation_gate
+    )
     if args.healthcheck:
         result = recorder.health(
             config.health_max_age_seconds,
@@ -899,6 +1039,34 @@ def main() -> int:
             result["ledger_accounting"] = ledger_status
             result["ledger_accounting_healthy"] = ledger_status["pending_or_failed"] == 0
             result["healthy"] = result["healthy"] and result["ledger_accounting_healthy"]
+        if account_evidence_coordinator is not None:
+            latest_account = recorder.latest_account_reconciliation()
+            max_age = int(os.getenv("ROCKET_TRADER_ACCOUNT_RECONCILIATION_MAX_AGE_SECONDS", "1800"))
+            snapshot_at = None
+            if latest_account is not None:
+                try:
+                    snapshot_at = datetime.fromisoformat(
+                        str(latest_account.get("account_snapshot_observed_at") or "")
+                    )
+                    if snapshot_at.tzinfo is None or snapshot_at.utcoffset() is None:
+                        snapshot_at = None
+                except ValueError:
+                    snapshot_at = None
+            account_age = (
+                None if snapshot_at is None
+                else (datetime.now(timezone.utc) - snapshot_at.astimezone(timezone.utc)).total_seconds()
+            )
+            account_ok = (
+                latest_account is not None
+                and latest_account.get("account_evidence_status") == "RECONCILED"
+                and account_age is not None
+                and 0 <= account_age <= max_age
+            )
+            result["full_account_reconciliation"] = latest_account
+            result["account_reconciliation_age_seconds"] = account_age
+            result["account_reconciliation_healthy"] = account_ok
+            result["account_reconciliation_complete"] = account_ok
+            result["healthy"] = result["healthy"] and account_ok
         if position_reconciliation_gate is not None:
             latest_reconciliation = recorder.latest_position_reconciliation()
             result["position_reconciliation"] = latest_reconciliation
@@ -923,6 +1091,10 @@ def main() -> int:
     runtime = AlpacaPaperObserverRuntime(
         config, recorder, fill_ledger_bridge, activity_stager, cash_activity_bridge,
         position_reconciliation_gate,
+        account_evidence_coordinator=account_evidence_coordinator,
+        account_reconciliation_interval_seconds=int(
+            os.getenv("ROCKET_TRADER_ACCOUNT_RECONCILIATION_INTERVAL_SECONDS", "900")
+        ),
     )
     def request_stop(_signum, _frame):
         runtime.stop_event.set()
