@@ -725,7 +725,10 @@ class AlpacaPaperUSDCashLedger:
         coverage = self.verify_activity_coverage_audit(
             audit_id=coverage_audit_id, observed_at=until,
         )
-        if coverage["since_at"] != _iso(since) or _timestamp(coverage["until_at"], "coverage until_at") < until:
+        if (
+            coverage["since_at"] != _iso(since)
+            or _timestamp(coverage["until_at"], "coverage until_at") < until
+        ):
             raise PaperCashLedgerError("Fee audit window must be covered by the referenced activity audit")
         if not isinstance(fill_manifest, list) or not isinstance(fee_manifest, list):
             raise PaperCashLedgerError("Fee audit fill and fee manifests must be lists")
@@ -745,8 +748,8 @@ class AlpacaPaperUSDCashLedger:
             fills[execution_id] = {
                 "execution_id": execution_id,
                 "fill_event_id": str(item.get("fill_event_id") or "").strip(),
-                "fill_event_hash": str(item.get("fill_event_hash") or "").strip(),
-                "bridge_payload_hash": str(item.get("bridge_payload_hash") or "").strip(),
+                "fill_event_hash": str(item.get("fill_event_hash") or "").strip().lower(),
+                "bridge_payload_hash": str(item.get("bridge_payload_hash") or "").strip().lower(),
                 "cash_payload_hash": str(item.get("cash_payload_hash") or "").strip().lower(),
                 "fee_usd": str(item.get("fee_usd") or "0"),
                 "fee_asset_qty": str(item.get("fee_asset_qty") or "0"),
@@ -755,9 +758,9 @@ class AlpacaPaperUSDCashLedger:
             }
             if (
                 fills[execution_id]["fill_event_id"] != f"ALPACA-FILL-{execution_id}"
-                or len(fills[execution_id]["fill_event_hash"]) != 64
-                or len(fills[execution_id]["bridge_payload_hash"]) != 64
-                or len(fills[execution_id]["cash_payload_hash"]) != 64
+                or any(len(fills[execution_id][key]) != 64 for key in (
+                    "fill_event_hash", "bridge_payload_hash", "cash_payload_hash"
+                ))
                 or any(ch not in "0123456789abcdef" for ch in (
                     fills[execution_id]["fill_event_hash"]
                     + fills[execution_id]["bridge_payload_hash"]
@@ -796,7 +799,7 @@ class AlpacaPaperUSDCashLedger:
         if len(mapping_refs) != len(set(mapping_refs)) or set(mapping_refs) != set(fees):
             raise PaperCashLedgerError("Fee audit does not allocate every fee exactly once to one fill")
         for ref_id, fee in fees.items():
-            if fee["execution_id"] not in fills or ref_id not in fills[fee["execution_id"]]["fee_activity_refs"]:
+            if ref_id not in fills[fee["execution_id"]]["fee_activity_refs"]:
                 raise PaperCashLedgerError("Fee audit mapping is inconsistent with the fill's persisted fee references")
 
         manifest = {
@@ -805,68 +808,69 @@ class AlpacaPaperUSDCashLedger:
         }
         manifest_json = _canonical(manifest)
         manifest_digest = hashlib.sha256(manifest_json.encode("utf-8")).hexdigest()
+
         with self._lock, self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 anchor = conn.execute(
-                "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
-                (self.account_id,),
-            ).fetchone()
-            if anchor is None or anchor["anchor_id"] != coverage["anchor_id"]:
-                raise PaperCashLedgerError("Cash anchor changed while fee allocation was being audited")
-            cash_rows = conn.execute(
-                """SELECT * FROM paper_cash_activities
-                   WHERE account_id=? AND occurred_at>? AND occurred_at<=?
-                   ORDER BY occurred_at,event_id""",
-                (self.account_id, _iso(since), _iso(until)),
-            ).fetchall()
-            cash_fill_rows = {
-                str(row["ref_id"]): str(row["payload_hash"])
-                for row in cash_rows if row["activity_type"] == "TRD"
-            }
-            cash_fee_rows = {
-                str(row["ref_id"]): str(row["payload_hash"])
-                for row in cash_rows if row["activity_type"] in {"FEE", "CFEE"}
-            }
-            if (
-                set(cash_fill_rows) != set(fills)
-                or set(cash_fee_rows) != set(fees)
-                or any(fills[key]["cash_payload_hash"] != digest for key, digest in cash_fill_rows.items())
-                or any(fees[key]["cash_payload_hash"] != digest for key, digest in cash_fee_rows.items())
-            ):
-                raise PaperCashLedgerError("Fee audit manifests do not cover every cash-ledger fill and fee activity")
-            cash_digest = _cash_fill_fee_activity_digest(cash_rows)
-            payload = {
-                "account_id": self.account_id,
-                "anchor_id": anchor["anchor_id"],
-                "coverage_audit_id": coverage_audit_id,
-                "since_at": _iso(since),
-                "until_at": _iso(until),
-                "checked_at": _iso(checked),
-                "fill_count": len(fills),
-                "fee_count": len(fees),
-                "cash_activity_digest": cash_digest,
-                "manifest_digest": manifest_digest,
-            }
-            payload_hash = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
-            audit_id = "fee-allocation-" + payload_hash[:32]
-            triggers = {
-                row[0] for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
+                    (self.account_id,),
+                ).fetchone()
+                if anchor is None or anchor["anchor_id"] != coverage["anchor_id"]:
+                    raise PaperCashLedgerError("Cash anchor changed while fee allocation was being audited")
+                cash_rows = conn.execute(
+                    """SELECT * FROM paper_cash_activities
+                       WHERE account_id=? AND occurred_at>? AND occurred_at<=?
+                       ORDER BY occurred_at,event_id""",
+                    (self.account_id, _iso(since), _iso(until)),
                 ).fetchall()
-            }
-            if not {
-                "paper_fee_allocation_audits_no_update",
-                "paper_fee_allocation_audits_no_delete",
-            }.issubset(triggers):
-                raise PaperCashLedgerError("Fee allocation audit append-only triggers are missing")
-            existing = conn.execute(
-                "SELECT payload_hash FROM paper_fee_allocation_audits WHERE audit_id=?",
-                (audit_id,),
-            ).fetchone()
-            if existing:
-                if existing["payload_hash"] != payload_hash:
-                    raise PaperCashLedgerError("Fee allocation audit ID collision")
+                cash_fill_rows = {
+                    str(row["ref_id"]): str(row["payload_hash"])
+                    for row in cash_rows if row["activity_type"] == "TRD"
+                }
+                cash_fee_rows = {
+                    str(row["ref_id"]): str(row["payload_hash"])
+                    for row in cash_rows if row["activity_type"] in {"FEE", "CFEE"}
+                }
+                if (
+                    set(cash_fill_rows) != set(fills)
+                    or set(cash_fee_rows) != set(fees)
+                    or any(fills[key]["cash_payload_hash"] != digest for key, digest in cash_fill_rows.items())
+                    or any(fees[key]["cash_payload_hash"] != digest for key, digest in cash_fee_rows.items())
+                ):
+                    raise PaperCashLedgerError("Fee audit manifests do not cover every cash-ledger fill and fee activity")
+                cash_digest = _cash_fill_fee_activity_digest(cash_rows)
+                payload = {
+                    "account_id": self.account_id,
+                    "anchor_id": anchor["anchor_id"],
+                    "coverage_audit_id": coverage_audit_id,
+                    "since_at": _iso(since),
+                    "until_at": _iso(until),
+                    "checked_at": _iso(checked),
+                    "fill_count": len(fills),
+                    "fee_count": len(fees),
+                    "cash_activity_digest": cash_digest,
+                    "manifest_digest": manifest_digest,
+                }
+                payload_hash = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+                audit_id = "fee-allocation-" + payload_hash[:32]
+                triggers = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    ).fetchall()
+                }
+                if not {
+                    "paper_fee_allocation_audits_no_update",
+                    "paper_fee_allocation_audits_no_delete",
+                }.issubset(triggers):
+                    raise PaperCashLedgerError("Fee allocation audit append-only triggers are missing")
+                existing = conn.execute(
+                    "SELECT payload_hash FROM paper_fee_allocation_audits WHERE audit_id=?",
+                    (audit_id,),
+                ).fetchone()
+                if existing:
+                    if existing["payload_hash"] != payload_hash:
+                        raise PaperCashLedgerError("Fee allocation audit ID collision")
                     conn.execute("COMMIT")
                     return {"status": "DUPLICATE_AUDIT", "audit_id": audit_id, **payload}
                 conn.execute("""
@@ -881,6 +885,7 @@ class AlpacaPaperUSDCashLedger:
                     cash_digest, manifest_json, manifest_digest, payload_hash,
                     _iso(datetime.now(timezone.utc)),
                 ))
+                conn.execute("COMMIT")
             except Exception:
                 if conn.in_transaction:
                     conn.execute("ROLLBACK")
