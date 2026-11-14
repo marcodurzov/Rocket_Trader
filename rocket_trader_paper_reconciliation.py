@@ -83,6 +83,7 @@ class AlpacaPaperReconciliationGate:
         fee_reconciliation_complete: bool = False,
         fee_reconciliation_reference: Optional[str] = None,
         fee_reconciliation_checked_at: Optional[datetime] = None,
+        broker_snapshot: Optional[tuple[Any, Any]] = None,
     ) -> Dict[str, Any]:
         if not isinstance(fx_quote, FXQuote):
             raise PaperReconciliationError("A validated FXQuote is required")
@@ -104,13 +105,25 @@ class AlpacaPaperReconciliationGate:
         if capital_mxn < 0 or not isinstance(ledger_positions, dict):
             raise PaperReconciliationError("Invalid local ledger snapshot")
 
-        try:
-            account = self.client.get_account()
-            positions = self.client.get_all_positions()
-        except Exception as exc:
-            raise PaperReconciliationError(
-                "Could not retrieve broker account/positions; reconciliation is blocked"
-            ) from exc
+        if broker_snapshot is not None:
+            if (
+                not isinstance(broker_snapshot, tuple)
+                or len(broker_snapshot) != 2
+                or broker_snapshot[0] is None
+                or broker_snapshot[1] is None
+            ):
+                raise PaperReconciliationError(
+                    "broker_snapshot must be an (account, positions) tuple"
+                )
+            account, positions = broker_snapshot
+        else:
+            try:
+                account = self.client.get_account()
+                positions = self.client.get_all_positions()
+            except Exception as exc:
+                raise PaperReconciliationError(
+                    "Could not retrieve broker account/positions; reconciliation is blocked"
+                ) from exc
 
         current = current or datetime.now(timezone.utc)
         age = current - fx_quote.observed_at
