@@ -1077,10 +1077,11 @@ def main() -> int:
                 and latest_reconciliation.get("position_reconciliation_status") == "MATCHED"
                 and latest_reconciliation.get("positions_match") is True
             )
-            result["account_reconciliation_complete"] = (
-                latest_reconciliation is not None
-                and latest_reconciliation.get("account_reconciliation_complete") is True
-            )
+            if account_evidence_coordinator is None:
+                result["account_reconciliation_complete"] = (
+                    latest_reconciliation is not None
+                    and latest_reconciliation.get("account_reconciliation_complete") is True
+                )
             result["healthy"] = (
                 result["healthy"]
                 and result["position_reconciliation_healthy"]
