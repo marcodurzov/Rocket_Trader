@@ -90,6 +90,11 @@ def migrate_coverage_schema(
             raise CashCoverageMigrationError("Source cash ledger integrity check failed")
         if not BASE_TABLES.issubset(before["tables"]) or not BASE_TRIGGERS.issubset(before["triggers"]):
             raise CashCoverageMigrationError("Source cash ledger schema or append-only triggers are incomplete")
+        anchor = source.execute(
+            "SELECT account_id FROM paper_cash_anchors ORDER BY observed_at DESC LIMIT 1"
+        ).fetchone()
+        if anchor and str(anchor[0]) != account_id.strip():
+            raise CashCoverageMigrationError("Provided account ID differs from the persisted cash anchor")
         existing_coverage_tables = COVERAGE_TABLES & before["tables"]
         existing_coverage_triggers = COVERAGE_TRIGGERS & before["triggers"]
         if existing_coverage_tables or existing_coverage_triggers:
