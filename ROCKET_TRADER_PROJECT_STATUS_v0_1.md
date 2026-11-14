@@ -1091,3 +1091,21 @@ Validation: post-merge Paper reconciliation (12 tests), USD cash ledger (24 test
 No real Paper API call, persistent-host access, anchor creation, deployment, order or Live action occurred. Runtime remains OBSERVE_ONLY. Progress remains 58% until real Paper evidence is collected.
 
 Next: identify the actual persistent host/volume, verify Activity SSE replay, create the cash anchor, implement cursor-bound activity coverage and fee-allocation attestations, then run read-only Paper cash/equity reconciliation across multiple sessions. Do not enable Live.
+
+## 2026-11-14 — PR #206: bounded Paper Activity SSE coverage attestation
+
+PR #206 (`01e4a3d6954193bc701d5ec897c9ae1f007eb509`) adds a read-only bounded historical Activity SSE audit. The auditor requests a broker replay over the cash-anchor-to-snapshot business-time window and compares the complete event set against the durable local inbox using stable `ref_id`, normalized timestamp and payload fingerprint. It refuses dropped-message/server-error comments, malformed or out-of-window events, wrong account IDs, changed/extra/missing activities, invalid inbox integrity and mismatched cash-ledger evidence.
+
+The USD cash ledger persists the audit and its event manifest with append-only triggers. Reconciliation accepts coverage only if the audit is bound to the active anchor/account, covers the broker snapshot, was checked after the replay window, and its manifest still matches the cash activities included in the calculation. Caller-supplied `activity_coverage_complete=true` and an arbitrary reference no longer suffice.
+
+An explicit schema migration was added for older cash databases. It requires stopped writers, a new backup path, verified SQLite backup/integrity/row counts and an atomic schema change. Existing DBs are not auto-upgraded. The read-only audit CLI is packaged in the Paper Observer image.
+
+Post-merge main validation passed:
+- USD cash ledger and coverage/migration suite: 41 tests.
+- Durable Activity SSE consumer: 26 tests.
+- Paper reconciliation gate: 12 tests, plus cash ledger 25 tests and SSE 26 tests.
+- Observer runtime/accounting: 16 offline modules, 239 total test cases.
+- Paper Observer container build and module verification.
+- Paper Observer image published (not deployed) at `ghcr.io/marcodurzov/rocket_trader:01e4a3d6954193bc701d5ec897c9ae1f007eb509`, digest `sha256:294e9316420a99d59c87fa43ef4ea1eb4de7a448025035601cff233389a96afc`.
+
+The coverage auditor is **not yet integrated into the observer runtime**. Runtime continues to assert neither complete activity coverage nor complete fee allocation. Fee-to-fill allocation, actual persistent-host identification, real Paper evidence across multiple sessions, corporate-action/correction handling and Core integration remain open. No actual Paper API query, order, account mutation, persistent-host deployment or Live action occurred. Progress remains **58%**.
