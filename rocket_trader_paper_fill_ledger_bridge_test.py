@@ -32,7 +32,7 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
         def fee_resolver(_payload):
             if not self.fee_ready:
                 return {"fee_usd": "0.0025"}
-            return {"fee_usd": "0.0025", "fee_asset_qty": "0", "fee_source": "TEST_FEE_SCHEDULE"}
+            return {"fee_usd": "0.0025", "fee_asset_qty": "0", "fee_source": "TEST_FEE_SCHEDULE", "fee_activity_ids": ["fee-id"], "fee_activity_refs": ["fee-ref"]}
 
         self.bridge = PaperFillLedgerBridge(
             db_path=os.path.join(self.tmp.name, "inbox.sqlite3"),
@@ -70,6 +70,8 @@ class PaperFillLedgerBridgeTests(unittest.TestCase):
             if row["event_type"] == "FILL"
         )
         self.assertEqual(fill["payload"]["fee_source"], "TEST_FEE_SCHEDULE")
+        self.assertEqual(fill["payload"]["fee_activity_ids"], ["fee-id"])
+        self.assertEqual(fill["payload"]["fee_activity_refs"], ["fee-ref"])
 
     def test_replayed_execution_id_is_idempotent(self):
         event = self.event()
