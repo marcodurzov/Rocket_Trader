@@ -165,6 +165,8 @@ class AlpacaPaperFeeAllocationAuditor:
         for row in cash_rows:
             activity_type = str(row["activity_type"]).upper()
             payload = json.loads(row["payload_json"])
+            if _hash_json(payload) != str(row["payload_hash"]):
+                raise PaperFeeAllocationAuditError(f"Cash activity {row['ref_id']} payload hash mismatch")
             if activity_type == "TRD":
                 execution_id = str(row["ref_id"])
                 details = payload.get("details") or {}
@@ -217,6 +219,7 @@ class AlpacaPaperFeeAllocationAuditor:
                     "fill_event_id": pnl_event_id,
                     "fill_event_hash": str(pnl_row["payload_hash"]),
                     "bridge_payload_hash": str(bridge_row["payload_hash"]),
+                    "cash_payload_hash": str(row["payload_hash"]),
                     "fee_usd": str(pnl_payload.get("fee_usd", "0")),
                     "fee_asset_qty": str(pnl_payload.get("fee_asset_qty", "0")),
                     "fee_source": str(pnl_payload.get("fee_source") or ""),
@@ -295,7 +298,7 @@ class AlpacaPaperFeeAllocationAuditor:
             fill_manifest.append({
                 key: fill[key] for key in (
                     "execution_id", "fill_event_id", "fill_event_hash", "bridge_payload_hash",
-                    "fee_usd", "fee_asset_qty", "fee_source", "fee_activity_refs",
+                    "cash_payload_hash", "fee_usd", "fee_asset_qty", "fee_source", "fee_activity_refs",
                 )
             })
 
