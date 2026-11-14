@@ -46,6 +46,8 @@ on:
     branches: [main]
     paths:
       - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_paper_account_reconciliation.py"
+      - "rocket_trader_paper_account_reconciliation_test.py"
       - "rocket_trader_stream_runtime_test.py"
       - "PAPER_OBSERVER_RUNTIME.md"
       - "rocket_trader_realized_pnl_ledger.py"
