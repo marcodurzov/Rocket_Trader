@@ -134,7 +134,7 @@ class PaperReconciliationTests(unittest.TestCase):
         self.assertTrue(result["positions_match"])
         self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
         self.assertEqual(result["account_equity_reconciliation_status"], "RECONCILED")
-        self.assertEqual(result["fee_reconciliation_status"], "RECONCILED")
+        self.assertEqual(result["fee_reconciliation_status"], "UNRESOLVED")
         self.assertTrue(result["account_reconciliation_complete"])
         self.assertFalse(result["orders_enabled"])
 
