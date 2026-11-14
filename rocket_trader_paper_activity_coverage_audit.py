@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlsplit
@@ -92,7 +92,7 @@ class AlpacaPaperActivityCoverageAuditor:
                     "Accept": "text/event-stream",
                     "Cache-Control": "no-cache",
                 },
-                params={"since": _iso(since), "until": _iso(until)},
+                params={"since": _iso(since), "until": _iso(until + timedelta(microseconds=1))},
                 stream=True,
                 timeout=(10, self.timeout_seconds),
             )
@@ -172,19 +172,19 @@ class AlpacaPaperActivityCoverageAuditor:
                 conn.execute("PRAGMA query_only=ON")
                 rows = conn.execute(
                     """SELECT ref_id,occurred_at,payload_hash,payload_json
-                       FROM activity_sse_events
-                       WHERE occurred_at>? AND occurred_at<=?
-                       ORDER BY occurred_at,ref_id""",
-                    (_iso(since), _iso(until)),
+                       FROM activity_sse_events ORDER BY sequence"""
                 ).fetchall()
             import json
             for ref_id, occurred_at, payload_hash, payload_json in rows:
+                parsed_at = _as_utc(occurred_at, "inbox occurred_at")
+                if not (since < parsed_at <= until):
+                    continue
                 payload = json.loads(payload_json)
                 if str(payload.get("account_id") or "").strip() != self.account_id:
                     raise ActivityCoverageAuditError("Durable inbox contains an unexpected Paper account ID")
                 item = {
                     "ref_id": str(ref_id),
-                    "occurred_at": _iso(_as_utc(occurred_at, "inbox occurred_at")),
+                    "occurred_at": _iso(parsed_at),
                     "payload_hash": str(payload_hash),
                 }
                 if item["ref_id"] in items:
