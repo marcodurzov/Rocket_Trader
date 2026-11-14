@@ -927,6 +927,8 @@ class AlpacaPaperUSDCashLedger:
             raise PaperCashLedgerError("Broker account ID does not match cash ledger")
 
         coverage_valid = False
+        fee_valid = False
+        fee_checked_at = None
         with self._connect() as conn:
             anchor = conn.execute(
                 "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
@@ -1044,6 +1046,105 @@ class AlpacaPaperUSDCashLedger:
                     if coverage_valid:
                         coverage_checked_at = audit["checked_at"]
 
+            if fee_reconciliation_complete is True and coverage_valid and fee_reconciliation_reference:
+                fee_tables = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                }
+                if "paper_fee_allocation_audits" in fee_tables:
+                    fee_audit = conn.execute(
+                        """SELECT * FROM paper_fee_allocation_audits
+                           WHERE audit_id=? AND account_id=? AND anchor_id=?""",
+                        (fee_reconciliation_reference, self.account_id, anchor["anchor_id"]),
+                    ).fetchone()
+                    if fee_audit:
+                        try:
+                            fee_manifest = json.loads(fee_audit["manifest_json"])
+                            fee_fills = fee_manifest["fills"]
+                            fee_items = fee_manifest["fees"]
+                            fee_manifest_digest = hashlib.sha256(
+                                _canonical(fee_manifest).encode("utf-8")
+                            ).hexdigest()
+                            fee_payload = {
+                                "account_id": fee_audit["account_id"],
+                                "anchor_id": fee_audit["anchor_id"],
+                                "coverage_audit_id": fee_audit["coverage_audit_id"],
+                                "since_at": fee_audit["since_at"],
+                                "until_at": fee_audit["until_at"],
+                                "checked_at": fee_audit["checked_at"],
+                                "fill_count": int(fee_audit["fill_count"]),
+                                "fee_count": int(fee_audit["fee_count"]),
+                                "cash_activity_digest": fee_audit["cash_activity_digest"],
+                                "manifest_digest": fee_audit["manifest_digest"],
+                            }
+                            fee_payload_hash = hashlib.sha256(
+                                _canonical(fee_payload).encode("utf-8")
+                            ).hexdigest()
+                            fee_until = _timestamp(fee_audit["until_at"], "fee audit until_at")
+                            fee_checked = _timestamp(fee_audit["checked_at"], "fee audit checked_at")
+                            requested_fee_checked = (
+                                None if fee_reconciliation_checked_at is None
+                                else _timestamp(fee_reconciliation_checked_at, "fee reconciliation checked_at")
+                            )
+                            cash_fill_refs = {
+                                str(row["ref_id"]) for row in rows if row["activity_type"] == "TRD"
+                            }
+                            cash_fee_refs = {
+                                str(row["ref_id"]) for row in rows if row["activity_type"] in {"FEE", "CFEE"}
+                            }
+                            manifest_fill_refs = {
+                                str(item["execution_id"]) for item in fee_fills
+                            }
+                            manifest_fee_refs = {
+                                str(item["ref_id"]) for item in fee_items
+                            }
+                            refs_by_fill = {
+                                str(item["execution_id"]): set(item.get("fee_activity_refs", []))
+                                for item in fee_fills
+                            }
+                            mapping_refs = [
+                                str(ref) for item in fee_fills
+                                for ref in item.get("fee_activity_refs", [])
+                            ]
+                            fee_mapping_valid = (
+                                len(mapping_refs) == len(set(mapping_refs))
+                                and set(mapping_refs) == manifest_fee_refs
+                                and all(
+                                    str(item["execution_id"]) in refs_by_fill
+                                    and str(item["ref_id"]) in refs_by_fill[str(item["execution_id"])]
+                                    for item in fee_items
+                                )
+                            )
+                            fee_triggers = {
+                                row[0] for row in conn.execute(
+                                    "SELECT name FROM sqlite_master WHERE type='trigger'"
+                                ).fetchall()
+                            }
+                            fee_valid = (
+                                fee_audit["coverage_audit_id"] == coverage_reference
+                                and fee_audit["since_at"] == _iso(anchor_time)
+                                and fee_until >= current_time
+                                and fee_checked >= fee_until
+                                and requested_fee_checked == fee_checked
+                                and int(fee_audit["fill_count"]) == len(fee_fills)
+                                and int(fee_audit["fee_count"]) == len(fee_items)
+                                and fee_manifest_digest == fee_audit["manifest_digest"]
+                                and fee_payload_hash == fee_audit["payload_hash"]
+                                and fee_audit["cash_activity_digest"] == _cash_fill_fee_activity_digest(rows)
+                                and cash_fill_refs == manifest_fill_refs
+                                and cash_fee_refs == manifest_fee_refs
+                                and fee_mapping_valid
+                                and {
+                                    "paper_fee_allocation_audits_no_update",
+                                    "paper_fee_allocation_audits_no_delete",
+                                }.issubset(fee_triggers)
+                            )
+                            if fee_valid:
+                                fee_checked_at = fee_audit["checked_at"]
+                        except (KeyError, TypeError, ValueError, PaperCashLedgerError):
+                            fee_valid = False
+
         unsupported = [
             row for row in rows
             if row["cash_delta_usd"] is None
@@ -1103,7 +1204,7 @@ class AlpacaPaperUSDCashLedger:
 
         fee_status = (
             "RECONCILED"
-            if fee_reconciliation_complete is True and coverage_valid and not unsupported
+            if fee_valid and not unsupported
             else "UNRESOLVED"
         )
         return {
