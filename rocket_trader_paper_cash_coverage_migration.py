@@ -154,31 +154,30 @@ def migrate_coverage_schema(
             raise CashCoverageMigrationError("Provided account ID differs from the persisted cash anchor")
         if need_coverage:
             conn.execute("""
-            CREATE TABLE paper_activity_coverage_audits (
-                audit_id TEXT PRIMARY KEY,
-                account_id TEXT NOT NULL,
-                anchor_id TEXT NOT NULL,
-                since_at TEXT NOT NULL,
-                until_at TEXT NOT NULL,
-                checked_at TEXT NOT NULL,
-                event_count INTEGER NOT NULL,
-                events_digest TEXT NOT NULL,
-                inbox_cursor TEXT,
-                payload_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE paper_activity_coverage_audit_events (
-                audit_id TEXT NOT NULL,
-                ref_id TEXT NOT NULL,
-                occurred_at TEXT NOT NULL,
-                payload_hash TEXT NOT NULL,
-                PRIMARY KEY(audit_id, ref_id),
-                FOREIGN KEY(audit_id) REFERENCES paper_activity_coverage_audits(audit_id)
-            )
-        """)
-        if need_coverage:
+                CREATE TABLE paper_activity_coverage_audits (
+                    audit_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    anchor_id TEXT NOT NULL,
+                    since_at TEXT NOT NULL,
+                    until_at TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    events_digest TEXT NOT NULL,
+                    inbox_cursor TEXT,
+                    payload_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE paper_activity_coverage_audit_events (
+                    audit_id TEXT NOT NULL,
+                    ref_id TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    PRIMARY KEY(audit_id, ref_id),
+                    FOREIGN KEY(audit_id) REFERENCES paper_activity_coverage_audits(audit_id)
+                )
+            """)
             for table in ("paper_activity_coverage_audits", "paper_activity_coverage_audit_events"):
                 conn.execute(
                     f"CREATE TRIGGER {table}_no_update BEFORE UPDATE ON {table} "
@@ -189,33 +188,34 @@ def migrate_coverage_schema(
                     "BEGIN SELECT RAISE(ABORT, 'Paper coverage evidence is append-only'); END"
                 )
         if need_fee:
-                    conn.execute("""
-                        CREATE TABLE paper_fee_allocation_audits (
-                            audit_id TEXT PRIMARY KEY,
-                            account_id TEXT NOT NULL,
-                            anchor_id TEXT NOT NULL,
-                            coverage_audit_id TEXT NOT NULL,
-                            since_at TEXT NOT NULL,
-                            until_at TEXT NOT NULL,
-                            checked_at TEXT NOT NULL,
-                            fill_count INTEGER NOT NULL,
-                            fee_count INTEGER NOT NULL,
-                            cash_activity_digest TEXT NOT NULL,
-                            manifest_json TEXT NOT NULL,
-                            manifest_digest TEXT NOT NULL,
-                            payload_hash TEXT NOT NULL,
-                            created_at TEXT NOT NULL
-                        )
-                    """)
-                    for table in ("paper_fee_allocation_audits",):
-                        conn.execute(
-                            f"CREATE TRIGGER {table}_no_update BEFORE UPDATE ON {table} "
-                            "BEGIN SELECT RAISE(ABORT, 'Paper fee allocation evidence is append-only'); END"
-                        )
-                        conn.execute(
-                            f"CREATE TRIGGER {table}_no_delete BEFORE DELETE ON {table} "
-                            "BEGIN SELECT RAISE(ABORT, 'Paper fee allocation evidence is append-only'); END"
-                        )
+            conn.execute("""
+                CREATE TABLE paper_fee_allocation_audits (
+                    audit_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    anchor_id TEXT NOT NULL,
+                    coverage_audit_id TEXT NOT NULL,
+                    since_at TEXT NOT NULL,
+                    until_at TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    fill_count INTEGER NOT NULL,
+                    fee_count INTEGER NOT NULL,
+                    cash_activity_digest TEXT NOT NULL,
+                    manifest_json TEXT NOT NULL,
+                    manifest_digest TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute(
+                "CREATE TRIGGER paper_fee_allocation_audits_no_update "
+                "BEFORE UPDATE ON paper_fee_allocation_audits "
+                "BEGIN SELECT RAISE(ABORT, 'Paper fee allocation evidence is append-only'); END"
+            )
+            conn.execute(
+                "CREATE TRIGGER paper_fee_allocation_audits_no_delete "
+                "BEFORE DELETE ON paper_fee_allocation_audits "
+                "BEGIN SELECT RAISE(ABORT, 'Paper fee allocation evidence is append-only'); END"
+            )
         after = _state(conn)
         if (
             not COVERAGE_TABLES.issubset(after["tables"])
