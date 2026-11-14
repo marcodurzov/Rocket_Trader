@@ -677,7 +677,16 @@ class AlpacaPaperUSDCashLedger:
                         (coverage_reference, _iso(anchor_time), _iso(current_time)),
                     ).fetchall()
                     cash_manifest = sorted(
-                        (str(row["ref_id"]), str(row["payload_hash"])) for row in rows
+                        (
+                            str(row["ref_id"]),
+                            hashlib.sha256(
+                                _canonical({
+                                    key: value for key, value in json.loads(row["payload_json"]).items()
+                                    if key != "event_id"
+                                }).encode("utf-8")
+                            ).hexdigest(),
+                        )
+                        for row in rows
                     )
                     audit_manifest = sorted(
                         (str(row["ref_id"]), str(row["payload_hash"])) for row in manifest_rows
