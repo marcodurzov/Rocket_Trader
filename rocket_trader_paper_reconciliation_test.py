@@ -145,8 +145,8 @@ class PaperReconciliationTests(unittest.TestCase):
             ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
             fx_quote=FX, now=NOW,
             activity_coverage_complete=True,
-            activity_coverage_reference="offline-replay-catchup-1",
-            activity_coverage_checked_at=NOW,
+            activity_coverage_reference=coverage_ref,
+            activity_coverage_checked_at=NOW + timedelta(seconds=1),
         )
         self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
         self.assertEqual(result["account_equity_reconciliation_status"], "EQUITY_BALANCE_MISMATCH")
@@ -159,8 +159,8 @@ class PaperReconciliationTests(unittest.TestCase):
             ledger_snapshot=self.snapshot({"SPY": {"quantity": "2"}}),
             fx_quote=FX, now=NOW,
             activity_coverage_complete=True,
-            activity_coverage_reference="offline-replay-catchup-1",
-            activity_coverage_checked_at=NOW,
+            activity_coverage_reference=coverage_ref,
+            activity_coverage_checked_at=NOW + timedelta(seconds=1),
         )
         self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
         self.assertEqual(result["account_equity_reconciliation_status"], "RECONCILED")
