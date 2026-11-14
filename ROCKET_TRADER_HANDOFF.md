@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-13 (PR #196 merged; MXN strategy risk guards integrated)
+**Last updated:** 2026-11-14 (PR #206 merged; bounded Paper Activity SSE coverage attestation integrated)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `9b2ef94616c48dccc0c67444903a7fbed41b3809` (PR #196 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `01e4a3d6954193bc701d5ec897c9ae1f007eb509` (PR #206 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1475,10 +1475,11 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 
 ### Immediate next steps
 
-1. Add a read-only adapter that verifies the durable Activity SSE hash chain, reads staged payloads, and feeds the USD cash ledger idempotently.
-2. Add a read-only Paper cash snapshot adapter and connect the cash-ledger report to `AlpacaPaperReconciliationGate`; preserve the separate fee status and position status.
-3. Extend activity handling for supported equity/crypto corporate actions and corrections only with tested reversible accounting. Unknown activity types must continue to block.
-4. Keep `OBSERVE_ONLY` and orders disabled until end-to-end Paper evidence confirms positions, cash, fees and equity parity.
+1. Wire the bounded Activity SSE coverage auditor into the Paper reconciliation gate with a controlled cadence. Until that integration is reviewed and exercised against a real Paper account, runtime must continue passing `activity_coverage_complete=false`.
+2. Replace the fee-completion boolean/reference with durable fee-to-fill allocation evidence. Unlinked regulatory/venue fees, non-USD fees, missing execution references and pending fee lookups must remain unresolved.
+3. Extend activity handling for supported equity/crypto corporate actions and corrections/busts only with reversible, tested restatement logic. Unknown activity types continue to block.
+4. Identify the actual persistent deployment host/volume. Only after confirming it and stopping writers, use the explicit cash-coverage schema migration with a verified backup if the database predates PR #206; then perform the read-only bounded Paper replay.
+5. Validate cash, equity, positions and fee allocation over multiple Paper sessions before connecting strategy equity/daily P&L to Core risk. Keep `OBSERVE_ONLY`, orders and Live disabled.
 
 
 ### 2026-11-13 continuation — PR #204 runtime wiring and Paper cash anchor admin
@@ -1494,9 +1495,22 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 
 ### Next blockers — real Paper evidence and metric eligibility
 
-1. Identify the actual persistent deployment host/volume and confirm the Activity SSE consumer and observer share the same durable `/app/data` volume. Do not assume a host or path from the repository alone.
-2. Run the Activity SSE consumer and confirm its durable inbox is healthy and replayed; local hash-chain validity alone is not proof of complete broker history.
-3. Run the Paper cash anchor admin command once on the real host after reviewing the cash snapshot and inbox cursor. Keep `ROCKET_TRADER_CASH_LEDGER_ENABLED=false` until the operator approves enabling the diagnostic integration.
-4. Implement a durable, cursor-bound coverage attestation that can be invalidated on SSE disconnect/drop/replay failure, plus fee-to-fill allocation attestation from the fee resolver. The current runtime intentionally asserts neither.
-5. Perform the read-only Paper account activity/cash/equity audit and prove position, cash, equity and fee parity across multiple sessions. Only then connect strategy equity/daily P&L metrics to Core risk and consider any capped Paper order test.
-6. Keep all Live order paths disabled. No backtest result or offline test is evidence of future profitability.
+1. Identify the actual persistent deployment host/volume and confirm the Activity SSE consumer, cash ledger and observer share the intended durable volume. Do not assume a host or path from the repository.
+2. The bounded Activity SSE coverage auditor now exists. Wire it into the Paper reconciliation gate and exercise it against a real Paper account; until then, the runtime must keep coverage false.
+3. Replace fee completion's caller-supplied boolean/reference with a persisted audit proving each fee is mapped to a specific fill and included in the MXN ledger. Unlinked daily regulatory/venue fees remain unresolved; do not spread or estimate them.
+4. Run the cash anchor admin only on the verified persistent host after reviewing the broker snapshot and inbox cursor. If the cash DB predates PR #206, stop all writers and run the explicit backed-up coverage-schema migration. Do not run either command against an unknown host or guessed path.
+5. Perform read-only Paper activity/cash/equity reconciliation across multiple sessions, including fee allocation and corporate-action/correction coverage. Only after those results are independently reviewed should strategy equity/daily P&L be connected to Core risk or any capped Paper order test be considered.
+6. Keep Live order paths disabled. Backtests, offline CI and a published container image are not proof of future profitability or operational readiness.
+
+
+### 2026-11-14 continuation — PRs #202–#206: durable Paper activity, cash/equity and coverage evidence
+
+- PR #202 merged the durable Activity SSE inbox → USD cash ledger bridge. Post-merge workflow `43501993877` passed 18 offline cash-ledger tests.
+- PR #203 integrated the USD cash ledger with the Paper reconciliation gate. It requires position, cash and account-equity parity while retaining fee attribution as a separate gate. Post-merge workflows passed: Paper reconciliation (12 tests), cash ledger (21 tests) and the runtime/accounting suite (multiple modules); the Paper Observer container built successfully.
+- PR #204 added opt-in runtime wiring and a read-only Paper cash-anchor admin command. PR #205 recorded the evidence and remaining blockers. Cash-ledger runtime remains disabled by default; enabling it does not assert activity coverage or fee allocation.
+- PR #206 merged at `01e4a3d6954193bc701d5ec897c9ae1f007eb509`. It adds a bounded historical Activity SSE replay using `since`/`until`, compares the broker replay to the durable inbox by `ref_id`, business timestamp and stable payload hash, rejects dropped-message/server-error conditions and mismatched manifests, and persists append-only coverage evidence. Cash reconciliation now verifies the persisted audit against the active anchor, snapshot window and cash-ledger events; a caller-supplied boolean/reference alone is insufficient.
+- PR #206 also adds an explicit cash coverage schema migration. It requires stopped writers, a separate non-existing backup path, integrity/row-count verification and an atomic schema transaction. Existing DBs are not silently upgraded.
+- Post-merge main workflows all passed: USD cash ledger `43620279762` (41 tests); Activity SSE `43620279594` (26 tests); Paper reconciliation `43620279592` (12 + 25 + 26 tests); runtime/accounting suite `43620279631` (16 modules, 239 test cases); container `43620279607`; image publish `43620279622`.
+- Paper Observer image published to GHCR (not deployed): `ghcr.io/marcodurzov/rocket_trader:01e4a3d6954193bc701d5ec897c9ae1f007eb509`, digest `sha256:294e9316420a99d59c87fa43ef4ea1eb4de7a448025035601cff233389a96afc`.
+- The bounded audit CLI and schema migration were not run against the user's environment. No persistent host was identified/accessed, no actual Paper API query or account mutation occurred, no order was submitted, and no deployment or Live action occurred.
+- **Important remaining gap:** the bounded auditor is not yet wired into the observer runtime. Runtime continues to pass `activity_coverage_complete=false` and `fee_reconciliation_complete=false`. Fee-to-fill allocation remains unresolved. Progress remains **58%**; no strategy or profitability approval is implied.
