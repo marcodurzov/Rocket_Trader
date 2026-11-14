@@ -754,7 +754,7 @@ class AlpacaPaperUSDCashLedger:
                 "fee_activity_refs": sorted(ref.strip() for ref in fee_refs),
             }
             if (
-                not fills[execution_id]["fill_event_id"]
+                fills[execution_id]["fill_event_id"] != f"ALPACA-FILL-{execution_id}"
                 or len(fills[execution_id]["fill_event_hash"]) != 64
                 or len(fills[execution_id]["bridge_payload_hash"]) != 64
                 or len(fills[execution_id]["cash_payload_hash"]) != 64
@@ -806,7 +806,9 @@ class AlpacaPaperUSDCashLedger:
         manifest_json = _canonical(manifest)
         manifest_digest = hashlib.sha256(manifest_json.encode("utf-8")).hexdigest()
         with self._lock, self._connect() as conn:
-            anchor = conn.execute(
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                anchor = conn.execute(
                 "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
                 (self.account_id,),
             ).fetchone()
@@ -865,9 +867,8 @@ class AlpacaPaperUSDCashLedger:
             if existing:
                 if existing["payload_hash"] != payload_hash:
                     raise PaperCashLedgerError("Fee allocation audit ID collision")
-                return {"status": "DUPLICATE_AUDIT", "audit_id": audit_id, **payload}
-            conn.execute("BEGIN IMMEDIATE")
-            try:
+                    conn.execute("COMMIT")
+                    return {"status": "DUPLICATE_AUDIT", "audit_id": audit_id, **payload}
                 conn.execute("""
                     INSERT INTO paper_fee_allocation_audits
                     (audit_id,account_id,anchor_id,coverage_audit_id,since_at,until_at,
@@ -880,7 +881,6 @@ class AlpacaPaperUSDCashLedger:
                     cash_digest, manifest_json, manifest_digest, payload_hash,
                     _iso(datetime.now(timezone.utc)),
                 ))
-                conn.execute("COMMIT")
             except Exception:
                 if conn.in_transaction:
                     conn.execute("ROLLBACK")
