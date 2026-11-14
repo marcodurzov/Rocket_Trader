@@ -159,9 +159,21 @@ class FeeAllocationAuditTests(unittest.TestCase):
         unlinked["details"] = {}
         self.inbox.stage(unlinked)
         self.cash.ingest_activity(unlinked)
+        # Re-attest the expanded broker/cash activity window. The audit must
+        # then reject the genuinely covered fee because no fill references it.
+        coverage = AlpacaPaperActivityCoverageAuditor(
+            account_id=ACCOUNT,
+            cash_ledger=self.cash,
+            inbox_db_path=self.inbox_path,
+            api_key="offline-key",
+            api_secret="offline-secret",
+            request_get=lambda *args, **kwargs: FakeSSEReplayResponse([
+                self.fill_activity, self.fee_activity, unlinked,
+            ]),
+        ).audit(since=SINCE, until=UNTIL, checked_at=CHECKED)
         with self.assertRaisesRegex(PaperFeeAllocationAuditError, "maps to 0 fills"):
             self.auditor().audit(
-                coverage_audit_id=self.coverage["audit_id"],
+                coverage_audit_id=coverage["audit_id"],
                 since=SINCE, until=UNTIL, checked_at=CHECKED,
             )
 
