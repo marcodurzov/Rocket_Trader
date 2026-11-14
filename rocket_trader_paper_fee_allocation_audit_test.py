@@ -97,7 +97,9 @@ class FeeAllocationAuditTests(unittest.TestCase):
         self.bridge = PaperFillLedgerBridge(
             db_path=self.bridge_path,
             ledger=self.pnl,
-            fx_resolver=lambda _when: LedgerFX(Decimal("18"), SINCE + timedelta(minutes=10), "TEST_FX"),
+            fx_resolver=lambda _when: LedgerFX(
+                Decimal("18"), SINCE + timedelta(minutes=10), "TEST_FX",
+            ),
             fee_resolver=lambda _payload: {
                 "fee_usd": "0.01",
                 "fee_asset_qty": "0",
@@ -157,7 +159,7 @@ class FeeAllocationAuditTests(unittest.TestCase):
         unlinked["details"] = {}
         self.inbox.stage(unlinked)
         self.cash.ingest_activity(unlinked)
-        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "maps to 0 fills"):
+        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "coverage audit is invalid or no longer matches cash ledger"):
             self.auditor().audit(
                 coverage_audit_id=self.coverage["audit_id"],
                 since=SINCE, until=UNTIL, checked_at=CHECKED,
@@ -174,8 +176,7 @@ class FeeAllocationAuditTests(unittest.TestCase):
                 since=SINCE, until=UNTIL, checked_at=CHECKED,
             )
 
-    def test_fee_amount_mismatch_with_mxn_ledger_blocks_audit(self):
-        # Drop immutability solely to simulate a corrupt broker fee record.
+    def test_cash_activity_hash_mismatch_blocks_fee_audit(self):
         with sqlite3.connect(self.cash_path) as conn:
             conn.execute("DROP TRIGGER paper_cash_activities_no_update")
             row = conn.execute(
@@ -191,7 +192,7 @@ class FeeAllocationAuditTests(unittest.TestCase):
                 "CREATE TRIGGER paper_cash_activities_no_update BEFORE UPDATE ON paper_cash_activities "
                 "BEGIN SELECT RAISE(ABORT, 'Paper cash evidence is append-only'); END"
             )
-        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "Resolved fee totals do not match"):
+        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "coverage audit is invalid or no longer matches cash ledger"):
             self.auditor().audit(
                 coverage_audit_id=self.coverage["audit_id"],
                 since=SINCE, until=UNTIL, checked_at=CHECKED,
