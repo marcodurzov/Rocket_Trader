@@ -246,7 +246,7 @@ class AlpacaActivityFeeResolver:
                     )
             source_ids.append(activity_id or "activity-without-id")
             activity_ref = str(activity.get("ref_id") or "").strip()
-            if not activity_ref and activity_id and "::" in activity_id:
+            if not activity_ref and activity_id:
                 activity_ref = activity_id.rsplit("::", 1)[-1]
             if activity_ref:
                 source_refs.append(activity_ref)
