@@ -87,6 +87,7 @@ class AlpacaActivityFeeResolverTests(unittest.TestCase):
     def test_execution_linked_usd_fee_uses_parent_id(self):
         activities = [{
             "id": "fee-equity-1",
+            "ref_id": "fee-ref-equity-1",
             "activity_type": "FEE",
             "currency": "USD",
             "net_amount": "-0.01",
@@ -102,6 +103,8 @@ class AlpacaActivityFeeResolverTests(unittest.TestCase):
         })
         self.assertEqual(result["fee_usd"], "0.01")
         self.assertEqual(result["fee_asset_qty"], "0")
+        self.assertEqual(result["fee_activity_ids"], ["fee-equity-1"])
+        self.assertEqual(result["fee_activity_refs"], ["fee-ref-equity-1"])
 
     def test_equity_buy_without_linked_fee_returns_explicit_zero(self):
         resolver = AlpacaActivityFeeResolver(lambda _when: [])
@@ -112,6 +115,8 @@ class AlpacaActivityFeeResolverTests(unittest.TestCase):
             "side": "BUY",
         })
         self.assertEqual(result["fee_usd"], "0")
+        self.assertEqual(result["fee_activity_ids"], [])
+        self.assertEqual(result["fee_activity_refs"], [])
         self.assertIn("commission-free", result["fee_source"])
 
     def test_crypto_fee_not_yet_posted_remains_pending(self):
