@@ -228,8 +228,9 @@ class PaperAccountEvidenceCoordinatorTests(unittest.TestCase):
 
     def test_coverage_failure_blocks_fee_audit_and_reconciliation(self):
         class FailingCoverage:
-            cash_ledger = self.cash
-            inbox_db_path = self.inbox_path
+            def __init__(self, cash_ledger, inbox_db_path):
+                self.cash_ledger = cash_ledger
+                self.inbox_db_path = inbox_db_path
 
             def audit(self, **_kwargs):
                 raise RuntimeError("bounded replay mismatch")
@@ -239,7 +240,7 @@ class PaperAccountEvidenceCoordinatorTests(unittest.TestCase):
             fill_ledger_bridge=self.bridge,
             cash_ledger=self.cash,
             activity_sse_inbox_path=self.inbox_path,
-            coverage_auditor=FailingCoverage(),
+            coverage_auditor=FailingCoverage(self.cash, self.inbox_path),
             fee_allocation_auditor=self.fee_auditor,
             clock=lambda: SNAPSHOT_AT,
         )
