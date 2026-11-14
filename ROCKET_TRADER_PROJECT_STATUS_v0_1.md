@@ -1,5 +1,5 @@
 # Rocket Trader — Project Status v0.1
-**Last reviewed:** 2026-11-12  
+**Last reviewed:** 2026-11-14  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Primary reference system:** https://github.com/marcodurzov/mdv-ps-jefe-maestro
 
@@ -1109,3 +1109,17 @@ Post-merge main validation passed:
 - Paper Observer image published (not deployed) at `ghcr.io/marcodurzov/rocket_trader:01e4a3d6954193bc701d5ec897c9ae1f007eb509`, digest `sha256:294e9316420a99d59c87fa43ef4ea1eb4de7a448025035601cff233389a96afc`.
 
 The coverage auditor is **not yet integrated into the observer runtime**. Runtime continues to assert neither complete activity coverage nor complete fee allocation. Fee-to-fill allocation, actual persistent-host identification, real Paper evidence across multiple sessions, corporate-action/correction handling and Core integration remain open. No actual Paper API query, order, account mutation, persistent-host deployment or Live action occurred. Progress remains **58%**.
+
+
+## 2026-11-14 — PR #210 durable Paper fee-to-fill allocation evidence
+
+PR #210 (`0f603e9462d0652210c992c464cdd61746d17245`) is merged. The resolver and fill bridge preserve exact Alpaca fee activity IDs/references in immutable FX-aware MXN FIFO fill events. A local read-only auditor cross-checks the bounded cash Activity SSE mirror, processed bridge inbox and MXN ledger, including raw cash payload hashes, bridge hashes and ledger event hashes. Every ordinary trade fill must be processed and represented in the MXN ledger; each FEE/CFEE must map exactly once; and USD/crypto asset fee totals must match the ledger. Ambiguous, unlinked, non-USD, correction/bust or otherwise unsupported fee activity remains unresolved.
+
+Fee audit evidence is persisted append-only in the cash database. Cash reconciliation now validates the persisted audit against the active anchor, activity coverage audit, fill/fee manifests and cash activity hashes instead of accepting arbitrary completion references. The explicit backed-up cash schema migration adds the fee-audit table and refuses partial schemas.
+
+Validation on PR head `d4b56487d5258bd6cec83f5706cccb96e47e1a9a`: 10 relevant workflows passed; Paper USD cash ledger passed 48 tests. Post-merge `main` cash ledger, Paper reconciliation, fee resolver, realized P&L, fill bridge, Activity SSE, external deposit bridge, observer runtime and container workflows passed. GHCR image publication was still in progress at last verification; its digest must be checked separately.
+
+**Important remaining gap:** the auditor is packaged but not yet consumed automatically by the Paper Observer runtime. Runtime must continue to set `activity_coverage_complete=false` and `fee_reconciliation_complete=false` until a separate reviewed integration validates both audits against the same account, anchor and broker snapshot. No persistent database was accessed/migrated; no real Paper API audit, order, account mutation, persistent-host deployment or Live action occurred. Progress remains **58%**.
+
+### Next gate
+Review and integrate the bounded Activity SSE coverage and fee allocation audits into the Paper Observer snapshot cycle. Bind both audit references to the same account, anchor, snapshot/window and verified persistent database paths. Fail closed on stale/missing evidence, anchor changes, new post-audit activities, unprocessed fills, unlinked fees or mismatched ledgers. Keep orders disabled and add offline runtime tests before any deployment or real Paper validation.
