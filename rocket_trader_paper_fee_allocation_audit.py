@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -32,14 +33,18 @@ class PaperFeeAllocationAuditError(RuntimeError):
     """Paper fee evidence is missing, ambiguous or inconsistent."""
 
 
-def _read_only(path: str) -> sqlite3.Connection:
+@contextmanager
+def _read_only(path: str):
     resolved = Path(path).expanduser().resolve()
     if not resolved.is_file():
         raise PaperFeeAllocationAuditError(f"Required existing database is missing: {resolved.name}")
     conn = sqlite3.connect(resolved.as_uri() + "?mode=ro", uri=True, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA query_only=ON")
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _hash_json(value: Any) -> str:
@@ -127,6 +132,8 @@ class AlpacaPaperFeeAllocationAuditor:
                 ).fetchall()
             with _read_only(self.realized_pnl_db_path) as pnl_db:
                 meta = dict(pnl_db.execute("SELECT key,value FROM ledger_meta").fetchall())
+                if meta.get("schema_version") != "1":
+                    raise PaperFeeAllocationAuditError("MXN realized-P&L ledger schema version is unsupported")
                 pnl_triggers = {
                     row[0] for row in pnl_db.execute(
                         "SELECT name FROM sqlite_master WHERE type='trigger'"
@@ -140,9 +147,14 @@ class AlpacaPaperFeeAllocationAuditor:
                     raise PaperFeeAllocationAuditError("MXN ledger must use the entry/exit FX FIFO accounting method")
                 if not required_pnl_triggers.issubset(pnl_triggers):
                     raise PaperFeeAllocationAuditError("MXN ledger append-only triggers are missing")
-                pnl_rows = pnl_db.execute(
-                    "SELECT event_id,event_type,occurred_at,payload_json,payload_hash FROM ledger_events WHERE event_type='FILL'"
+                all_ledger_rows = pnl_db.execute(
+                    "SELECT event_id,event_type,occurred_at,payload_json,payload_hash FROM ledger_events ORDER BY seq"
                 ).fetchall()
+                pnl_rows = []
+                for ledger_row in all_ledger_rows:
+                    verified_payload = self._verify_event_hash(ledger_row, "MXN ledger event")
+                    if ledger_row["event_type"] == "FILL":
+                        pnl_rows.append((ledger_row, verified_payload))
         except sqlite3.Error as exc:
             raise PaperFeeAllocationAuditError("Could not read the cash, fill bridge and MXN ledger databases") from exc
 
@@ -153,8 +165,7 @@ class AlpacaPaperFeeAllocationAuditor:
                 raise PaperFeeAllocationAuditError("Fill bridge contains duplicate execution IDs")
             bridge_by_id[execution_id] = row
         pnl_by_event: Dict[str, tuple[sqlite3.Row, Dict[str, Any]]] = {}
-        for row in pnl_rows:
-            payload = self._verify_event_hash(row, "MXN fill event")
+        for row, payload in pnl_rows:
             if row["event_id"] in pnl_by_event:
                 raise PaperFeeAllocationAuditError("MXN ledger contains duplicate fill event IDs")
             pnl_by_event[str(row["event_id"])] = (row, payload)
@@ -248,6 +259,10 @@ class AlpacaPaperFeeAllocationAuditor:
                 )
             execution_id = matches[0]
             fill = fills[execution_id]
+            details = payload.get("details") or {}
+            parent_id = str(details.get("parent_id") or details.get("execution_id") or "").strip()
+            if parent_id and parent_id != execution_id:
+                raise PaperFeeAllocationAuditError(f"Fee activity {ref_id} parent ID does not match its allocated fill")
             amount = _decimal(payload.get("net_amount", "0"), "Fee net_amount")
             fee_usd = Decimal("0")
             fee_asset_qty = Decimal("0")
