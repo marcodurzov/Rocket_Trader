@@ -747,6 +747,7 @@ class AlpacaPaperUSDCashLedger:
                 "fill_event_id": str(item.get("fill_event_id") or "").strip(),
                 "fill_event_hash": str(item.get("fill_event_hash") or "").strip(),
                 "bridge_payload_hash": str(item.get("bridge_payload_hash") or "").strip(),
+                "cash_payload_hash": str(item.get("cash_payload_hash") or "").strip().lower(),
                 "fee_usd": str(item.get("fee_usd") or "0"),
                 "fee_asset_qty": str(item.get("fee_asset_qty") or "0"),
                 "fee_source": str(item.get("fee_source") or "").strip(),
@@ -756,6 +757,12 @@ class AlpacaPaperUSDCashLedger:
                 not fills[execution_id]["fill_event_id"]
                 or len(fills[execution_id]["fill_event_hash"]) != 64
                 or len(fills[execution_id]["bridge_payload_hash"]) != 64
+                or len(fills[execution_id]["cash_payload_hash"]) != 64
+                or any(ch not in "0123456789abcdef" for ch in (
+                    fills[execution_id]["fill_event_hash"]
+                    + fills[execution_id]["bridge_payload_hash"]
+                    + fills[execution_id]["cash_payload_hash"]
+                ))
                 or not fills[execution_id]["fee_source"]
             ):
                 raise PaperCashLedgerError("Fee audit fill evidence is missing event hashes or fee source")
@@ -811,13 +818,20 @@ class AlpacaPaperUSDCashLedger:
                    ORDER BY occurred_at,event_id""",
                 (self.account_id, _iso(since), _iso(until)),
             ).fetchall()
-            cash_fill_refs = {
-                str(row["ref_id"]) for row in cash_rows if row["activity_type"] == "TRD"
+            cash_fill_rows = {
+                str(row["ref_id"]): str(row["payload_hash"])
+                for row in cash_rows if row["activity_type"] == "TRD"
             }
-            cash_fee_refs = {
-                str(row["ref_id"]) for row in cash_rows if row["activity_type"] in {"FEE", "CFEE"}
+            cash_fee_rows = {
+                str(row["ref_id"]): str(row["payload_hash"])
+                for row in cash_rows if row["activity_type"] in {"FEE", "CFEE"}
             }
-            if cash_fill_refs != set(fills) or cash_fee_refs != set(fees):
+            if (
+                set(cash_fill_rows) != set(fills)
+                or set(cash_fee_rows) != set(fees)
+                or any(fills[key]["cash_payload_hash"] != digest for key, digest in cash_fill_rows.items())
+                or any(fees[key]["cash_payload_hash"] != digest for key, digest in cash_fee_rows.items())
+            ):
                 raise PaperCashLedgerError("Fee audit manifests do not cover every cash-ledger fill and fee activity")
             cash_digest = _cash_fill_fee_activity_digest(cash_rows)
             payload = {
@@ -1087,17 +1101,27 @@ class AlpacaPaperUSDCashLedger:
                                 None if fee_reconciliation_checked_at is None
                                 else _timestamp(fee_reconciliation_checked_at, "fee reconciliation checked_at")
                             )
-                            cash_fill_refs = {
-                                str(row["ref_id"]) for row in rows if row["activity_type"] == "TRD"
+                            cash_fill_rows = {
+                                str(row["ref_id"]): str(row["payload_hash"])
+                                for row in rows if row["activity_type"] == "TRD"
                             }
-                            cash_fee_refs = {
-                                str(row["ref_id"]) for row in rows if row["activity_type"] in {"FEE", "CFEE"}
+                            cash_fee_rows = {
+                                str(row["ref_id"]): str(row["payload_hash"])
+                                for row in rows if row["activity_type"] in {"FEE", "CFEE"}
                             }
                             manifest_fill_refs = {
                                 str(item["execution_id"]) for item in fee_fills
                             }
                             manifest_fee_refs = {
                                 str(item["ref_id"]) for item in fee_items
+                            }
+                            manifest_fill_hashes = {
+                                str(item["execution_id"]): str(item["cash_payload_hash"])
+                                for item in fee_fills
+                            }
+                            manifest_fee_hashes = {
+                                str(item["ref_id"]): str(item["cash_payload_hash"])
+                                for item in fee_items
                             }
                             refs_by_fill = {
                                 str(item["execution_id"]): set(item.get("fee_activity_refs", []))
@@ -1132,8 +1156,10 @@ class AlpacaPaperUSDCashLedger:
                                 and fee_manifest_digest == fee_audit["manifest_digest"]
                                 and fee_payload_hash == fee_audit["payload_hash"]
                                 and fee_audit["cash_activity_digest"] == _cash_fill_fee_activity_digest(rows)
-                                and cash_fill_refs == manifest_fill_refs
-                                and cash_fee_refs == manifest_fee_refs
+                                and set(cash_fill_rows) == manifest_fill_refs
+                                and set(cash_fee_rows) == manifest_fee_refs
+                                and cash_fill_rows == manifest_fill_hashes
+                                and cash_fee_rows == manifest_fee_hashes
                                 and fee_mapping_valid
                                 and {
                                     "paper_fee_allocation_audits_no_update",
