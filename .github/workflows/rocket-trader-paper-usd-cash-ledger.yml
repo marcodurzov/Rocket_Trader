@@ -1,4 +1,5 @@
 name: Rocket Trader - Paper USD Cash Ledger
+# Trigger fee allocation validation for PR 208
 
 on:
   push:
