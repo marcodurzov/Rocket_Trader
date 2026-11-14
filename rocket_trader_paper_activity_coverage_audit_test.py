@@ -188,8 +188,16 @@ class CoverageAuditTests(unittest.TestCase):
         import sqlite3
         with sqlite3.connect(self.cash_path) as conn:
             conn.execute("DROP TRIGGER paper_cash_activities_no_update")
-            conn.execute("UPDATE paper_cash_activities SET payload_hash=? WHERE ref_id=?",
-                         ("0" * 64, "coverage-ref-1"))
+            row = conn.execute(
+                "SELECT payload_json FROM paper_cash_activities WHERE ref_id=?",
+                ("coverage-ref-1",),
+            ).fetchone()
+            changed = json.loads(row[0])
+            changed["net_amount"] = "6"
+            conn.execute(
+                "UPDATE paper_cash_activities SET payload_json=? WHERE ref_id=?",
+                (json.dumps(changed, sort_keys=True, separators=(",", ":")), "coverage-ref-1"),
+            )
             conn.execute("CREATE TRIGGER paper_cash_activities_no_update BEFORE UPDATE ON paper_cash_activities "
                          "BEGIN SELECT RAISE(ABORT, 'Paper cash evidence is append-only'); END")
         result = self.ledger.reconcile(

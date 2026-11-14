@@ -3,6 +3,7 @@
 """Offline tests for read-only Paper account/position reconciliation."""
 
 import unittest
+import json
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from types import SimpleNamespace
 from rocket_trader_currency import FXQuote
 from rocket_trader_alpaca_cash_ledger import AlpacaPaperUSDCashLedger
 from rocket_trader_alpaca_activity_sse_consumer import DurableActivitySSEInbox
+from rocket_trader_paper_activity_coverage_audit import AlpacaPaperActivityCoverageAuditor
 from rocket_trader_paper_reconciliation import (
     AlpacaPaperReconciliationGate, PaperReconciliationError,
 )
@@ -20,6 +22,23 @@ from rocket_trader_paper_reconciliation import (
 NOW = datetime(2026, 11, 9, 16, 0, tzinfo=timezone.utc)
 ACCOUNT = "paper-account-1"
 FX = FXQuote(Decimal("18"), NOW, "OFFLINE_TEST_FIXTURE")
+
+
+class FakeSSEReplayResponse:
+    status_code = 200
+
+    def __init__(self, events):
+        self.events = events
+        self.closed = False
+
+    def iter_lines(self, decode_unicode=True):
+        for item in self.events:
+            yield "data: " + json.dumps(item, separators=(",", ":"))
+            yield ""
+
+    def close(self):
+        self.closed = True
+
 
 
 class FakeBroker:
@@ -56,7 +75,7 @@ class PaperReconciliationTests(unittest.TestCase):
             activity_cursor_before_snapshot=None,
         )
         inbox = DurableActivitySSEInbox(inbox_db)
-        inbox.stage({
+        activity = {
             "account_id": ACCOUNT,
             "event_id": "00000000000000000000000001",
             "ref_id": "trade-1",
@@ -67,8 +86,23 @@ class PaperReconciliationTests(unittest.TestCase):
             "executed_at": (NOW - timedelta(minutes=5)).isoformat(),
             "currency": "USD",
             "net_amount": "-10",
+            "previous_id": None,
             "details": {"side": "buy", "execution_type": "fill"},
-        })
+        }
+        inbox.stage(activity)
+        cash_ledger.ingest_from_activity_sse_inbox(inbox_db_path=inbox_db)
+        audit = AlpacaPaperActivityCoverageAuditor(
+            account_id=ACCOUNT,
+            cash_ledger=cash_ledger,
+            inbox_db_path=inbox_db,
+            api_key="offline-key",
+            api_secret="offline-secret",
+            request_get=lambda *args, **kwargs: FakeSSEReplayResponse([activity]),
+        ).audit(
+            since=NOW - timedelta(minutes=10),
+            until=NOW,
+            checked_at=NOW + timedelta(seconds=1),
+        )
         broker = FakeBroker(
             account=SimpleNamespace(
                 id=ACCOUNT, status="ACTIVE", currency="USD", trading_blocked=False,
@@ -81,17 +115,17 @@ class PaperReconciliationTests(unittest.TestCase):
         gate = AlpacaPaperReconciliationGate(
             broker, cash_ledger=cash_ledger, activity_sse_inbox_path=inbox_db,
         )
-        return tmp, gate
+        return tmp, gate, audit["audit_id"]
 
     def test_full_position_cash_and_equity_reconciliation_passes(self):
-        tmp, gate = self._cash_reconciliation_fixture()
+        tmp, gate, coverage_ref = self._cash_reconciliation_fixture()
         self.addCleanup(tmp.cleanup)
         result = gate.reconcile(
             ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
             fx_quote=FX, now=NOW,
             activity_coverage_complete=True,
-            activity_coverage_reference="offline-replay-catchup-1",
-            activity_coverage_checked_at=NOW,
+            activity_coverage_reference=coverage_ref,
+            activity_coverage_checked_at=NOW + timedelta(seconds=1),
             fee_reconciliation_complete=True,
             fee_reconciliation_reference="offline-fee-audit-1",
             fee_reconciliation_checked_at=NOW,
@@ -105,28 +139,28 @@ class PaperReconciliationTests(unittest.TestCase):
         self.assertFalse(result["orders_enabled"])
 
     def test_equity_mismatch_blocks_full_paper_reconciliation(self):
-        tmp, gate = self._cash_reconciliation_fixture(broker_equity="101")
+        tmp, gate, coverage_ref = self._cash_reconciliation_fixture(broker_equity="101")
         self.addCleanup(tmp.cleanup)
         result = gate.reconcile(
             ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
             fx_quote=FX, now=NOW,
             activity_coverage_complete=True,
-            activity_coverage_reference="offline-replay-catchup-1",
-            activity_coverage_checked_at=NOW,
+            activity_coverage_reference=coverage_ref,
+            activity_coverage_checked_at=NOW + timedelta(seconds=1),
         )
         self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
         self.assertEqual(result["account_equity_reconciliation_status"], "EQUITY_BALANCE_MISMATCH")
         self.assertFalse(result["account_reconciliation_complete"])
 
     def test_position_mismatch_blocks_full_reconciliation_even_when_cash_equity_match(self):
-        tmp, gate = self._cash_reconciliation_fixture()
+        tmp, gate, coverage_ref = self._cash_reconciliation_fixture()
         self.addCleanup(tmp.cleanup)
         result = gate.reconcile(
             ledger_snapshot=self.snapshot({"SPY": {"quantity": "2"}}),
             fx_quote=FX, now=NOW,
             activity_coverage_complete=True,
-            activity_coverage_reference="offline-replay-catchup-1",
-            activity_coverage_checked_at=NOW,
+            activity_coverage_reference=coverage_ref,
+            activity_coverage_checked_at=NOW + timedelta(seconds=1),
         )
         self.assertEqual(result["cash_reconciliation_status"], "RECONCILED")
         self.assertEqual(result["account_equity_reconciliation_status"], "RECONCILED")
@@ -134,7 +168,7 @@ class PaperReconciliationTests(unittest.TestCase):
         self.assertEqual(result["status"], "POSITION_MISMATCH")
 
     def test_incomplete_activity_coverage_keeps_full_reconciliation_blocked(self):
-        tmp, gate = self._cash_reconciliation_fixture()
+        tmp, gate, _coverage_ref = self._cash_reconciliation_fixture()
         self.addCleanup(tmp.cleanup)
         result = gate.reconcile(
             ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
