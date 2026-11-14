@@ -206,6 +206,8 @@ class AlpacaActivityFeeResolver:
                     "fee_usd": "0",
                     "fee_asset_qty": "0",
                     "fee_source": "Alpaca commission-free US equity BUY; no linked fee activity",
+                    "fee_activity_ids": [],
+                    "fee_activity_refs": [],
                 }
             raise AlpacaFeeNotAvailable(
                 f"No execution-linked Alpaca fee activity is posted yet for {execution_id}; "
@@ -215,6 +217,7 @@ class AlpacaActivityFeeResolver:
         fee_usd = Decimal("0")
         fee_asset_qty = Decimal("0")
         source_ids = []
+        source_refs = []
         for activity in matches:
             activity_type = str(activity.get("activity_type") or "").upper()
             amount = _decimal(activity.get("net_amount", "0"), "fee net_amount")
@@ -242,9 +245,16 @@ class AlpacaActivityFeeResolver:
                         "CFEE denomination cannot be safely mapped to this fill"
                     )
             source_ids.append(activity_id or "activity-without-id")
+            activity_ref = str(activity.get("ref_id") or "").strip()
+            if not activity_ref and activity_id and "::" in activity_id:
+                activity_ref = activity_id.rsplit("::", 1)[-1]
+            if activity_ref:
+                source_refs.append(activity_ref)
 
         return {
             "fee_usd": str(fee_usd),
             "fee_asset_qty": str(fee_asset_qty),
             "fee_source": "Alpaca Paper Account Activities: " + ",".join(source_ids),
+            "fee_activity_ids": sorted(set(source_ids)),
+            "fee_activity_refs": sorted(set(source_refs)),
         }
