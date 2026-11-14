@@ -9,6 +9,8 @@ durable inbox contain the exact same activity references and payload hashes.
 """
 from __future__ import annotations
 
+import argparse
+import json
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -244,3 +246,63 @@ class AlpacaPaperActivityCoverageAuditor:
             "inbox_cursor": cursor,
             "orders_enabled": False,
         }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--cash-db",
+        default=os.getenv("ROCKET_TRADER_CASH_LEDGER_DB", "/app/data/rocket_trader_paper_cash.sqlite3"),
+    )
+    parser.add_argument(
+        "--activity-sse-db",
+        default=os.getenv("ROCKET_TRADER_ACTIVITY_SSE_DB", "/app/data/rocket_trader_activity_sse.sqlite3"),
+    )
+    parser.add_argument(
+        "--until",
+        help="Inclusive business-time window end (RFC3339); defaults to current UTC time.",
+    )
+    args = parser.parse_args()
+
+    if os.getenv("ALPACA_PAPER", "false").strip().lower() != "true":
+        raise ActivityCoverageAuditError("ALPACA_PAPER=true is required")
+    if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        raise ActivityCoverageAuditError("ALPACA_LIVE_ENABLED must remain false")
+    if os.getenv("ROCKET_TRADER_EXECUTION_MODE", "PAPER").strip().upper() != "PAPER":
+        raise ActivityCoverageAuditError("ROCKET_TRADER_EXECUTION_MODE must be PAPER")
+
+    cash_path = Path(args.cash_db).expanduser().resolve()
+    if not cash_path.is_file():
+        raise ActivityCoverageAuditError("Existing Paper cash ledger database is missing")
+    uri = cash_path.as_uri() + "?mode=ro"
+    try:
+        with sqlite3.connect(uri, uri=True, timeout=30) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            anchor = conn.execute(
+                "SELECT account_id,observed_at FROM paper_cash_anchors ORDER BY observed_at DESC LIMIT 1"
+            ).fetchone()
+    except sqlite3.Error as exc:
+        raise ActivityCoverageAuditError("Could not read the existing Paper cash anchor") from exc
+    if anchor is None:
+        raise ActivityCoverageAuditError("A Paper cash anchor is required before coverage audit")
+    account_id, anchor_at = str(anchor[0]), str(anchor[1])
+    ledger = AlpacaPaperUSDCashLedger(
+        str(cash_path), account_id=account_id, initialize=False,
+    )
+    until = _as_utc(args.until, "coverage until") if args.until else datetime.now(timezone.utc)
+    auditor = AlpacaPaperActivityCoverageAuditor(
+        account_id=account_id,
+        cash_ledger=ledger,
+        inbox_db_path=args.activity_sse_db,
+    )
+    report = auditor.audit(
+        since=anchor_at,
+        until=until,
+        checked_at=datetime.now(timezone.utc),
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
