@@ -168,7 +168,7 @@ class PaperReconciliationTests(unittest.TestCase):
         self.assertEqual(result["status"], "POSITION_MISMATCH")
 
     def test_incomplete_activity_coverage_keeps_full_reconciliation_blocked(self):
-        tmp, gate = self._cash_reconciliation_fixture()
+        tmp, gate, _coverage_ref = self._cash_reconciliation_fixture()
         self.addCleanup(tmp.cleanup)
         result = gate.reconcile(
             ledger_snapshot=self.snapshot({"SPY": {"quantity": "1"}}),
