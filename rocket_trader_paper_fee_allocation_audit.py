@@ -147,14 +147,24 @@ class AlpacaPaperFeeAllocationAuditor:
                     raise PaperFeeAllocationAuditError("MXN ledger must use the entry/exit FX FIFO accounting method")
                 if not required_pnl_triggers.issubset(pnl_triggers):
                     raise PaperFeeAllocationAuditError("MXN ledger append-only triggers are missing")
+                if pnl_db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                    raise PaperFeeAllocationAuditError("MXN ledger SQLite integrity check failed")
                 all_ledger_rows = pnl_db.execute(
                     "SELECT event_id,event_type,occurred_at,payload_json,payload_hash FROM ledger_events ORDER BY seq"
                 ).fetchall()
                 pnl_rows = []
+                has_initial_capital = False
                 for ledger_row in all_ledger_rows:
                     verified_payload = self._verify_event_hash(ledger_row, "MXN ledger event")
+                    if (
+                        ledger_row["event_id"] == "SYSTEM-INITIAL-CAPITAL"
+                        and ledger_row["event_type"] == "INITIAL_CAPITAL"
+                    ):
+                        has_initial_capital = True
                     if ledger_row["event_type"] == "FILL":
                         pnl_rows.append((ledger_row, verified_payload))
+                if not has_initial_capital:
+                    raise PaperFeeAllocationAuditError("MXN ledger initial-capital event is missing")
         except sqlite3.Error as exc:
             raise PaperFeeAllocationAuditError("Could not read the cash, fill bridge and MXN ledger databases") from exc
 
@@ -219,6 +229,9 @@ class AlpacaPaperFeeAllocationAuditor:
                     raise PaperFeeAllocationAuditError(f"Cash, bridge and MXN fill evidence disagree for {execution_id}")
                 fee_refs = pnl_payload.get("fee_activity_refs", [])
                 fee_ids = pnl_payload.get("fee_activity_ids", [])
+                fee_source = str(pnl_payload.get("fee_source") or "")
+                if fee_refs and not fee_source.startswith("Alpaca Paper Account Activities:"):
+                    raise PaperFeeAllocationAuditError(f"Fill {execution_id} fee source is not the Alpaca fee resolver")
                 if (
                     not isinstance(fee_refs, list) or not isinstance(fee_ids, list)
                     or any(not isinstance(ref, str) or not ref.strip() for ref in fee_refs)
