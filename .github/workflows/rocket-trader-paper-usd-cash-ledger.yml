@@ -1,4 +1,5 @@
 name: Rocket Trader - Paper USD Cash Ledger
+# Trigger fee allocation validation for PR 208
 
 on:
   push:
@@ -13,6 +14,8 @@ on:
       - "rocket_trader_paper_activity_coverage_audit_test.py"
       - "rocket_trader_paper_cash_coverage_migration.py"
       - "rocket_trader_paper_cash_coverage_migration_test.py"
+      - "rocket_trader_paper_fee_allocation_audit.py"
+      - "rocket_trader_paper_fee_allocation_audit_test.py"
       - ".github/workflows/rocket-trader-paper-usd-cash-ledger.yml"
   pull_request:
     branches:
@@ -22,6 +25,12 @@ on:
       - "rocket_trader_alpaca_cash_ledger_test.py"
       - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_activity_sse_consumer_test.py"
+      - "rocket_trader_paper_activity_coverage_audit.py"
+      - "rocket_trader_paper_activity_coverage_audit_test.py"
+      - "rocket_trader_paper_cash_coverage_migration.py"
+      - "rocket_trader_paper_cash_coverage_migration_test.py"
+      - "rocket_trader_paper_fee_allocation_audit.py"
+      - "rocket_trader_paper_fee_allocation_audit_test.py"
       - ".github/workflows/rocket-trader-paper-usd-cash-ledger.yml"
 
 permissions:
@@ -37,6 +46,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile
-        run: python -m py_compile rocket_trader_alpaca_cash_ledger.py rocket_trader_alpaca_cash_ledger_test.py rocket_trader_alpaca_activity_sse_consumer.py rocket_trader_alpaca_activity_sse_consumer_test.py rocket_trader_paper_activity_coverage_audit.py rocket_trader_paper_activity_coverage_audit_test.py rocket_trader_paper_cash_coverage_migration.py rocket_trader_paper_cash_coverage_migration_test.py
+        run: python -m py_compile rocket_trader_alpaca_cash_ledger.py rocket_trader_alpaca_cash_ledger_test.py rocket_trader_alpaca_activity_sse_consumer.py rocket_trader_alpaca_activity_sse_consumer_test.py rocket_trader_paper_activity_coverage_audit.py rocket_trader_paper_activity_coverage_audit_test.py rocket_trader_paper_cash_coverage_migration.py rocket_trader_paper_cash_coverage_migration_test.py rocket_trader_paper_fee_allocation_audit.py rocket_trader_paper_fee_allocation_audit_test.py
       - name: Run offline USD cash ledger tests
-        run: python -m unittest -v rocket_trader_alpaca_cash_ledger_test.py rocket_trader_paper_activity_coverage_audit_test.py rocket_trader_paper_cash_coverage_migration_test.py
+        run: python -m unittest -v rocket_trader_alpaca_cash_ledger_test.py rocket_trader_paper_activity_coverage_audit_test.py rocket_trader_paper_cash_coverage_migration_test.py rocket_trader_paper_fee_allocation_audit_test.py
