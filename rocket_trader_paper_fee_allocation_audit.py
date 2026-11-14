@@ -112,7 +112,7 @@ class AlpacaPaperFeeAllocationAuditor:
                 observed_at=end,
             )
         except PaperCashLedgerError as exc:
-            raise PaperFeeAllocationAuditError("A valid bounded Activity SSE coverage audit is required first") from exc
+            raise PaperFeeAllocationAuditError(f"Activity coverage audit is invalid or no longer matches cash ledger: {exc}") from exc
         if coverage["since_at"] != _iso(start):
             raise PaperFeeAllocationAuditError("Fee audit window must begin at the active cash anchor")
         if _utc(coverage["until_at"], "coverage until_at") < end:
