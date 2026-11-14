@@ -695,6 +695,32 @@ class AlpacaPaperUSDCashLedger:
                 or not required.issubset(triggers)
             ):
                 raise PaperCashLedgerError("Activity coverage audit integrity/window validation failed")
+            cash_rows = conn.execute(
+                """SELECT ref_id,occurred_at,payload_json FROM paper_cash_activities
+                   WHERE account_id=? AND occurred_at>? AND occurred_at<=?
+                   ORDER BY ref_id""",
+                (self.account_id, _iso(_timestamp(audit["since_at"], "coverage since_at")), _iso(current_time)),
+            ).fetchall()
+            cash_manifest = []
+            for cash_row in cash_rows:
+                try:
+                    cash_payload = json.loads(cash_row["payload_json"])
+                except (TypeError, ValueError) as exc:
+                    raise PaperCashLedgerError("Cash activity payload JSON is invalid") from exc
+                stable_payload = {
+                    key: value for key, value in cash_payload.items() if key != "event_id"
+                }
+                cash_manifest.append((
+                    str(cash_row["ref_id"]),
+                    hashlib.sha256(_canonical(stable_payload).encode("utf-8")).hexdigest(),
+                ))
+            audit_window_manifest = sorted(
+                (item["ref_id"], item["payload_hash"])
+                for item in manifest
+                if _timestamp(item["occurred_at"], "coverage event occurred_at") <= current_time
+            )
+            if sorted(cash_manifest) != audit_window_manifest:
+                raise PaperCashLedgerError("Activity coverage manifest no longer matches cash-ledger activities")
             return {
                 "audit_id": audit_id,
                 "account_id": self.account_id,
