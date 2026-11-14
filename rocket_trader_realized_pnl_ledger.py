@@ -488,6 +488,8 @@ class RealizedPnLLedger:
         fx: LedgerFX,
         fee_asset_qty: Any = "0",
         fee_source: str = "UNSPECIFIED_LEGACY_CALLER",
+        fee_activity_ids: Optional[list[str]] = None,
+        fee_activity_refs: Optional[list[str]] = None,
         occurred_at: datetime,
         asset_class: str,
     ) -> bool:
@@ -501,6 +503,18 @@ class RealizedPnLLedger:
         fee_source = str(fee_source).strip()
         if not fee_source:
             raise LedgerError("fee_source is required")
+        fee_activity_ids = [] if fee_activity_ids is None else fee_activity_ids
+        fee_activity_refs = [] if fee_activity_refs is None else fee_activity_refs
+        if (
+            not isinstance(fee_activity_ids, list)
+            or not isinstance(fee_activity_refs, list)
+            or any(not isinstance(value, str) or not value.strip() for value in fee_activity_ids + fee_activity_refs)
+            or len(set(fee_activity_ids)) != len(fee_activity_ids)
+            or len(set(fee_activity_refs)) != len(fee_activity_refs)
+        ):
+            raise LedgerError("fee activity IDs and refs must be unique non-empty string lists")
+        fee_activity_ids = sorted(value.strip() for value in fee_activity_ids)
+        fee_activity_refs = sorted(value.strip() for value in fee_activity_refs)
         if not symbol or side not in {"BUY", "SELL"}:
             raise LedgerError("Fill requires a symbol and BUY/SELL side")
         if asset_class not in {"US_EQUITY", "CRYPTO_SPOT"}:
@@ -532,6 +546,8 @@ class RealizedPnLLedger:
             "fee_usd": str(fee),
             "fee_asset_qty": str(fee_asset),
             "fee_source": fee_source,
+            "fee_activity_ids": fee_activity_ids,
+            "fee_activity_refs": fee_activity_refs,
             "net_acquired_quantity": str(qty + fee_asset if side == "BUY" else qty),
             "asset_class": asset_class,
             "fx": fx.as_dict(),

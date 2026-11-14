@@ -133,7 +133,7 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
                 fee_reconciliation_complete=True,
             )
 
-    def test_external_fee_resolver_can_explicitly_clear_fee_allocation(self):
+    def test_arbitrary_fee_reference_cannot_clear_fee_allocation(self):
         self.ledger.ingest_activity(event(1, "FEE", amount="-2"))
         report = self.reconcile(
             broker_cash_usd="998", broker_account_id=ACCOUNT,
@@ -144,9 +144,8 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             fee_reconciliation_reference="test-fee-audit-1",
             fee_reconciliation_checked_at=NOW,
         )
-        self.assertEqual(report["fee_reconciliation_status"], "RECONCILED")
-        self.assertEqual(report["pending_fee_allocation_count"], 0)
-        self.assertEqual(report["fee_candidates_without_local_parent_count"], 1)
+        self.assertEqual(report["fee_reconciliation_status"], "UNRESOLVED")
+        self.assertEqual(report["pending_fee_allocation_count"], 1)
 
     def test_non_usd_zero_cash_fee_does_not_change_usd_cash_but_remains_unallocated(self):
         self.ledger.ingest_activity(event(1, "CFEE", amount="0", currency="ETH"))

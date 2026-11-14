@@ -30,6 +30,11 @@ COVERAGE_TRIGGERS = {
     "paper_activity_coverage_audit_events_no_update",
     "paper_activity_coverage_audit_events_no_delete",
 }
+FEE_TABLES = {"paper_fee_allocation_audits"}
+FEE_TRIGGERS = {
+    "paper_fee_allocation_audits_no_update",
+    "paper_fee_allocation_audits_no_delete",
+}
 BASE_TABLES = {"paper_cash_anchors", "paper_cash_activities"}
 BASE_TRIGGERS = {
     "paper_cash_anchors_no_update", "paper_cash_anchors_no_delete",
@@ -97,10 +102,24 @@ def migrate_coverage_schema(
             raise CashCoverageMigrationError("Provided account ID differs from the persisted cash anchor")
         existing_coverage_tables = COVERAGE_TABLES & before["tables"]
         existing_coverage_triggers = COVERAGE_TRIGGERS & before["triggers"]
-        if existing_coverage_tables or existing_coverage_triggers:
-            if COVERAGE_TABLES.issubset(before["tables"]) and COVERAGE_TRIGGERS.issubset(before["triggers"]):
-                return {"status": "ALREADY_CURRENT", "db_path": str(source_path)}
+        existing_fee_tables = FEE_TABLES & before["tables"]
+        existing_fee_triggers = FEE_TRIGGERS & before["triggers"]
+        coverage_current = (
+            COVERAGE_TABLES.issubset(before["tables"])
+            and COVERAGE_TRIGGERS.issubset(before["triggers"])
+        )
+        fee_current = (
+            FEE_TABLES.issubset(before["tables"])
+            and FEE_TRIGGERS.issubset(before["triggers"])
+        )
+        if (existing_coverage_tables or existing_coverage_triggers) and not coverage_current:
             raise CashCoverageMigrationError("Partial coverage schema detected; manual review is required")
+        if (existing_fee_tables or existing_fee_triggers) and not fee_current:
+            raise CashCoverageMigrationError("Partial fee-audit schema detected; manual review is required")
+        if coverage_current and fee_current:
+            return {"status": "ALREADY_CURRENT", "db_path": str(source_path)}
+        need_coverage = not coverage_current
+        need_fee = not fee_current
 
         backup = sqlite3.connect(str(backup_file), timeout=30)
         try:
@@ -126,50 +145,85 @@ def migrate_coverage_schema(
         current = _state(conn)
         if current["counts"] != before["counts"] or current["integrity"] != "ok":
             raise CashCoverageMigrationError("Cash ledger changed after backup; migration refused")
-        if COVERAGE_TABLES & current["tables"] or COVERAGE_TRIGGERS & current["triggers"]:
-            raise CashCoverageMigrationError("Coverage schema changed after backup; migration refused")
+        if current["tables"] != before["tables"] or current["triggers"] != before["triggers"]:
+            raise CashCoverageMigrationError("Cash ledger schema changed after backup; migration refused")
         anchor = conn.execute(
             "SELECT account_id FROM paper_cash_anchors ORDER BY observed_at DESC LIMIT 1"
         ).fetchone()
         if anchor and str(anchor[0]) != account_id.strip():
             raise CashCoverageMigrationError("Provided account ID differs from the persisted cash anchor")
-        conn.execute("""
-            CREATE TABLE paper_activity_coverage_audits (
-                audit_id TEXT PRIMARY KEY,
-                account_id TEXT NOT NULL,
-                anchor_id TEXT NOT NULL,
-                since_at TEXT NOT NULL,
-                until_at TEXT NOT NULL,
-                checked_at TEXT NOT NULL,
-                event_count INTEGER NOT NULL,
-                events_digest TEXT NOT NULL,
-                inbox_cursor TEXT,
-                payload_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE paper_activity_coverage_audit_events (
-                audit_id TEXT NOT NULL,
-                ref_id TEXT NOT NULL,
-                occurred_at TEXT NOT NULL,
-                payload_hash TEXT NOT NULL,
-                PRIMARY KEY(audit_id, ref_id),
-                FOREIGN KEY(audit_id) REFERENCES paper_activity_coverage_audits(audit_id)
-            )
-        """)
-        for table in ("paper_activity_coverage_audits", "paper_activity_coverage_audit_events"):
+        if need_coverage:
+            conn.execute("""
+                CREATE TABLE paper_activity_coverage_audits (
+                    audit_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    anchor_id TEXT NOT NULL,
+                    since_at TEXT NOT NULL,
+                    until_at TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    events_digest TEXT NOT NULL,
+                    inbox_cursor TEXT,
+                    payload_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE paper_activity_coverage_audit_events (
+                    audit_id TEXT NOT NULL,
+                    ref_id TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    PRIMARY KEY(audit_id, ref_id),
+                    FOREIGN KEY(audit_id) REFERENCES paper_activity_coverage_audits(audit_id)
+                )
+            """)
+            for table in ("paper_activity_coverage_audits", "paper_activity_coverage_audit_events"):
+                conn.execute(
+                    f"CREATE TRIGGER {table}_no_update BEFORE UPDATE ON {table} "
+                    "BEGIN SELECT RAISE(ABORT, 'Paper coverage evidence is append-only'); END"
+                )
+                conn.execute(
+                    f"CREATE TRIGGER {table}_no_delete BEFORE DELETE ON {table} "
+                    "BEGIN SELECT RAISE(ABORT, 'Paper coverage evidence is append-only'); END"
+                )
+        if need_fee:
+            conn.execute("""
+                CREATE TABLE paper_fee_allocation_audits (
+                    audit_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    anchor_id TEXT NOT NULL,
+                    coverage_audit_id TEXT NOT NULL,
+                    since_at TEXT NOT NULL,
+                    until_at TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    fill_count INTEGER NOT NULL,
+                    fee_count INTEGER NOT NULL,
+                    cash_activity_digest TEXT NOT NULL,
+                    manifest_json TEXT NOT NULL,
+                    manifest_digest TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
             conn.execute(
-                f"CREATE TRIGGER {table}_no_update BEFORE UPDATE ON {table} "
-                "BEGIN SELECT RAISE(ABORT, 'Paper coverage evidence is append-only'); END"
+                "CREATE TRIGGER paper_fee_allocation_audits_no_update "
+                "BEFORE UPDATE ON paper_fee_allocation_audits "
+                "BEGIN SELECT RAISE(ABORT, 'Paper fee allocation evidence is append-only'); END"
             )
             conn.execute(
-                f"CREATE TRIGGER {table}_no_delete BEFORE DELETE ON {table} "
-                "BEGIN SELECT RAISE(ABORT, 'Paper coverage evidence is append-only'); END"
+                "CREATE TRIGGER paper_fee_allocation_audits_no_delete "
+                "BEFORE DELETE ON paper_fee_allocation_audits "
+                "BEGIN SELECT RAISE(ABORT, 'Paper fee allocation evidence is append-only'); END"
             )
         after = _state(conn)
-        if not COVERAGE_TABLES.issubset(after["tables"]) or not COVERAGE_TRIGGERS.issubset(after["triggers"]):
-            raise CashCoverageMigrationError("Coverage schema creation did not complete")
+        if (
+            not COVERAGE_TABLES.issubset(after["tables"])
+            or not COVERAGE_TRIGGERS.issubset(after["triggers"])
+            or not FEE_TABLES.issubset(after["tables"])
+            or not FEE_TRIGGERS.issubset(after["triggers"])
+        ):
+            raise CashCoverageMigrationError("Coverage/fee audit schema creation did not complete")
         if after["counts"] != before["counts"] or after["integrity"] != "ok":
             raise CashCoverageMigrationError("Existing cash ledger rows changed during schema migration")
         conn.execute("COMMIT")
@@ -188,6 +242,7 @@ def migrate_coverage_schema(
         "existing_cash_anchor_count": before["counts"]["paper_cash_anchors"],
         "existing_cash_activity_count": before["counts"]["paper_cash_activities"],
         "coverage_schema_tables": sorted(COVERAGE_TABLES),
+        "fee_schema_tables": sorted(FEE_TABLES),
         "append_only_triggers_verified": True,
     }
 

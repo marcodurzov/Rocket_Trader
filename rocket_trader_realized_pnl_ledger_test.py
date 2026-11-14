@@ -34,6 +34,30 @@ class RealizedPnLLedgerTests(unittest.TestCase):
             fx=FX, occurred_at=month_time, asset_class="CRYPTO_SPOT",
         )
 
+    def test_fill_persists_exact_fee_activity_references(self):
+        self.ledger.record_fill(
+            fill_id="fee-ref-fill", symbol="SPY", side="BUY",
+            quantity="1", price_usd="100", fee_usd="0.01",
+            fee_activity_ids=["20261109::fee-ref-1"],
+            fee_activity_refs=["fee-ref-1"],
+            fx=FX, occurred_at=NOW, asset_class="US_EQUITY",
+        )
+        payload = next(
+            row["payload"] for row in self.ledger._events()
+            if row["event_id"] == "fee-ref-fill"
+        )
+        self.assertEqual(payload["fee_activity_ids"], ["20261109::fee-ref-1"])
+        self.assertEqual(payload["fee_activity_refs"], ["fee-ref-1"])
+
+    def test_fill_rejects_duplicate_fee_activity_references(self):
+        with self.assertRaisesRegex(LedgerError, "unique non-empty string lists"):
+            self.ledger.record_fill(
+                fill_id="fee-ref-duplicate", symbol="SPY", side="BUY",
+                quantity="1", price_usd="100", fee_usd="0.01",
+                fee_activity_ids=["fee-1", "fee-1"],
+                fx=FX, occurred_at=NOW, asset_class="US_EQUITY",
+            )
+
     def test_seed_capital_and_no_virtual_paper_buying_power(self):
         s = self.ledger.snapshot()
         self.assertEqual(s.initial_capital_mxn, Decimal("1000.00"))
