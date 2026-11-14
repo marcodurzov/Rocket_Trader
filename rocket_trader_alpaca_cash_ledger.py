@@ -881,6 +881,15 @@ class AlpacaPaperUSDCashLedger:
                 }
                 payload_hash = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
                 audit_id = "fee-allocation-" + payload_hash[:32]
+                tables = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                }
+                if "paper_fee_allocation_audits" not in tables:
+                    raise PaperCashLedgerError(
+                        "Cash ledger requires the explicit fee-allocation schema migration before auditing"
+                    )
                 triggers = {
                     row[0] for row in conn.execute(
                         "SELECT name FROM sqlite_master WHERE type='trigger'"
