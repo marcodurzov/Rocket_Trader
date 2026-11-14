@@ -346,6 +346,8 @@ def main() -> int:
     parser.add_argument("--until", help="Inclusive audit window end (RFC3339); defaults to current UTC time.")
     args = parser.parse_args()
 
+    if os.getenv("ALPACA_PAPER", "false").strip().lower() != "true":
+        raise PaperFeeAllocationAuditError("ALPACA_PAPER=true is required")
     if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
         raise PaperFeeAllocationAuditError("ALPACA_LIVE_ENABLED must remain false")
     if os.getenv("ROCKET_TRADER_EXECUTION_MODE", "PAPER").strip().upper() != "PAPER":
@@ -355,10 +357,16 @@ def main() -> int:
         anchor = conn.execute(
             "SELECT account_id,observed_at FROM paper_cash_anchors ORDER BY observed_at DESC LIMIT 1"
         ).fetchone()
+        coverage_row = conn.execute(
+            "SELECT until_at FROM paper_activity_coverage_audits WHERE audit_id=?",
+            (args.coverage_audit_id,),
+        ).fetchone()
     if anchor is None:
         raise PaperFeeAllocationAuditError("A Paper cash anchor is required")
+    if coverage_row is None:
+        raise PaperFeeAllocationAuditError("The requested Activity SSE coverage audit is missing")
     ledger = AlpacaPaperUSDCashLedger(str(cash_path), account_id=str(anchor["account_id"]), initialize=False)
-    until = _utc(args.until, "fee audit until") if args.until else datetime.now(timezone.utc)
+    until = _utc(args.until, "fee audit until") if args.until else _utc(coverage_row["until_at"], "coverage until_at")
     auditor = AlpacaPaperFeeAllocationAuditor(
         cash_ledger=ledger,
         realized_pnl_db_path=args.realized_pnl_db,
