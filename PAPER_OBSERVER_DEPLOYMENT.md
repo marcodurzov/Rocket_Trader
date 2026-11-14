@@ -303,3 +303,25 @@ ROCKET_TRADER_ACTIVITY_SSE_DB=/app/data/rocket_trader_activity_sse.sqlite3
 ```
 
 Keep the feature disabled until the coverage-attestation and fee-audit integration is completed. If enabled now, the observer will ingest the inbox and compare cash/equity, but it intentionally passes `activity_coverage_complete=false` and `fee_reconciliation_complete=false`; the full account gate and health check will remain incomplete. This is diagnostic wiring, not approval to proceed to trading.
+
+
+## 17. Bounded Activity SSE coverage audit and explicit schema upgrade
+
+The Paper USD cash ledger can now persist a coverage attestation only after a bounded historical Activity SSE replay (`since` + `until`) exactly matches the durable local inbox by stable activity reference, business timestamp and stable payload hash. A dropped-message or internal-server-error comment, malformed event, account mismatch, changed payload, missing/extra event, invalid inbox chain or mismatched cash-ledger manifest blocks the attestation. Cash reconciliation verifies that the persisted audit is for the active anchor, covers the broker snapshot time, was checked after the replay window, and still matches the cash-ledger activity set used in the calculation.
+
+For a cash database created before this feature, the two coverage tables and their append-only triggers are not created automatically. Stop every writer, create a separate backup, then run the explicit migration:
+
+```bash
+docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
+  rocket-trader-paper-observer \
+  python /app/rocket_trader_paper_cash_coverage_migration.py \
+  --db-path /app/data/rocket_trader_paper_cash.sqlite3 \
+  --backup-path /app/data/rocket_trader_paper_cash.pre-coverage.sqlite3 \
+  --account-id YOUR_PAPER_ACCOUNT_ID \
+  --confirm \
+  --no-writers-confirmed
+```
+
+The backup path must not already exist. The migration verifies the source database and base append-only triggers, makes and validates a consistent SQLite backup, rechecks that existing cash rows did not change, and creates the coverage tables/triggers in one transaction. It does not contact Alpaca or modify account state. If a partial coverage schema is found, it stops for manual review.
+
+The bounded replay auditor is a read-only primitive. The observer runtime still does **not** automatically assert `activity_coverage_complete`; it remains false until the auditor is wired into the runtime with a controlled replay cadence and independently reviewed operational evidence. Do not treat a local hash chain alone as proof that Alpaca delivered every activity.
