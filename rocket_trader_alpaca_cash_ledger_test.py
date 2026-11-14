@@ -116,7 +116,7 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
 
     def test_coverage_flag_without_traceable_reference_is_rejected(self):
         with self.assertRaisesRegex(PaperCashLedgerError, "traceable reference"):
-            self.reconcile(
+            self.ledger.reconcile(
                 broker_cash_usd="1000", broker_account_id=ACCOUNT,
                 observed_at=NOW, activity_coverage_complete=True,
             )
@@ -263,7 +263,7 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
 
     def test_complete_coverage_requires_traceable_replay_evidence(self):
         with self.assertRaisesRegex(PaperCashLedgerError, "traceable reference"):
-            self.reconcile(
+            self.ledger.reconcile(
                 broker_cash_usd="1000", broker_account_id=ACCOUNT,
                 observed_at=NOW, activity_coverage_complete=True,
             )
