@@ -201,7 +201,7 @@ class PaperAccountEvidenceCoordinatorTests(unittest.TestCase):
 
     def test_cash_mismatch_blocks_full_account_reconciliation(self):
         with self.assertRaisesRegex(PaperAccountEvidenceError, "did not fully reconcile"):
-            self.coordinator(cash="900.00").reconcile()
+            self.coordinator(cash="900.02").reconcile()
 
     def test_equity_mismatch_blocks_full_account_reconciliation(self):
         with self.assertRaisesRegex(PaperAccountEvidenceError, "did not fully reconcile"):
@@ -216,12 +216,14 @@ class PaperAccountEvidenceCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.client.position_calls, 0)
         self.bridge.status = original_status
 
-    def test_missing_anchor_blocks_before_broker_snapshot(self):
+    def test_snapshot_predating_active_anchor_blocks_before_broker_snapshot(self):
         self.cash.record_anchor(
             anchor_id="new-anchor",
             cash_usd="1000",
             observed_at=SNAPSHOT_AT + timedelta(minutes=1),
             source_reference="new-anchor",
+            rebase_confirmed=True,
+            rebase_reason="Offline test verifies stale snapshot boundary.",
         )
         with self.assertRaisesRegex(PaperAccountEvidenceError, "snapshot must be later"):
             self.coordinator().reconcile()
