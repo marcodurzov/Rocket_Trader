@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Offline end-to-end tests for durable Paper fee allocation evidence."""
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -153,6 +154,7 @@ class FeeAllocationAuditTests(unittest.TestCase):
 
     def test_unlinked_fee_blocks_allocation_audit(self):
         unlinked = dict(self.fee_activity)
+        unlinked["event_id"] = "00000000000000000000000003"
         unlinked["ref_id"] = "unlinked-fee"
         unlinked["details"] = {}
         self.inbox.stage(unlinked)
@@ -175,21 +177,26 @@ class FeeAllocationAuditTests(unittest.TestCase):
             )
 
     def test_fee_amount_mismatch_with_mxn_ledger_blocks_audit(self):
-        # Drop immutability solely to simulate a corrupt broker fee record.
-        with sqlite3.connect(self.cash_path) as conn:
-            conn.execute("DROP TRIGGER paper_cash_activities_no_update")
+        # Simulate a tampered persisted fee value while keeping its payload hash
+        # internally consistent; the audit must catch the cross-ledger mismatch.
+        with sqlite3.connect(self.pnl_path) as conn:
+            conn.execute("DROP TRIGGER ledger_events_no_update")
             row = conn.execute(
-                "SELECT payload_json FROM paper_cash_activities WHERE ref_id='fee-ref-1'"
+                "SELECT payload_json FROM ledger_events WHERE event_id='ALPACA-FILL-exec-1'"
             ).fetchone()
             payload = json.loads(row[0])
-            payload["net_amount"] = "-0.02"
+            payload["fee_usd"] = "0.02"
+            encoded = json.dumps(
+                payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            )
+            digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
             conn.execute(
-                "UPDATE paper_cash_activities SET payload_json=? WHERE ref_id='fee-ref-1'",
-                (json.dumps(payload, sort_keys=True, separators=(",", ":")),),
+                "UPDATE ledger_events SET payload_json=?,payload_hash=? WHERE event_id='ALPACA-FILL-exec-1'",
+                (encoded, digest),
             )
             conn.execute(
-                "CREATE TRIGGER paper_cash_activities_no_update BEFORE UPDATE ON paper_cash_activities "
-                "BEGIN SELECT RAISE(ABORT, 'Paper cash evidence is append-only'); END"
+                "CREATE TRIGGER ledger_events_no_update BEFORE UPDATE ON ledger_events "
+                "BEGIN SELECT RAISE(ABORT, 'ledger events are immutable'); END"
             )
         with self.assertRaisesRegex(PaperFeeAllocationAuditError, "Resolved fee totals do not match"):
             self.auditor().audit(
