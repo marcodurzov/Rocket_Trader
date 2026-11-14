@@ -215,6 +215,8 @@ class PaperFillLedgerBridge:
                 fee_usd=fee["fee_usd"],
                 fee_asset_qty=fee["fee_asset_qty"],
                 fee_source=fee["fee_source"],
+                fee_activity_ids=fee.get("fee_activity_ids", []),
+                fee_activity_refs=fee.get("fee_activity_refs", []),
                 fx=fx,
                 occurred_at=occurred_at,
                 asset_class=asset_class,
