@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import json
 import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from rocket_trader_alpaca_activity_sse_consumer import _activity_fingerprint
 from rocket_trader_alpaca_cash_ledger import (
     AlpacaPaperUSDCashLedger,
     PaperCashLedgerError,
@@ -53,7 +55,7 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         if kwargs.get("activity_coverage_complete") is True:
             with sqlite3.connect(self.db) as conn:
                 rows = conn.execute(
-                    """SELECT ref_id,occurred_at,payload_hash
+                    """SELECT ref_id,occurred_at,payload_json
                        FROM paper_cash_activities
                        WHERE account_id=? AND occurred_at>? AND occurred_at<=?
                        ORDER BY ref_id""",
@@ -61,7 +63,7 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
                      NOW.isoformat().replace("+00:00", "Z")),
                 ).fetchall()
             manifest = [
-                {"ref_id": row[0], "occurred_at": row[1], "payload_hash": row[2]}
+                {"ref_id": row[0], "occurred_at": row[1], "payload_hash": _activity_fingerprint(json.loads(row[2]))}
                 for row in rows
             ]
             proof = self.ledger.record_activity_coverage_audit(
