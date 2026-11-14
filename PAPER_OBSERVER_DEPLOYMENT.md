@@ -325,3 +325,16 @@ docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
 The backup path must not already exist. The migration verifies the source database and base append-only triggers, makes and validates a consistent SQLite backup, rechecks that existing cash rows did not change, and creates the coverage tables/triggers in one transaction. It does not contact Alpaca or modify account state. If a partial coverage schema is found, it stops for manual review.
 
 The bounded replay auditor is a read-only primitive. The observer runtime still does **not** automatically assert `activity_coverage_complete`; it remains false until the auditor is wired into the runtime with a controlled replay cadence and independently reviewed operational evidence. Do not treat a local hash chain alone as proof that Alpaca delivered every activity.
+
+
+After the schema upgrade, a bounded read-only broker replay can be performed from the same Paper observer container:
+
+```bash
+docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
+  rocket-trader-paper-observer \
+  python /app/rocket_trader_paper_activity_coverage_audit.py \
+  --cash-db /app/data/rocket_trader_paper_cash.sqlite3 \
+  --activity-sse-db /app/data/rocket_trader_activity_sse.sqlite3
+```
+
+The command requires `ALPACA_PAPER=true`, `ALPACA_LIVE_ENABLED=false`, `ROCKET_TRADER_EXECUTION_MODE=PAPER`, and the Paper API credentials already supplied through the private `.env`. It reads the active cash anchor and inbox, calls only the bounded Paper Activity SSE historical endpoint, and stores a durable audit only if the broker replay exactly matches the local inbox. It does not call the trading/order endpoints. The observer runtime does not yet consume this audit automatically; `activity_coverage_complete` remains false in the production runtime until a separate reviewed integration connects the audit to each snapshot reconciliation.
