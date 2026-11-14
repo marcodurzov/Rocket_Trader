@@ -49,6 +49,33 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
             activity_cursor_before_snapshot="01K9ANCHORCURSOR000000000000",
         )
 
+    def reconcile(self, **kwargs):
+        if kwargs.get("activity_coverage_complete") is True:
+            with sqlite3.connect(self.db) as conn:
+                rows = conn.execute(
+                    """SELECT ref_id,occurred_at,payload_hash
+                       FROM paper_cash_activities
+                       WHERE account_id=? AND occurred_at>? AND occurred_at<=?
+                       ORDER BY ref_id""",
+                    (ACCOUNT, (NOW - timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),
+                     NOW.isoformat().replace("+00:00", "Z")),
+                ).fetchall()
+            manifest = [
+                {"ref_id": row[0], "occurred_at": row[1], "payload_hash": row[2]}
+                for row in rows
+            ]
+            proof = self.ledger.record_activity_coverage_audit(
+                since_at=NOW - timedelta(minutes=10),
+                until_at=NOW,
+                checked_at=NOW,
+                replay_events=manifest,
+                inbox_events=manifest,
+                inbox_cursor="unit-test-cursor",
+            )
+            kwargs["activity_coverage_reference"] = proof["audit_id"]
+            kwargs["activity_coverage_checked_at"] = NOW
+        return self.ledger.reconcile(**kwargs)
+
     def tearDown(self):
         self.tmp.cleanup()
 
@@ -86,6 +113,13 @@ class AlpacaPaperUSDCashLedgerTests(unittest.TestCase):
         )
         self.assertEqual(report["fee_reconciliation_status"], "UNRESOLVED")
         self.assertEqual(report["pending_fee_allocation_count"], 1)
+
+    def test_coverage_flag_without_traceable_reference_is_rejected(self):
+        with self.assertRaisesRegex(PaperCashLedgerError, "traceable reference"):
+            self.ledger.reconcile(
+                broker_cash_usd="1000", broker_account_id=ACCOUNT,
+                observed_at=NOW, activity_coverage_complete=True,
+            )
 
     def test_fee_completion_requires_traceable_fee_audit_evidence(self):
         with self.assertRaisesRegex(PaperCashLedgerError, "fee reconciliation requires"):
