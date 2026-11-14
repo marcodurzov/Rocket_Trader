@@ -309,7 +309,7 @@ Keep the feature disabled until the coverage-attestation and fee-audit integrati
 
 The Paper USD cash ledger can now persist a coverage attestation only after a bounded historical Activity SSE replay (`since` + `until`) exactly matches the durable local inbox by stable activity reference, business timestamp and stable payload hash. A dropped-message or internal-server-error comment, malformed event, account mismatch, changed payload, missing/extra event, invalid inbox chain or mismatched cash-ledger manifest blocks the attestation. Cash reconciliation verifies that the persisted audit is for the active anchor, covers the broker snapshot time, was checked after the replay window, and still matches the cash-ledger activity set used in the calculation.
 
-For a cash database created before this feature, the two coverage tables and their append-only triggers are not created automatically. Stop every writer, create a separate backup, then run the explicit migration:
+For a cash database created before this feature, the coverage tables and fee-allocation audit table with their append-only triggers are not created automatically. Stop every writer, create a separate backup, then run the explicit migration:
 
 ```bash
 docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
@@ -338,3 +338,21 @@ docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
 ```
 
 The command requires `ALPACA_PAPER=true`, `ALPACA_LIVE_ENABLED=false`, `ROCKET_TRADER_EXECUTION_MODE=PAPER`, and the Paper API credentials already supplied through the private `.env`. It reads the active cash anchor and inbox, calls only the bounded Paper Activity SSE historical endpoint, and stores a durable audit only if the broker replay exactly matches the local inbox. It does not call the trading/order endpoints. The observer runtime does not yet consume this audit automatically; `activity_coverage_complete` remains false in the production runtime until a separate reviewed integration connects the audit to each snapshot reconciliation.
+
+
+## 18. Durable Paper fee-to-fill allocation audit
+
+The fee resolver now carries the exact Alpaca fee activity IDs and stable references into each realized-P&L fill event. The fill-to-ledger bridge persists those references. A local read-only fee auditor cross-checks the cash Activity SSE mirror, the processed fill-bridge inbox and the MXN realized-P&L ledger. It requires every TRD fill to be processed and present in the MXN ledger; every FEE/CFEE activity to map to exactly one fill; and the sum of USD fees and asset-denominated crypto fees to equal the fee values persisted on that fill. A zero-fee result is accepted only for a commission-free US-equity BUY with explicit zero fee values and the resolver's commission-free source. Unlinked daily regulatory/venue fees, non-USD fee records, corrections/busts and ambiguous mappings remain unresolved.
+
+The cash schema migration command also upgrades the fee-allocation audit table. For an existing database that already has the PR #206 coverage schema, stop writers and run the same migration command with a fresh, unique backup path; it will add the missing fee audit table. A partial fee schema causes a hard stop for manual review.
+
+After a successful bounded Activity SSE coverage audit, the local fee audit can be run with its returned audit ID:
+
+```bash
+docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
+  rocket-trader-paper-observer \
+  python /app/rocket_trader_paper_fee_allocation_audit.py \
+  --coverage-audit-id YOUR_COVERAGE_AUDIT_ID
+```
+
+This fee audit is local SQLite work only and does not call Alpaca. It requires the cash ledger, realized-P&L ledger and fill-bridge inbox to be on the same verified persistent volume. It does not enable orders. The observer runtime still does not consume the fee audit automatically; `fee_reconciliation_complete` remains false until a separate reviewed runtime integration uses both the activity-coverage and fee-allocation references for the same broker snapshot.
