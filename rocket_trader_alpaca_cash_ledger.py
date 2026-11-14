@@ -190,7 +190,35 @@ class AlpacaPaperUSDCashLedger:
                     created_at TEXT NOT NULL
                 )
             """)
-            for table in ("paper_cash_anchors", "paper_cash_activities"):
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS paper_activity_coverage_audits (
+                    audit_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    anchor_id TEXT NOT NULL,
+                    since_at TEXT NOT NULL,
+                    until_at TEXT NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    event_count INTEGER NOT NULL,
+                    events_digest TEXT NOT NULL,
+                    inbox_cursor TEXT,
+                    payload_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS paper_activity_coverage_audit_events (
+                    audit_id TEXT NOT NULL,
+                    ref_id TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    payload_hash TEXT NOT NULL,
+                    PRIMARY KEY(audit_id, ref_id),
+                    FOREIGN KEY(audit_id) REFERENCES paper_activity_coverage_audits(audit_id)
+                )
+            """)
+            for table in (
+                "paper_cash_anchors", "paper_cash_activities",
+                "paper_activity_coverage_audits", "paper_activity_coverage_audit_events",
+            ):
                 conn.execute(f"""
                     CREATE TRIGGER IF NOT EXISTS {table}_no_update
                     BEFORE UPDATE ON {table}
@@ -429,6 +457,122 @@ class AlpacaPaperUSDCashLedger:
             "orders_enabled": False,
         }
 
+    def record_activity_coverage_audit(
+        self,
+        *,
+        since_at: Any,
+        until_at: Any,
+        checked_at: Any,
+        replay_events: list[Dict[str, Any]],
+        inbox_events: list[Dict[str, Any]],
+        inbox_cursor: Optional[str],
+    ) -> Dict[str, Any]:
+        """Persist a bounded historical SSE replay that exactly matches the durable inbox."""
+        since = _timestamp(since_at, "coverage since_at")
+        until = _timestamp(until_at, "coverage until_at")
+        checked = _timestamp(checked_at, "coverage checked_at")
+        if since >= until or checked < until:
+            raise PaperCashLedgerError("Coverage audit requires since < until and a post-window checked_at")
+        if not isinstance(replay_events, list) or not isinstance(inbox_events, list):
+            raise PaperCashLedgerError("Coverage replay and inbox manifests must be lists")
+
+        def normalize(items: list[Dict[str, Any]], label: str) -> Dict[str, Dict[str, str]]:
+            result: Dict[str, Dict[str, str]] = {}
+            for item in items:
+                if not isinstance(item, dict):
+                    raise PaperCashLedgerError(f"{label} manifest entries must be objects")
+                ref_id = str(item.get("ref_id") or "").strip()
+                payload_hash = str(item.get("payload_hash") or "").strip().lower()
+                occurred = _timestamp(item.get("occurred_at"), f"{label} occurred_at")
+                if not ref_id or len(payload_hash) != 64 or any(ch not in "0123456789abcdef" for ch in payload_hash):
+                    raise PaperCashLedgerError(f"{label} manifest entry has invalid ref_id or payload_hash")
+                if not (since < occurred <= until):
+                    raise PaperCashLedgerError(f"{label} manifest contains an event outside the audited window")
+                if ref_id in result:
+                    if result[ref_id]["payload_hash"] != payload_hash:
+                        raise PaperCashLedgerError(f"{label} manifest contains a changed duplicate ref_id")
+                    raise PaperCashLedgerError(f"{label} manifest contains a duplicate ref_id")
+                result[ref_id] = {
+                    "ref_id": ref_id,
+                    "occurred_at": _iso(occurred),
+                    "payload_hash": payload_hash,
+                }
+            return result
+
+        replay = normalize(replay_events, "SSE replay")
+        inbox = normalize(inbox_events, "durable inbox")
+        if replay != inbox:
+            missing = sorted(set(replay) - set(inbox))
+            extra = sorted(set(inbox) - set(replay))
+            raise PaperCashLedgerError(
+                f"Bounded SSE replay and durable inbox differ (missing={len(missing)}, extra={len(extra)})"
+            )
+        manifest = [replay[key] for key in sorted(replay)]
+        events_digest = hashlib.sha256(_canonical(manifest).encode("utf-8")).hexdigest()
+        cursor = None if inbox_cursor is None else str(inbox_cursor).strip()
+        if cursor == "":
+            raise PaperCashLedgerError("inbox_cursor must be null or non-empty")
+        with self._lock, self._connect() as conn:
+            tables = {
+                row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if not {"paper_activity_coverage_audits", "paper_activity_coverage_audit_events"}.issubset(tables):
+                raise PaperCashLedgerError(
+                    "Cash ledger requires the explicit activity-coverage schema migration before auditing"
+                )
+            anchor = conn.execute(
+                "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
+                (self.account_id,),
+            ).fetchone()
+            if anchor is None:
+                raise PaperCashLedgerError("A cash anchor is required before activity coverage can be attested")
+            if _iso(since) != anchor["observed_at"]:
+                raise PaperCashLedgerError("Coverage window must begin exactly at the active cash anchor")
+            payload = {
+                "account_id": self.account_id,
+                "anchor_id": anchor["anchor_id"],
+                "since_at": _iso(since),
+                "until_at": _iso(until),
+                "checked_at": _iso(checked),
+                "event_count": len(manifest),
+                "events_digest": events_digest,
+                "inbox_cursor": cursor,
+            }
+            payload_hash = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+            audit_id = "sse-coverage-" + payload_hash[:32]
+            existing = conn.execute(
+                "SELECT payload_hash FROM paper_activity_coverage_audits WHERE audit_id=?",
+                (audit_id,),
+            ).fetchone()
+            if existing:
+                if existing["payload_hash"] != payload_hash:
+                    raise PaperCashLedgerError("Coverage audit ID collision")
+                return {"status": "DUPLICATE_AUDIT", "audit_id": audit_id, **payload}
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                conn.execute("""
+                    INSERT INTO paper_activity_coverage_audits
+                    (audit_id,account_id,anchor_id,since_at,until_at,checked_at,
+                     event_count,events_digest,inbox_cursor,payload_hash,created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    audit_id, self.account_id, anchor["anchor_id"], _iso(since),
+                    _iso(until), _iso(checked), len(manifest), events_digest,
+                    cursor, payload_hash, _iso(datetime.now(timezone.utc)),
+                ))
+                for item in manifest:
+                    conn.execute("""
+                        INSERT INTO paper_activity_coverage_audit_events
+                        (audit_id,ref_id,occurred_at,payload_hash) VALUES (?,?,?,?)
+                    """, (audit_id, item["ref_id"], item["occurred_at"], item["payload_hash"]))
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        return {"status": "ATTESTED", "audit_id": audit_id, **payload}
+
     def reconcile(
         self,
         *,
@@ -482,6 +626,7 @@ class AlpacaPaperUSDCashLedger:
         if str(broker_account_id).strip() != self.account_id:
             raise PaperCashLedgerError("Broker account ID does not match cash ledger")
 
+        coverage_valid = False
         with self._connect() as conn:
             anchor = conn.execute(
                 "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
@@ -506,6 +651,47 @@ class AlpacaPaperUSDCashLedger:
                    ORDER BY occurred_at,event_id""",
                 (self.account_id, _iso(anchor_time), _iso(current_time)),
             ).fetchall()
+            coverage_tables = {
+                row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if activity_coverage_complete and {
+                "paper_activity_coverage_audits", "paper_activity_coverage_audit_events"
+            }.issubset(coverage_tables) and coverage_reference:
+                audit = conn.execute(
+                    "SELECT * FROM paper_activity_coverage_audits WHERE audit_id=? AND account_id=? AND anchor_id=?",
+                    (coverage_reference, self.account_id, anchor["anchor_id"]),
+                ).fetchone()
+                if audit:
+                    audit_until = _timestamp(audit["until_at"], "coverage audit until_at")
+                    audit_checked = _timestamp(audit["checked_at"], "coverage audit checked_at")
+                    requested_checked = (
+                        None if activity_coverage_checked_at is None
+                        else _timestamp(activity_coverage_checked_at, "activity coverage checked_at")
+                    )
+                    manifest_rows = conn.execute(
+                        """SELECT ref_id,payload_hash FROM paper_activity_coverage_audit_events
+                           WHERE audit_id=? AND occurred_at>? AND occurred_at<=?
+                           ORDER BY ref_id""",
+                        (coverage_reference, _iso(anchor_time), _iso(current_time)),
+                    ).fetchall()
+                    cash_manifest = sorted(
+                        (str(row["ref_id"]), str(row["payload_hash"])) for row in rows
+                    )
+                    audit_manifest = sorted(
+                        (str(row["ref_id"]), str(row["payload_hash"])) for row in manifest_rows
+                    )
+                    coverage_valid = (
+                        audit["since_at"] == _iso(anchor_time)
+                        and audit_until >= current_time
+                        and audit_checked >= audit_until
+                        and requested_checked == audit_checked
+                        and int(audit["event_count"]) >= len(manifest_rows)
+                        and audit_manifest == cash_manifest
+                    )
+                    if coverage_valid:
+                        coverage_checked_at = audit["checked_at"]
 
         unsupported = [
             row for row in rows
@@ -534,7 +720,7 @@ class AlpacaPaperUSDCashLedger:
 
         if unsupported:
             status = "UNSUPPORTED_ACTIVITY_REQUIRES_REVIEW"
-        elif not activity_coverage_complete:
+        elif not coverage_valid:
             status = "ACTIVITY_HISTORY_INCOMPLETE"
         elif abs(difference) > tolerance:
             status = "CASH_BALANCE_MISMATCH"
@@ -566,7 +752,7 @@ class AlpacaPaperUSDCashLedger:
 
         fee_status = (
             "RECONCILED"
-            if fee_reconciliation_complete is True and activity_coverage_complete and not unsupported
+            if fee_reconciliation_complete is True and coverage_valid and not unsupported
             else "UNRESOLVED"
         )
         return {
@@ -594,8 +780,8 @@ class AlpacaPaperUSDCashLedger:
             "broker_cash_usd": str(current_cash),
             "difference_usd": str(difference),
             "tolerance_usd": str(tolerance),
-            "activity_coverage_complete": activity_coverage_complete,
-            "activity_coverage_reference": coverage_reference or None,
+            "activity_coverage_complete": coverage_valid,
+            "activity_coverage_reference": coverage_reference if coverage_valid else None,
             "activity_coverage_checked_at": coverage_checked_at,
             "fee_reconciliation_reference": fee_reference or None,
             "fee_reconciliation_checked_at": fee_checked_at,
