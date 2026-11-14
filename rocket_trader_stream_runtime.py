@@ -528,6 +528,45 @@ class AlpacaPaperObserverRuntime:
             )
             return report
 
+    def _refresh_account_reconciliation_health(self) -> None:
+        if self.account_evidence_coordinator is None:
+            return
+        latest = self.recorder.latest_account_reconciliation()
+        max_age = int(os.getenv("ROCKET_TRADER_ACCOUNT_RECONCILIATION_MAX_AGE_SECONDS", "1800"))
+        snapshot_raw = (
+            latest.get("account_snapshot_observed_at")
+            if isinstance(latest, dict) else None
+        )
+        try:
+            snapshot_at = datetime.fromisoformat(str(snapshot_raw or ""))
+            if snapshot_at.tzinfo is None or snapshot_at.utcoffset() is None:
+                raise ValueError("snapshot timestamp must be timezone-aware")
+            age = (datetime.now(timezone.utc) - snapshot_at.astimezone(timezone.utc)).total_seconds()
+        except (TypeError, ValueError):
+            snapshot_at = None
+            age = None
+        healthy = (
+            latest is not None
+            and latest.get("account_evidence_status") == "RECONCILED"
+            and age is not None
+            and 0 <= age <= max_age
+        )
+        if healthy:
+            self.recorder.heartbeat(
+                "account_reconciliation", "HEALTHY", snapshot_at.isoformat()
+            )
+        else:
+            reason = (
+                "No successful full Paper account evidence report exists"
+                if latest is None
+                else "Full Paper account evidence is incomplete or stale"
+            )
+            self.recorder.heartbeat(
+                "account_reconciliation", "ERROR",
+                snapshot_at.isoformat() if snapshot_at is not None else None,
+                reason,
+            )
+
     def _sync_account_activities(self) -> Optional[Dict[str, Any]]:
         if self.activity_stager is None:
             return None
@@ -728,6 +767,7 @@ class AlpacaPaperObserverRuntime:
                             f"{component} stream exited; refusing to continue with partial market connectivity."
                         )
                     self.recorder.heartbeat(component, "HEALTHY", self.last_events.get(component))
+                self._refresh_account_reconciliation_health()
                 if self.activity_stager is not None:
                     now_monotonic = time.monotonic()
                     if (
