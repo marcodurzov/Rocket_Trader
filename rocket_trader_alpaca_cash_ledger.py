@@ -728,6 +728,7 @@ class AlpacaPaperUSDCashLedger:
         if (
             coverage["since_at"] != _iso(since)
             or _timestamp(coverage["until_at"], "coverage until_at") < until
+            or checked < _timestamp(coverage["checked_at"], "coverage checked_at")
         ):
             raise PaperCashLedgerError("Fee audit window must be covered by the referenced activity audit")
         if not isinstance(fill_manifest, list) or not isinstance(fee_manifest, list):
@@ -1155,6 +1156,7 @@ class AlpacaPaperUSDCashLedger:
                                 and fee_audit["since_at"] == _iso(anchor_time)
                                 and fee_until >= current_time
                                 and fee_checked >= fee_until
+                                and fee_checked >= _timestamp(coverage_checked_at, "activity coverage checked_at")
                                 and requested_fee_checked == fee_checked
                                 and int(fee_audit["fill_count"]) == len(fee_fills)
                                 and int(fee_audit["fee_count"]) == len(fee_items)
