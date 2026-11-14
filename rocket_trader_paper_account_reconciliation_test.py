@@ -229,6 +229,7 @@ class PaperAccountEvidenceCoordinatorTests(unittest.TestCase):
     def test_coverage_failure_blocks_fee_audit_and_reconciliation(self):
         class FailingCoverage:
             cash_ledger = self.cash
+            inbox_db_path = self.inbox_path
 
             def audit(self, **_kwargs):
                 raise RuntimeError("bounded replay mismatch")
