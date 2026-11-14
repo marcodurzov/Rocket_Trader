@@ -159,7 +159,7 @@ class FeeAllocationAuditTests(unittest.TestCase):
         unlinked["details"] = {}
         self.inbox.stage(unlinked)
         self.cash.ingest_activity(unlinked)
-        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "maps to 0 fills"):
+        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "coverage audit is invalid or no longer matches cash ledger"):
             self.auditor().audit(
                 coverage_audit_id=self.coverage["audit_id"],
                 since=SINCE, until=UNTIL, checked_at=CHECKED,
@@ -192,7 +192,7 @@ class FeeAllocationAuditTests(unittest.TestCase):
                 "CREATE TRIGGER paper_cash_activities_no_update BEFORE UPDATE ON paper_cash_activities "
                 "BEGIN SELECT RAISE(ABORT, 'Paper cash evidence is append-only'); END"
             )
-        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "payload hash mismatch"):
+        with self.assertRaisesRegex(PaperFeeAllocationAuditError, "coverage audit is invalid or no longer matches cash ledger"):
             self.auditor().audit(
                 coverage_audit_id=self.coverage["audit_id"],
                 since=SINCE, until=UNTIL, checked_at=CHECKED,
