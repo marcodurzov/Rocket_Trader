@@ -71,10 +71,26 @@ class PaperAccountEvidenceCoordinator:
             raise PaperAccountEvidenceError("Coverage auditor must use the same cash ledger")
         if getattr(fee_allocation_auditor, "cash_ledger", None) is not cash_ledger:
             raise PaperAccountEvidenceError("Fee auditor must use the same cash ledger")
+        self.activity_sse_inbox_path = str(Path(activity_sse_inbox_path).expanduser())
+        if Path(getattr(coverage_auditor, "inbox_db_path", "")).expanduser().resolve() != Path(
+            self.activity_sse_inbox_path
+        ).resolve():
+            raise PaperAccountEvidenceError("Coverage auditor and coordinator must share the same Activity SSE inbox")
+        if Path(getattr(reconciliation_gate, "activity_sse_inbox_path", "") or "").expanduser().resolve() != Path(
+            self.activity_sse_inbox_path
+        ).resolve():
+            raise PaperAccountEvidenceError("Reconciliation gate and coordinator must share the same Activity SSE inbox")
+        if Path(getattr(fee_allocation_auditor, "realized_pnl_db_path", "")).expanduser().resolve() != Path(
+            fill_ledger_bridge.ledger.db_path
+        ).resolve():
+            raise PaperAccountEvidenceError("Fee auditor and fill bridge must share the same realized-P&L ledger")
+        if Path(getattr(fee_allocation_auditor, "fill_bridge_db_path", "")).expanduser().resolve() != Path(
+            fill_ledger_bridge.db_path
+        ).resolve():
+            raise PaperAccountEvidenceError("Fee auditor and fill bridge must share the same fill inbox")
         self.reconciliation_gate = reconciliation_gate
         self.fill_ledger_bridge = fill_ledger_bridge
         self.cash_ledger = cash_ledger
-        self.activity_sse_inbox_path = str(Path(activity_sse_inbox_path).expanduser())
         self.coverage_auditor = coverage_auditor
         self.fee_allocation_auditor = fee_allocation_auditor
         self.clock = clock or (lambda: datetime.now(timezone.utc))
