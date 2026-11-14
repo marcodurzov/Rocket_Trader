@@ -513,45 +513,62 @@ class AlpacaPaperUSDCashLedger:
         if cursor == "":
             raise PaperCashLedgerError("inbox_cursor must be null or non-empty")
         with self._lock, self._connect() as conn:
-            tables = {
-                row[0] for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()
-            }
-            if not {"paper_activity_coverage_audits", "paper_activity_coverage_audit_events"}.issubset(tables):
-                raise PaperCashLedgerError(
-                    "Cash ledger requires the explicit activity-coverage schema migration before auditing"
-                )
-            anchor = conn.execute(
-                "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
-                (self.account_id,),
-            ).fetchone()
-            if anchor is None:
-                raise PaperCashLedgerError("A cash anchor is required before activity coverage can be attested")
-            if _iso(since) != anchor["observed_at"]:
-                raise PaperCashLedgerError("Coverage window must begin exactly at the active cash anchor")
-            payload = {
-                "account_id": self.account_id,
-                "anchor_id": anchor["anchor_id"],
-                "since_at": _iso(since),
-                "until_at": _iso(until),
-                "checked_at": _iso(checked),
-                "event_count": len(manifest),
-                "events_digest": events_digest,
-                "inbox_cursor": cursor,
-            }
-            payload_hash = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
-            audit_id = "sse-coverage-" + payload_hash[:32]
-            existing = conn.execute(
-                "SELECT payload_hash FROM paper_activity_coverage_audits WHERE audit_id=?",
-                (audit_id,),
-            ).fetchone()
-            if existing:
-                if existing["payload_hash"] != payload_hash:
-                    raise PaperCashLedgerError("Coverage audit ID collision")
-                return {"status": "DUPLICATE_AUDIT", "audit_id": audit_id, **payload}
             conn.execute("BEGIN IMMEDIATE")
             try:
+                tables = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                }
+                required_tables = {
+                    "paper_activity_coverage_audits", "paper_activity_coverage_audit_events"
+                }
+                if not required_tables.issubset(tables):
+                    raise PaperCashLedgerError(
+                        "Cash ledger requires the explicit activity-coverage schema migration before auditing"
+                    )
+                triggers = {
+                    row[0] for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='trigger'"
+                    ).fetchall()
+                }
+                required_triggers = {
+                    "paper_activity_coverage_audits_no_update",
+                    "paper_activity_coverage_audits_no_delete",
+                    "paper_activity_coverage_audit_events_no_update",
+                    "paper_activity_coverage_audit_events_no_delete",
+                }
+                if not required_triggers.issubset(triggers):
+                    raise PaperCashLedgerError("Coverage audit append-only triggers are missing")
+                anchor = conn.execute(
+                    "SELECT * FROM paper_cash_anchors WHERE account_id=? ORDER BY observed_at DESC LIMIT 1",
+                    (self.account_id,),
+                ).fetchone()
+                if anchor is None:
+                    raise PaperCashLedgerError("A cash anchor is required before activity coverage can be attested")
+                if _iso(since) != anchor["observed_at"]:
+                    raise PaperCashLedgerError("Coverage window must begin exactly at the active cash anchor")
+                payload = {
+                    "account_id": self.account_id,
+                    "anchor_id": anchor["anchor_id"],
+                    "since_at": _iso(since),
+                    "until_at": _iso(until),
+                    "checked_at": _iso(checked),
+                    "event_count": len(manifest),
+                    "events_digest": events_digest,
+                    "inbox_cursor": cursor,
+                }
+                payload_hash = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+                audit_id = "sse-coverage-" + payload_hash[:32]
+                existing = conn.execute(
+                    "SELECT payload_hash FROM paper_activity_coverage_audits WHERE audit_id=?",
+                    (audit_id,),
+                ).fetchone()
+                if existing:
+                    if existing["payload_hash"] != payload_hash:
+                        raise PaperCashLedgerError("Coverage audit ID collision")
+                    conn.execute("COMMIT")
+                    return {"status": "DUPLICATE_AUDIT", "audit_id": audit_id, **payload}
                 conn.execute("""
                     INSERT INTO paper_activity_coverage_audits
                     (audit_id,account_id,anchor_id,since_at,until_at,checked_at,
@@ -569,7 +586,8 @@ class AlpacaPaperUSDCashLedger:
                     """, (audit_id, item["ref_id"], item["occurred_at"], item["payload_hash"]))
                 conn.execute("COMMIT")
             except Exception:
-                conn.execute("ROLLBACK")
+                if conn.in_transaction:
+                    conn.execute("ROLLBACK")
                 raise
         return {"status": "ATTESTED", "audit_id": audit_id, **payload}
 
@@ -670,12 +688,51 @@ class AlpacaPaperUSDCashLedger:
                         None if activity_coverage_checked_at is None
                         else _timestamp(activity_coverage_checked_at, "activity coverage checked_at")
                     )
-                    manifest_rows = conn.execute(
-                        """SELECT ref_id,payload_hash FROM paper_activity_coverage_audit_events
-                           WHERE audit_id=? AND occurred_at>? AND occurred_at<=?
-                           ORDER BY ref_id""",
-                        (coverage_reference, _iso(anchor_time), _iso(current_time)),
+                    all_manifest_rows = conn.execute(
+                        """SELECT ref_id,occurred_at,payload_hash FROM paper_activity_coverage_audit_events
+                           WHERE audit_id=? ORDER BY ref_id""",
+                        (coverage_reference,),
                     ).fetchall()
+                    manifest_payload = [
+                        {
+                            "ref_id": str(row["ref_id"]),
+                            "occurred_at": str(row["occurred_at"]),
+                            "payload_hash": str(row["payload_hash"]),
+                        }
+                        for row in all_manifest_rows
+                    ]
+                    manifest_digest = hashlib.sha256(
+                        _canonical(manifest_payload).encode("utf-8")
+                    ).hexdigest()
+                    audit_payload = {
+                        "account_id": audit["account_id"],
+                        "anchor_id": audit["anchor_id"],
+                        "since_at": audit["since_at"],
+                        "until_at": audit["until_at"],
+                        "checked_at": audit["checked_at"],
+                        "event_count": int(audit["event_count"]),
+                        "events_digest": audit["events_digest"],
+                        "inbox_cursor": audit["inbox_cursor"],
+                    }
+                    audit_payload_hash = hashlib.sha256(
+                        _canonical(audit_payload).encode("utf-8")
+                    ).hexdigest()
+                    required_coverage_triggers = {
+                        "paper_activity_coverage_audits_no_update",
+                        "paper_activity_coverage_audits_no_delete",
+                        "paper_activity_coverage_audit_events_no_update",
+                        "paper_activity_coverage_audit_events_no_delete",
+                    }
+                    present_coverage_triggers = {
+                        row[0] for row in conn.execute(
+                            "SELECT name FROM sqlite_master WHERE type='trigger'"
+                        ).fetchall()
+                    }
+                    manifest_rows = [
+                        row for row in all_manifest_rows
+                        if _timestamp(row["occurred_at"], "coverage manifest occurred_at") > anchor_time
+                        and _timestamp(row["occurred_at"], "coverage manifest occurred_at") <= current_time
+                    ]
                     cash_manifest = sorted(
                         (
                             str(row["ref_id"]),
@@ -696,7 +753,10 @@ class AlpacaPaperUSDCashLedger:
                         and audit_until >= current_time
                         and audit_checked >= audit_until
                         and requested_checked == audit_checked
-                        and int(audit["event_count"]) >= len(manifest_rows)
+                        and int(audit["event_count"]) == len(all_manifest_rows)
+                        and manifest_digest == audit["events_digest"]
+                        and audit_payload_hash == audit["payload_hash"]
+                        and required_coverage_triggers.issubset(present_coverage_triggers)
                         and audit_manifest == cash_manifest
                     )
                     if coverage_valid:
