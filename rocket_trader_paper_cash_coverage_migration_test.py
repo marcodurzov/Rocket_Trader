@@ -90,6 +90,7 @@ class CashCoverageMigrationTests(unittest.TestCase):
                 db_path=self.db, backup_path=self.backup, account_id="other-account",
                 confirm=True, no_writers_confirmed=True,
             )
+        self.assertFalse(os.path.exists(self.backup))
 
     def test_migration_is_idempotent_after_success(self):
         migrate_coverage_schema(
