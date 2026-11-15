@@ -2358,6 +2358,13 @@ def self_test() -> Dict[str, Any]:
     assert larger_budget_decision.quantity * snapshot.price >= 1.0
     assert larger_budget_decision.quantity * snapshot.price <= (6000.0 / 18.0) * 0.01 * larger_budget_decision.adaptive_multiplier * 0.80 + 1e-9
 
+    default_execute_decision = blocked_core.evaluate_and_maybe_execute(
+        account=larger_account, snapshot=snapshot, signal=signal,
+    )
+    assert default_execute_decision.status == DecisionStatus.NOVEL_RISK
+    assert default_execute_decision.quantity > 0.0
+    assert blocked_adapter.submitted == []
+
     blocked_decision = blocked_core.evaluate_and_maybe_execute(
         account=larger_account, snapshot=snapshot, signal=signal, execute=True,
     )
