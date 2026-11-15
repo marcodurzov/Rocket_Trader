@@ -377,6 +377,6 @@ Before changing the real environment, identify the host/platform and the exact C
 The full-account evidence coordinator is optional and remains disabled by default (`ROCKET_TRADER_CASH_LEDGER_ENABLED=false`). Do not turn it on until the existing cash ledger, Activity SSE inbox, fill-bridge inbox and FX-aware MXN ledger have been located, verified as the same durable data set, and backed up. Do not run schema migrations or create/rebase the cash anchor until the existing broker history and database state have been reviewed. The first real Paper audit is read-only but must be bounded to a known account-history interval; collect its JSON and SQLite evidence artifacts for independent review.
 
 
-## 20. Broker snapshot boundary limitation
+## 21. Broker snapshot boundary limitation
 
 The full-account coordinator calls Alpaca's positions endpoint and account endpoint separately (positions first, account second). The locally captured UTC timestamp immediately after the account response defines the upper boundary for Activity SSE replay. This is a paired, bounded observation—not an atomic broker snapshot. The coordinator fails closed on detected ledger changes, activity/fee mismatches and cash/equity/position differences, but an external reader must not describe it as an atomic snapshot. The persistent host clock must be synchronized to UTC.
