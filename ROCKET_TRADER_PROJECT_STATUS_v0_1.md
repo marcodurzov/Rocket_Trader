@@ -1202,3 +1202,14 @@ Validation:
 - Image published, not deployed: `ghcr.io/marcodurzov/rocket_trader:a8095a767f02377b19b1950a08fd73e154388235`, digest `sha256:9642fe3d80ebb24bd37072238a09426da63bf1ff8b7dbf2851855a4243cc3238`.
 
 No live Paper audit, persistent-host access, migration, deployment, account mutation, order or Live action occurred. The hosting platform and existing volume are still unidentified. No strategy is approved; profitability remains unproven. Progress remains 58%.
+
+
+## 2026-11-15 — PR #229: persistent-state startup gate and Compose overrides
+
+PR #229 (`f4587c163dbd97b40c87eb7e28d41a721ac99875`) documents the new fail-closed startup requirement for existing realized-P&L, fill-inbox and activity-stager databases. The runbook prohibits creating empty files to bypass the preflight and explains a market-data-only mode using explicit ledger/stager overrides; that mode is not account reconciled.
+
+PR workflows passed: Activity SSE `43695973377`, Container `43695973306`, read-only audit static checks `43695973303` (real Paper audit skipped on PR). Post-merge main workflows passed: Reconciliation `43696040849`, GHCR publish `43696040783`, Container `43696040771`, Observer Runtime `43696040769`, Activity Stager `43696040754`, Durable Activity SSE `43696040739`.
+
+Image published, not deployed: `ghcr.io/marcodurzov/rocket_trader:f4587c163dbd97b40c87eb7e28d41a721ac99875`, digest `sha256:33d6f8c4924267b4940bc2fef050ac9b88d8497720ad137b6e32511508405673`.
+
+No live Paper audit, persistent-host access, database migration, deployment, broker account mutation, order or Live action occurred. Progress remains 58%; strategy approval and profitability remain unproven.
