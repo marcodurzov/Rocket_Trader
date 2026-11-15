@@ -93,8 +93,11 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         )
 
     def test_cumulative_and_normalized_price_drift_fail_even_with_high_correlation(self):
-        alpaca = self.yahoo.copy()
-        alpaca.iloc[4:] = alpaca.iloc[4:] * 1.02
+        drift = pd.Series(
+            [1.0, 1.0028, 1.0057, 1.0085, 1.0114, 1.0142, 1.0171, 1.02],
+            index=self.dates,
+        )
+        alpaca = self.yahoo * drift
         result = compare_close_series(
             "QQQ", self.yahoo, alpaca,
             min_common_sessions=5,
@@ -104,7 +107,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertGreater(result["daily_return_correlation"], 0.99)
         self.assertFalse(result["diagnostic_gates"]["maximum_absolute_cumulative_return_difference"])
         self.assertFalse(result["diagnostic_gates"]["maximum_normalized_close_difference"])
-        self.assertFalse(result["diagnostic_gates"]["maximum_single_daily_return_difference"])
+        self.assertTrue(result["diagnostic_gates"]["maximum_single_daily_return_difference"])
         self.assertFalse(result["diagnostic_pass"])
 
     def test_adjustment_factor_audit_flags_duplicate_and_missing_dividend_events(self):
