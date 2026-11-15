@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-11-15  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
-**Code baseline reviewed:** 9bb3692b0ab1bbcd1a01210e820e7b55a71883b3
+**Code baseline reviewed:** ea772a07ff69dc0e1c2a684395cee9fa6c4baf87
 
 ## Executive verdict
 
@@ -160,3 +160,12 @@ Post-merge main CI:
 - The actual persistent host, volume and existing database files remain unidentified. No deployment, migration, real Paper audit, account mutation, order, or Live action has occurred. The coordinator remains disabled by default and runtime mode remains OBSERVE_ONLY.
 - Research status is unchanged: Holm-Bonferroni correction exists in the current ETF/crypto pipelines, but no hypothesis passed the adjusted OOS acceptance gate. Independent replication, verified SIP parity, portfolio-level robustness and point-in-time data provenance remain open.
 - Progress remains 58%; this is engineering/evidence maturity, not a probability of profit or completion percentage for live trading.
+
+
+## 2026-11-15 update — complete packaged-module CI and GHCR publication (PR #222)
+
+The Paper Observer Dockerfile packages 26 Python modules. PR #222 ensures that changes to any packaged source trigger container validation on pull requests and main pushes, compile all 26 modules inside the image, and trigger GHCR publication on main pushes. PR validation `43695204616`, post-merge container validation `43695359960`, and post-merge image publication `43695359959` all passed.
+
+Published image (not deployed): `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
+
+This closes the CI packaging-trigger gap only. It does not identify or deploy a persistent host, inspect/migrate existing databases, run a real Paper account audit, or approve orders. Runtime remains OBSERVE_ONLY, the cash ledger coordinator remains disabled by default, no strategy passed adjusted OOS acceptance, and profitability remains unproven. Progress remains 58%.

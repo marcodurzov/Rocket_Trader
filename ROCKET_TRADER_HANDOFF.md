@@ -1586,3 +1586,13 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - PR CI passed: Paper Reconciliation Gate and Durable Paper Activity SSE Consumer Tests. Post-merge main runs `43694984460` (Paper Reconciliation Gate) and `43694984477` (Durable Activity SSE) both completed successfully. The jobs ran offline tests and Compose validation; they did not call the user's Paper account.
 - This was a documentation correction only. No broker API call, database inspection/migration, host deployment, account mutation, order or Live action occurred. The optional cash ledger/coordinator remains disabled by default.
 - Progress remains 58%; actual host and persistent volume are still unidentified. The next operational step cannot safely be automated from repository access alone: identify the host and preserve/inspect the existing databases before enabling the coordinator.
+
+
+### 2026-11-15 continuation — PR #222 complete Paper Observer image CI coverage
+
+- PR #222 merged to `main` at `ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`.
+- Audited the `Dockerfile.paper-observer`: it copies 26 Python source modules. The container-validation workflow now watches all packaged source modules on pull requests and main pushes, compiles all 26 inside the built image, and validates Compose. The GHCR publication workflow now watches all packaged source modules so a runtime-module change cannot silently leave `latest` stale.
+- PR container validation `43695204616` passed: Compose validation, Docker build and in-image `py_compile` for the packaged runtime/accounting modules.
+- Post-merge main container workflow `43695359960` passed. Post-merge GHCR publication `43695359959` passed and published image `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
+- This is CI coverage and image publication only, not deployment. No Paper API query, persistent database access/migration, host deployment, account mutation, order or Live action occurred. The actual host/provider and persistent volume remain unidentified; the coordinator remains disabled by default.
+- Progress remains 58%; no strategy has passed adjusted OOS acceptance and profitability remains unproven.
