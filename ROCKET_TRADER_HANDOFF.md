@@ -1734,3 +1734,12 @@ References:
 - PR #238 merged to main at `cf9e805c09a13309f6390879b04e1061fe2afc82`.
 - RiskEngine now rounds equity quantities down to whole shares to match the current MARKET_BRACKET adapter. It rejects a position when the available notional cannot buy one whole share, rather than generating a fractional quantity the adapter will reject.
 - Core Risk Safety, Earned Growth Milestone Guard, Durable Activity SSE, Paper Execution Safety, Crypto Paper Execution Safety and Persistent Drawdown Guard workflows passed. No broker order or Live action occurred.
+
+
+### 2026-11-15 continuation — PR #240: refine close-trade time boundary (under review)
+
+The first post-merge v0.1 trade-condition artifact was informative but not conclusive. It showed 48 symbol/session observations: 25 daily closes agreed; 14 Yahoo closes matched a condition-6 closing trade while differing from Alpaca daily close; 9 daily closes were not reproduced by the last eligible trade selected across the entire 15-second window. Review found the diagnostic compared pre-close and post-16:00 trades together and counted repeated SIP representations of the same trade ID. Therefore those nine statuses were not proof of bad Alpaca daily bars.
+
+PR #240 separates eligible trades strictly before 16:00 ET from eligible trades at/after 16:00 ET, reports both last trades, deduplicates only identical trade-ID records with identical economic fields, and preserves distinct corrected records. The new status PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED is diagnostic evidence, not a final adjudication. We still must verify that the daily bar consistently matches the pre-close trade and that Yahoo's close matches the official auction trade across the flagged sessions.
+
+No price series, thresholds or strategies were changed. The raw close parity gate remains closed until the v0.2 artifact and the actual close semantics are reviewed.
