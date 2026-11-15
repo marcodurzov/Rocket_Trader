@@ -2426,7 +2426,7 @@ def self_test() -> Dict[str, Any]:
         audit_path=str(Path(tempfile.gettempdir()) / "rocket-trader-core-approved-test.jsonl"),
     )
     approved_test_decision = approved_test_core.evaluate_and_maybe_execute(
-        account=larger_account, snapshot=snapshot, signal=signal, execute=True,
+        account=larger_account, snapshot=low_price_snapshot, signal=signal, execute=True,
     )
     assert approved_test_decision.quantity > 0.0
     assert len(approved_test_adapter.submitted) == 1
