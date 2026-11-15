@@ -171,12 +171,11 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             flag["reason"],
             "CASH_DIVIDEND_DATE_ALIGNMENT_REVIEW_REQUIRED",
         )
-        candidate_dates = list(flag.get("nearby_yahoo_dividend_dates", []))
-        candidate_dates.extend(
-            item["candidate_ex_date"]
-            for item in flag.get("nearby_alpaca_candidates", [])
+        self.assertEqual(flag["session"], str(self.dates[2].date()))
+        self.assertEqual(
+            flag["nearby_yahoo_dividend_dates"],
+            [str(self.dates[5].date())],
         )
-        self.assertIn(str(self.dates[2].date()), candidate_dates)
 
     def test_adjustment_integrity_gates_fail_on_material_raw_price_divergence(self):
         gates = evaluate_adjustment_diagnostic_gates({
