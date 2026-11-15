@@ -1678,3 +1678,21 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - PR #236 changes the default to execute=False. Explicit execution requests are blocked unless a separate Paper approval flag, non-empty approval reference and strategy-ID allowlist are all supplied. An unlisted strategy is blocked even if the global Paper flag is enabled. NOVEL_RISK remains a decision classification, not execution permission.
 - Offline self-tests use only a local counting adapter to verify default denial, strategy allowlist enforcement and the explicit approval path. No Alpaca client is constructed by these tests; no broker request or order is sent.
 - This closes a code-level authorization gap, not the wider Paper readiness gates. Data parity, strategy OOS acceptance, risk-policy calibration, actual host/database discovery, live read-only Paper audit and sustained Paper observation remain open. Live stays disabled; no strategy is approved.
+
+
+### 2026-11-15 continuation — PR #237: corporate-action identity correction and evidence review
+
+A fresh review of the actual event payloads and independent distribution records found two errors in the previous audit narrative and one safe normalization opportunity:
+
+- **QQQ 2022-09-19:** Alpaca returned two records with the same symbol, CUSIP, ex-date, record date, cash rate (USD 0.51856) and ordinary/non-special classification. Only process/payable dates and IDs differed (2022-09-23 vs 2022-10-31). Independent distribution history lists one QQQ distribution of USD 0.51856 for ex-date 2022-09-19, record date 2022-09-20 and payable date 2022-10-31. These are duplicate lifecycle/version records for one economic distribution, not two cash dividends. PR #237 collapses only records with identical economic identity and preserves every source ID. Records with different rates or issuer identity remain unresolved; nothing is summed.
+- **QQQ 2020-09-21:** Alpaca's USD 0.38824 event is corroborated by multiple independent distribution histories for that ex-date. Yahoo's action series has zero on the same date. This now looks more like a Yahoo action-history omission than an Alpaca bad event, but the original issuer archive has not yet been captured in the audit bundle, so the mismatch remains a failed gate.
+- **SPY 2018:** The previous handoff claim that the $1.24557 distribution had ex-date 2018-06-12 and record date 2018-06-15 was incorrect. The SEC filing confirms State Street declared USD 1.24557 on 2018-06-14, payable 2018-07-31. Independent dividend history identifies ex-date 2018-06-15, record date 2018-06-18 and payable date 2018-07-31; Yahoo reports approximately USD 1.246 on 2018-06-15. Thus Yahoo's date is consistent with the independently reported ex-date. Alpaca's historical corporate-action response has no matching event on that date or within the current ±5-day search window. Treat this as an unresolved Alpaca historical-action coverage gap, not a Yahoo record-date mismatch.
+- The raw-price divergence on 2020 stress sessions remains unresolved for seven ETFs. Do not pick a vendor, smooth the outliers, or relax thresholds. Only TLT currently passes all gates.
+
+Sources for manual review:
+- SEC filing declaring SPY USD 1.24557 payable 2018-07-31: https://www.sec.gov/Archives/edgar/data/200245/000095010318007834/dp92671_424b2-us1849930.htm
+- SPY ex-date/record/payable history: https://www.aastocks.com/en/usq/analysis/dividend.aspx?symbol=SPY
+- QQQ 2020 and 2022 distribution history: https://www.aastocks.com/en/usq/analysis/dividend.aspx?symbol=QQQ and https://finabase.io/symbol/qqq/dividends
+- QQQ issuer product/distribution page: https://www.invesco.com/us/en/financial-products/etfs/invesco-qqq-trust-series-1.html
+
+PR #237's deduplication is a normalization fix only. It does not make the overall ETF data gate pass. The post-merge SIP/Yahoo audit must confirm the 2022 duplicate flag is gone while the 2020 QQQ and SPY historical action gaps remain visible until primary evidence resolves them.
