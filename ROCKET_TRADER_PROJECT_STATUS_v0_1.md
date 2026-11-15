@@ -1168,3 +1168,15 @@ PR #217 (`74481f69194659556842cc3a6de45329bfe86fe2`) removes stale statements th
 Validation: PR workflow Durable Activity SSE and Paper Reconciliation Gate passed. Post-merge main runs `43694984477` and `43694984460` passed offline tests and Compose validation. These workflows do not perform a live Paper account audit or deploy the image.
 
 No host or persistent DB was accessed, no migration/deployment/account mutation/order occurred, and Live remains disabled. Progress remains 58%.
+
+
+## 2026-11-15 — PR #222: complete Paper Observer image CI coverage
+
+PR #222 (`ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`) fixes a CI blind spot: the Paper Observer Dockerfile packages 26 Python modules, but container validation and GHCR publication did not watch all of them. The workflows now trigger when any packaged module changes; the container workflow compiles all 26 modules inside the built image.
+
+Validation:
+- PR container workflow `43695204616`: Compose validation, Docker build and in-image compile passed.
+- Post-merge container workflow `43695359960`: passed.
+- Post-merge image publication `43695359959`: passed. Image: `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`; digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
+
+Publication is not deployment. No host or persistent database was accessed, no real Paper API audit, account mutation, order or Live action occurred. Strategy approval/profitability remain unproven. Progress remains 58%.
