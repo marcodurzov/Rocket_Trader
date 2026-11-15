@@ -150,3 +150,8 @@ Post-merge main CI:
 - GHCR publication `43694561839`: `ghcr.io/marcodurzov/rocket_trader:e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`, digest `sha256:d8bc52d31ccabd6b727c9bb94d7b1e5088fead3c09cac00ce4d1b1c95a8ce0ee`.
 
 **Not evidenced:** persistent-host deployment, actual database/anchor integrity, successful live Paper coverage and fee audit, sustained forward observation, strategy approval or profitability. No Paper orders or Live activity. Current progress remains 58%.
+
+
+### Snapshot consistency limitation
+
+The full-account coordinator pairs two read-only Alpaca responses (positions, then account cash/equity); these are separate API calls, not an atomic broker snapshot. The local UTC timestamp captured immediately after `get_account()` defines the Activity SSE replay upper bound. Ledger stability, exact activity coverage, cash, equity and position reconciliation reduce inconsistency risk and fail closed on detected differences, but they do not convert separate broker endpoints into an atomic transaction. Keep the host clock synchronized to UTC and retain this limitation in any operational or performance claim.
