@@ -1233,6 +1233,13 @@ A review of Tiingo's Terms of Use (last updated 2026-11-05) found a material res
 
 The current Tiingo pricing page lists 30+ years of historical price coverage for Starter and Power; the repository's previous five-year Starter statement was outdated. That historical depth does not grant the rights needed for this validation workflow or its durable artifacts.
 
-PR under review adds a fail-closed permission-reference requirement to the optional Tiingo adapter. Without a specific written exception reference, include_tiingo fails before any Tiingo API request. No Tiingo account, token, API request or subscription was used.
+PR #233 merged at `18c65d1409ebc3c8abf03a8b0d1cbf267d938cb6` and adds a fail-closed permission-reference requirement to the optional Tiingo adapter. Without a specific written exception reference, include_tiingo fails before any Tiingo API request. No Tiingo account, token, API request or subscription was used.
 
 Official sources: https://www.tiingo.com/tos/ (last updated 2026-11-05), https://www.tiingo.com/pricing .
+## 2026-11-15 — PR #233 merged: Tiingo cross-validation permission guard
+
+PR #233 (`18c65d1409ebc3c8abf03a8b0d1cbf267d938cb6`) requires a token plus a reference to a specific written exception before the optional Tiingo cross-provider validation path can make a request. This reflects Tiingo's Terms of Use last updated 2026-11-05; no Tiingo request/account/token/subscription was used. PR CI: 32 ETF tests and 37 offline Paper audit tests passed; live Paper job skipped. Post-merge: ETF audit `43726367702` completed with 32 tests, runtime `43726367732` passed 259 tests across 17 suites, activity stager `43726367705` passed 19 tests, Paper reconciliation `43726367792` passed 63 offline tests. The latest ETF artifact is `14166765688`, SHA256 `633977e24410b5eeb5e92099b59fd345587244ab1f29e07b2fa87d84ae78b2e5`.
+
+## 2026-11-15 — PR #234: dividend date-alignment review
+
+Official State Street distribution data identifies SPY's $1.24557 distribution as ex-date 2018-06-12, record date 2018-06-15 and payable date 2018-08-10. Yahoo's history associates approximately $1.246 with 2018-06-15. Therefore the prior same-date gate's 'missing Alpaca event' label was too strong; the evidence supports a date-alignment candidate, not an omission conclusion. PR #234 searches nearby dates for matching amounts and emits a review-required alignment candidate. The gate remains false until the issuer/primary-source event is reconciled. QQQ mismatches and 2020 raw-price divergences remain unresolved.
