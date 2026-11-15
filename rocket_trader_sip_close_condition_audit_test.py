@@ -10,6 +10,32 @@ from rocket_trader_sip_close_condition_audit import (
 
 
 class SipCloseConditionAuditTests(unittest.TestCase):
+    def test_identical_sip_trade_id_records_are_collapsed_but_trade_corrections_are_not(self):
+        trades = [
+            {
+                "timestamp": "2020-03-16T20:00:00.100000Z",
+                "price": 202.49, "size": 500000, "conditions": ["6"],
+                "trade_id": 11, "exchange": "P", "tape": "C",
+            },
+            {
+                "timestamp": "2020-03-16T20:00:00.110000Z",
+                "price": 202.49, "size": 500000, "conditions": ["6"],
+                "trade_id": 11, "exchange": "P", "tape": "C",
+            },
+            {
+                "timestamp": "2020-03-16T20:00:00.120000Z",
+                "price": 202.50, "size": 500000, "conditions": ["6"],
+                "trade_id": 11, "exchange": "P", "tape": "C",
+            },
+        ]
+        result = classify_close_discrepancy(
+            symbol="DIA", session="2020-03-16",
+            alpaca_daily_close=202.49, yahoo_close=202.49, trades=trades,
+        )
+        self.assertEqual(result["trade_record_count_in_window"], 3)
+        self.assertEqual(result["unique_trade_count_in_window"], 2)
+        self.assertEqual(result["duplicate_trade_records_collapsed"], 1)
+
     def test_market_center_official_close_is_not_daily_close_eligible(self):
         self.assertFalse(daily_close_eligible(["M"]))
         self.assertTrue(daily_close_eligible(["6"]))
@@ -57,8 +83,9 @@ class SipCloseConditionAuditTests(unittest.TestCase):
             yahoo_close=202.49,
             trades=trades,
         )
-        self.assertEqual(result["status"], "SIP_OFFICIAL_CLOSE_CONDITION_EXPLAINS_GAP")
-        self.assertTrue(result["last_eligible_trade_matches_alpaca_daily_close"])
+        self.assertEqual(result["status"], "PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED")
+        self.assertTrue(result["alpaca_daily_close_matches_pre_close_trade"])
+        self.assertFalse(result["alpaca_daily_close_matches_post_close_trade"])
         self.assertEqual(
             result["official_close_trades_matching_yahoo"][0]["conditions"], ["M"]
         )
@@ -80,7 +107,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
             trades=trades,
         )
         self.assertEqual(result["status"], "CLOSES_AGREE")
-        self.assertTrue(result["last_eligible_trade_matches_alpaca_daily_close"])
+        self.assertTrue(result["alpaca_daily_close_matches_post_close_trade"])
 
     def test_daily_bar_not_reproduced_from_eligible_trades_stays_unresolved(self):
         trades = [
@@ -100,7 +127,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
         )
         self.assertEqual(
             result["status"],
-            "ALPACA_DAILY_CLOSE_NOT_REPRODUCED_FROM_ELIGIBLE_TRADES",
+            "ALPACA_DAILY_CLOSE_NOT_REPRODUCED_FROM_WINDOW_TRADES",
         )
 
     def test_no_official_close_trade_match_remains_unresolved(self):
@@ -121,7 +148,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
         )
         self.assertEqual(
             result["status"],
-            "UNRESOLVED_CLOSE_DEFINITION_OR_TRADE_COVERAGE",
+            "ALPACA_DAILY_CLOSE_MATCHES_PRE_CLOSE_TRADE_ONLY",
         )
 
 
