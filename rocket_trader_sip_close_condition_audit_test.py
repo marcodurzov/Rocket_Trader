@@ -46,7 +46,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
             }
         ]
         postmarket = {
-            "timestamp": "2020-03-17T00:30:00.000000Z",
+            "timestamp": "2020-03-16T20:30:00.000000Z",
             "price": 207.11, "size": 100, "conditions": ["@"],
             "trade_id": 12, "exchange": "P", "tape": "B",
         }
@@ -60,8 +60,8 @@ class SipCloseConditionAuditTests(unittest.TestCase):
 
     def test_select_last_eligible_postmarket_trade_skips_extended_hours_condition(self):
         rows = [
-            {"t": "2020-03-17T00:30:00Z", "p": 207.11, "s": 100, "c": ["@", "T"], "i": 1, "x": "P", "z": "B"},
-            {"t": "2020-03-17T00:29:00Z", "p": 207.10, "s": 100, "c": ["@"], "i": 2, "x": "P", "z": "B"},
+            {"t": "2020-03-16T20:30:00Z", "p": 207.11, "s": 100, "c": ["@", "T"], "i": 1, "x": "P", "z": "B"},
+            {"t": "2020-03-16T20:29:00Z", "p": 207.10, "s": 100, "c": ["@"], "i": 2, "x": "P", "z": "B"},
         ]
         selected = select_last_eligible_postmarket_trade(rows)
         self.assertEqual(selected["trade_id"], 2)
@@ -122,7 +122,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED")
         self.assertTrue(result["alpaca_daily_close_matches_pre_close_trade"])
-        self.assertFalse(result["alpaca_daily_close_matches_post_close_trade"])
+        self.assertFalse(result["alpaca_daily_close_matches_postmarket_last_eligible_trade"])
         self.assertEqual(
             result["official_close_trades_matching_yahoo"][0]["conditions"], ["M"]
         )
@@ -159,6 +159,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
             alpaca_daily_close=202.49,
             yahoo_close=202.49,
             trades=trades,
+            postmarket_last_eligible_trade=trades[0],
         )
         self.assertEqual(result["status"], "CLOSES_AGREE")
         self.assertTrue(result["alpaca_daily_close_matches_postmarket_last_eligible_trade"])
