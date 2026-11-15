@@ -1188,3 +1188,17 @@ Publication is not deployment. No host or persistent database was accessed, no r
 - PR #223 confirmed there is no provider-specific deployment workflow or host identifier in the repository and no verified evidence of a provisioned cloud project, persistent volume or running service. No hosting provider is identified; do not assume one.
 - PR #225 recorded PR #222's complete packaged-module CI coverage: all 26 Python modules copied by the Paper Observer Dockerfile are compiled in the built image, and container validation/GHCR publication trigger on any packaged-module change. Post-merge container workflow `43695359960` and image-publish workflow `43695359959` passed. Published image (not deployed): `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
 - No persistent host/database inspection, migration, live Paper full-account audit, deployment, broker account mutation, order or Live action occurred. The cash ledger coordinator remains disabled by default. Progress remains 58%.
+
+
+## 2026-11-15 — PR #227: fail-closed persistent accounting state
+
+PR #227 (`a8095a767f02377b19b1950a08fd73e154388235`) closes a startup safety gap. The Paper Observer previously constructed the realized-P&L ledger, fill bridge and activity stager before verifying that their persistent files existed; constructors could create missing SQLite files/tables or alter an older bridge schema. The runtime now checks existing files read-only for SQLite integrity, required tables/columns, ledger capital policy and initial-capital event, FX accounting-method compatibility, and append-only triggers before constructing components. Ledger, fill-inbox and stager paths must be distinct.
+
+Missing, partial, corrupt or overlapping state fails startup without creating replacements or repairing schemas. Tests cover missing files, partial bridge schema, and valid pre-existing state. The first-time/empty-volume path now requires a separately reviewed initialization or historical reconstruction; creating empty DBs to bypass this guard is prohibited.
+
+Validation:
+- PR workflows: Runtime Freshness `43695668309`, Paper Observer Runtime `43695668304`, Container `43695668297` all passed.
+- Post-merge main: Runtime Freshness `43695736834`, Paper Observer Runtime `43695736753` (255 tests across 17 suites), Container `43695736908`, GHCR publish `43695736729` all passed.
+- Image published, not deployed: `ghcr.io/marcodurzov/rocket_trader:a8095a767f02377b19b1950a08fd73e154388235`, digest `sha256:9642fe3d80ebb24bd37072238a09426da63bf1ff8b7dbf2851855a4243cc3238`.
+
+No live Paper audit, persistent-host access, migration, deployment, account mutation, order or Live action occurred. The hosting platform and existing volume are still unidentified. No strategy is approved; profitability remains unproven. Progress remains 58%.
