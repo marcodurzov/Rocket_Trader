@@ -425,11 +425,6 @@ def run_audit(
     *,
     targets: Iterable[Dict[str, str]],
 ) -> Dict[str, Any]:
-    api_key = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
-    secret_key = os.getenv("ALPACA_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
-    if not api_key or not secret_key:
-        raise CloseAuditError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
-
     normalized_targets = []
     for item in targets:
         symbol = str(item["symbol"]).upper()
