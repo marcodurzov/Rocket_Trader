@@ -44,8 +44,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
         run: |
           python rocket_trader_sip_close_condition_audit.py \
-            --symbols DIA EEM EFA GLD IWM QQQ SPY TLT \
-            --sessions 2020-03-12 2020-03-13 2020-03-16 2020-03-17 2020-03-18 2020-03-19 \
+            --targets-file rocket_trader_close_audit_targets_2020_2021_v0_1.json \
             --output artifacts/sip_close_condition_audit.json
       - name: Upload immutable trade-condition evidence
         if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'push')
