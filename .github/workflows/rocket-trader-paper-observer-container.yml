@@ -93,7 +93,8 @@ jobs:
             /app/rocket_trader_alpaca_cash_ledger.py \
             /app/rocket_trader_paper_activity_coverage_audit.py \
             /app/rocket_trader_paper_cash_coverage_migration.py \
-            /app/rocket_trader_paper_fee_allocation_audit.py \\\n            /app/rocket_trader_paper_account_reconciliation.py \\
+            /app/rocket_trader_paper_fee_allocation_audit.py \
+            /app/rocket_trader_paper_account_reconciliation.py \
             /app/rocket_trader_paper_cash_ledger_admin.py \
             /app/rocket_trader_alpaca_activity_stager.py \
             /app/rocket_trader_alpaca_activity_sse_consumer.py \
