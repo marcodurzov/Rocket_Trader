@@ -1282,3 +1282,8 @@ Capital sizing remains provisional. MXN 1,000 with the current 1% novel notional
 ## 2026-11-15 — PR #239: historical daily-close definition audit (under review)
 
 The 10-year ETF cross-check's 2020 raw close discrepancies may reflect different close definitions, not necessarily a bad source. Alpaca documents daily-bar aggregation from SIP trades and condition-specific inclusion: Market Center Official Close (M) does not update the daily close, Market Center Closing Trade (6) does, and extended-hours trades (T) do not update daily bars. PR #239 adds a historical trade-level diagnostic around 16:00 ET for the six suspect sessions, comparing the daily bar with the last SIP trade eligible under those rules and identifying official-close condition trades that match Yahoo's close. The diagnostic does not declare either provider correct and does not relax the data-quality gate. No strategy is approved.
+
+
+## 2026-11-15 — PR #238 merged: whole-share equity sizing
+
+PR #238 (`cf9e805c09a13309f6390879b04e1061fe2afc82`) aligns RiskEngine with the current equity adapter by rounding down to whole shares and rejecting any position that cannot afford one share. Core risk, capital, drawdown, observer, Paper execution safety and crypto Paper safety workflows passed. No Paper or Live order was sent.
