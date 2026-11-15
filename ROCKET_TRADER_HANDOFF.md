@@ -1727,3 +1727,10 @@ References:
 - Alpaca 2020 close-price discussion: https://forum.alpaca.markets/t/alpaca-bars-api-close-price-data-variation/1047
 - Alpaca explanation that 1-minute bars cannot reconstruct daily close due to closing-auction and after-hours trades: https://forum.alpaca.markets/t/historical-data/11966
 - Alpaca historical trades API: https://docs.alpaca.markets/us/reference/stocktrades-1
+
+
+### 2026-11-15 continuation — PR #238 merged: whole-share equity sizing
+
+- PR #238 merged to main at `cf9e805c09a13309f6390879b04e1061fe2afc82`.
+- RiskEngine now rounds equity quantities down to whole shares to match the current MARKET_BRACKET adapter. It rejects a position when the available notional cannot buy one whole share, rather than generating a fractional quantity the adapter will reject.
+- Core Risk Safety, Earned Growth Milestone Guard, Durable Activity SSE, Paper Execution Safety, Crypto Paper Execution Safety and Persistent Drawdown Guard workflows passed. No broker order or Live action occurred.
