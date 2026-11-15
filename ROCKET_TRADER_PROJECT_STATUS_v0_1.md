@@ -1256,3 +1256,12 @@ Post-merge offline regression: Paper Reconciliation Gate `43726989131` passed 63
 The legacy Core had execute=True as the default and could route positive-size NOVEL_RISK decisions to its Paper adapter. That contradicted the current project state (no Paper approval and no approved strategy). The Core now defaults to execute=False and requires an explicit Paper approval reference plus a strategy-ID allowlist before any order can be submitted. An unlisted strategy is blocked even when the global approval flag is set. Test-only validation uses a local counting adapter and no broker.
 
 This does not enable Paper orders. Current approval remains false, candidate promotion remains false, and Live remains disabled. The numeric risk defaults remain uncalibrated prototypes.
+
+
+## 2026-11-15 — PR #237: corporate-action event identity correction
+
+The 2022-09-19 QQQ corporate-action response contained two Alpaca IDs with identical economic attributes (same CUSIP, ex-date, record date, rate USD 0.51856 and ordinary classification), but different processing/payable dates. Independent distribution history lists one QQQ distribution for that ex-date. The audit now collapses only exact economic duplicates and preserves all source IDs. Distinct same-date distributions remain unresolved and are never summed.
+
+The previous SPY 2018 narrative was corrected: SEC evidence confirms USD 1.24557 declared 2018-06-14 and payable 2018-07-31; independent dividend history reports ex-date 2018-06-15 and record date 2018-06-18, consistent with Yahoo's 2018-06-15 event. Alpaca has no matching corporate-action record in the current historical response window, so this remains a possible Alpaca action-coverage gap. QQQ 2020-09-21 USD 0.38824 is corroborated by independent dividend histories, while Yahoo's action series omits it; issuer-primary confirmation is still pending.
+
+The raw 2020 price divergences remain unresolved. No vendor is designated as truth and the overall data-quality gate remains false; only TLT currently passes.
