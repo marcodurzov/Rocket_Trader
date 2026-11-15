@@ -930,8 +930,30 @@ def compare_adjustment_factors(
         })
     top_raw = []
     for session, _ in raw_return_diff_bps.abs().sort_values(ascending=False).head(10).items():
+        position = int(common.index.get_loc(session))
+        previous_session = common.index[position - 1] if position > 0 else None
+        previous_yahoo_raw = (
+            float(common["yahoo_raw"].iloc[position - 1]) if position > 0 else None
+        )
+        previous_alpaca_raw = (
+            float(common["alpaca_raw"].iloc[position - 1]) if position > 0 else None
+        )
+        yahoo_close = float(common.loc[session, "yahoo_raw"])
+        alpaca_close = float(common.loc[session, "alpaca_raw"])
         top_raw.append({
             "session": str(session),
+            "previous_session": str(previous_session) if previous_session is not None else None,
+            "previous_yahoo_raw_close": (
+                round(previous_yahoo_raw, 8) if previous_yahoo_raw is not None else None
+            ),
+            "previous_alpaca_raw_close": (
+                round(previous_alpaca_raw, 8) if previous_alpaca_raw is not None else None
+            ),
+            "yahoo_raw_close": round(yahoo_close, 8),
+            "alpaca_raw_close": round(alpaca_close, 8),
+            "alpaca_minus_yahoo_raw_close_pct": round(
+                (alpaca_close / yahoo_close - 1.0) * 100.0, 6
+            ),
             "yahoo_raw_daily_return_pct": round(float(raw_returns.loc[session, "yahoo"] * 100.0), 6),
             "alpaca_raw_daily_return_pct": round(float(raw_returns.loc[session, "alpaca"] * 100.0), 6),
             "alpaca_minus_yahoo_raw_return_difference_bps": round(
