@@ -402,3 +402,10 @@ The full-account evidence coordinator is optional and remains disabled by defaul
 ## 15. Whole-share equity sizing constraint
 
 The current equity Paper adapter submits MARKET_BRACKET orders and rejects fractional share quantities. RiskEngine therefore rounds the notional budget down to whole shares; a budget smaller than one share of the selected asset yields a zero-quantity rejected decision. Alpaca's general fractional-order support (USD 1 minimum for eligible assets) is not yet enabled in this adapter. Do not bypass this guard or submit fractional bracket orders until a separate Paper-only compatibility test and complete fill/fee reconciliation are reviewed.
+
+
+## 16. Non-root container and persistent volume ownership
+
+The Paper Observer image runs as fixed UID/GID 10001, not root. The image creates /app/data and assigns it to that identity before the Compose named volume is mounted. A brand-new Docker named volume is initialized from the image directory and should preserve the UID/GID. The container workflow verifies both the non-root UID and write access to /app/data.
+
+If reusing an existing volume from an earlier root-running image, do not assume it is writable by UID 10001. Stop every service, take and verify a database backup, inspect the volume ownership and database files, then perform a reviewed ownership migration. Do not run a blind recursive chown against an unknown or unbacked-up ledger volume. The actual deployment host and volume are not yet identified, so no volume migration or deployment has been performed.
