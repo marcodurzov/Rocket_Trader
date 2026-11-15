@@ -303,7 +303,7 @@ ROCKET_TRADER_CASH_LEDGER_DB=/app/data/rocket_trader_paper_cash.sqlite3
 ROCKET_TRADER_ACTIVITY_SSE_DB=/app/data/rocket_trader_activity_sse.sqlite3
 ```
 
-Keep the feature disabled until the coverage-attestation and fee-audit integration is completed. If enabled now, the observer will ingest the inbox and compare cash/equity, but it intentionally passes `activity_coverage_complete=false` and `fee_reconciliation_complete=false`; the full account gate and health check will remain incomplete. This is diagnostic wiring, not approval to proceed to trading.
+The coverage-attestation and fee-audit integration is now present in the `PaperAccountEvidenceCoordinator`. When this option is enabled, the runtime performs the bounded Activity SSE replay, exact fee-to-fill audit, and full-account reconciliation against the active cash anchor and one time-bounded read-only broker observation. It still fails closed on missing/stale evidence, database or anchor mismatch, pending fills, unlinked fees, or cash/equity/position differences. The option remains disabled by default (`ROCKET_TRADER_CASH_LEDGER_ENABLED=false`) and must stay disabled until the actual persistent host, all four database paths, their common durable volume, schemas, and cash anchor have been identified and reviewed. This integration does not authorize orders or Live trading.
 
 
 ## 17. Bounded Activity SSE coverage audit and explicit schema upgrade
