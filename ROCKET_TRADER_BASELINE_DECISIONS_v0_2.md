@@ -76,3 +76,10 @@ Legacy ledger databases are not silently reinterpreted. Existing FILL events wit
 ## Strategy risk denominators
 
 Broker-side Paper equity/cash are USD and must not be used as the denominator for strategy drawdown or daily loss when the allocated strategy capital is MXN 1,000. The Core now requires explicit `strategy_equity_mxn` and `strategy_daily_pnl_pct` whenever `strategy_capital_mxn` is set; missing metrics block entries. Its persistent strategy drawdown high-water mark is explicitly denominated in MXN and uses a dedicated `ROCKET_TRADER_STRATEGY_DRAWDOWN_GUARD_PATH`. Do not reuse an old USD guard-state file for MXN; the currency marker makes that mismatch fail closed.
+
+
+## Paper execution approval gate
+
+The Core defaults to no Paper order submission (execute=False). Even if a caller requests execution, the Core blocks it unless Paper execution has been explicitly approved with a non-empty approval reference and an explicit allowlist of strategy IDs. A strategy not in that allowlist is blocked. NOVEL_RISK is not an execution authorization. The current project has no approved strategies and no Paper execution approval; therefore the production configuration must leave this gate disabled. Test-only approvals use a local counting adapter and do not contact Alpaca.
+
+The numeric RiskConfig defaults (position/exposure/loss/stop/trade-count limits) remain prototype values, not an approved risk policy. Passing their validation is not evidence that they are economically or statistically calibrated.
