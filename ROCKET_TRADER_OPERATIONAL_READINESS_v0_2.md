@@ -115,7 +115,7 @@ GitHub-hosted Actions runners are ephemeral and must not be used as a 24/7 tradi
 2. Real Paper feed observation and broker fill/fee reconciliation over a sustained forward period.
 3. Exact allocation of unlinked regulatory fees and automatic handling of trade corrections/busts.
 4. Complete broker order/position reconciliation, cancellation, partial-fill exit lifecycle, and recovery handling.
-5. Research corrections for family-wise multiple testing, independent replication, SIP parity, and realistic cost stress.
+5. Research: independent replication, verified SIP parity, portfolio-level robustness, point-in-time data provenance, and realistic cost stress. Family-wise multiple-testing correction is implemented in the current ETF/crypto research pipelines, but no hypothesis has passed the adjusted OOS acceptance gate.
 6. A strategy that passes the documented out-of-sample acceptance criteria.
 7. A separate, explicit Paper execution authorization after the strategy and operational gates pass.
 
@@ -136,10 +136,10 @@ The Paper Observer now contains an opt-in `PaperAccountEvidenceCoordinator` that
 - Bounded read-only Alpaca Activity SSE replay compared against the durable local inbox.
 - Durable cash activity mirror and immutable coverage attestation.
 - Exact fee-to-fill allocation audit across cash activities, processed fill bridge and the FX-aware MXN FIFO ledger.
-- One broker positions/account snapshot, reconciled against local quantities, USD cash and account equity.
-- Before/after checks that block a successful report if the fill bridge or ledger changes during the audit.
+- One time-bounded read-only broker positions/account read set, reconciled against local quantities, USD cash and account equity. Alpaca does not expose an atomic cross-endpoint snapshot.
+- Fill bridge and ledger checks before and after the audits and again after final reconciliation; a fill arriving during the final gate blocks the success report.
 
-The feature requires the existing cash ledger, Activity SSE inbox, realized-P&L ledger, fill-bridge inbox and active cash anchor. It is disabled by default and must not be enabled until the actual persistent host, mounted volume, database paths, schemas and anchor have been verified. The coordinator performs read-only broker queries; it does not place, replace or cancel orders.
+The feature requires the existing cash ledger, Activity SSE inbox, realized-P&L ledger, fill-bridge inbox and active cash anchor. It is disabled by default and must not be enabled until the actual persistent host, mounted volume, database paths, schemas and anchor have been verified. The coordinator performs read-only broker queries; it does not place, replace or cancel orders. The full-account cycle runs every 900 seconds by default, and healthcheck requires a successful report no older than 1,800 seconds.
 
 Post-merge main CI:
 - Paper Reconciliation Gate `43694561871`: 12 + 25 + 26 tests passed.
