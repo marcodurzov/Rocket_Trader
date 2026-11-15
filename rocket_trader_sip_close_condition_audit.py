@@ -119,7 +119,10 @@ def classify_close_discrepancy(
     ]
     official = [
         item for item in normalized
-        if set(item["conditions"]) & OFFICIAL_CLOSE_CONDITIONS
+        if (
+            set(item["conditions"]) & OFFICIAL_CLOSE_CONDITIONS
+            and item["timestamp"].astimezone(NY).time() >= time(16, 0, 0)
+        )
     ]
     last_pre_close = pre_close[-1] if pre_close else None
     last_post_close = post_close[-1] if post_close else None
