@@ -1242,12 +1242,12 @@ PR #233 (`18c65d1409ebc3c8abf03a8b0d1cbf267d938cb6`) requires a token plus a ref
 
 ## 2026-11-15 — PR #234: dividend date-alignment review
 
-Official State Street distribution data identifies SPY's $1.24557 distribution as ex-date 2018-06-12, record date 2018-06-15 and payable date 2018-08-10. Yahoo's history associates approximately $1.246 with 2018-06-15. Therefore the prior same-date gate's 'missing Alpaca event' label was too strong; the evidence supports a date-alignment candidate, not an omission conclusion. PR #234 searches nearby dates for matching amounts and emits a review-required alignment candidate. The gate remains false until the issuer/primary-source event is reconciled. QQQ mismatches and 2020 raw-price divergences remain unresolved.
+Correction (2026-11-15): the previous ex-date/record-date interpretation was wrong. SEC evidence confirms State Street declared USD 1.24557 on 2018-06-14 payable 2018-07-31. Independent distribution history reports ex-date 2018-06-15 and record date 2018-06-18, consistent with Yahoo's 2018-06-15 event. Alpaca has no matching corporate-action record within ±5 calendar days, so this remains a possible Alpaca historical action-coverage gap. PR #237 records the correction.
 ## 2026-11-15 — PR #234 merged and post-merge dividend alignment audit
 
 PR #234 (`cd3f71c0ea84e44815b3c88edfc03e7a360ac82e`) adds nearby-date cash-dividend amount matching and deduplicates the same date-mismatch pair. The new candidate is review-required, never auto-accepted. PR CI `43726905176` passed 33 ETF tests.
 
-Post-merge read-only 10-year SIP/Yahoo audit `43726989269` completed; 33 offline cross-check tests passed. Artifact `14167320360`, ZIP SHA256 `bf4382e40482a85372489b3bc3d65d6334570b4344e595f567d97e4e9f0980f6`. The data-quality gate remains false: only TLT passes; seven ETFs remain review-required. QQQ still has a 2020 dividend mismatch and duplicate 2022-09-19 Alpaca records. SPY's 2018-06-15 Yahoo distribution has no matching Alpaca corporate-action event on that date or within ±5 calendar days. State Street identifies ex-date 2018-06-12, record date 2018-06-15 and $1.24557, so the Yahoo date aligns with record date; the missing nearby Alpaca event remains unresolved and may reflect historical corporate-action coverage.
+Post-merge read-only 10-year SIP/Yahoo audit `43726989269` completed; 33 offline cross-check tests passed. Artifact `14167320360`, ZIP SHA256 `bf4382e40482a85372489b3bc3d65d6334570b4344e595f567d97e4e9f0980f6`. The data-quality gate remains false: only TLT passes; seven ETFs remain review-required. QQQ's 2020 dividend event is corroborated by independent histories but missing from Yahoo's action series; its two 2022 Alpaca records share identical economic identity and are now deduplicated by PR #237 while preserving both IDs. SPY's 2018-06-15 Yahoo distribution is supported by SEC declaration/payable evidence and independent ex-date history; Alpaca has no matching action in the ±5-day response window. PR #237 records these source corrections.
 
 Post-merge offline regression: Paper Reconciliation Gate `43726989131` passed 63 tests; Observer Runtime `43726989123` passed 260 tests across 17 suites; Activity Stager `43726989119` passed 19 tests. No live Paper account query, broker mutation, deployment, orders or Live action occurred. No strategy approval; progress remains 58%.
 
@@ -1256,3 +1256,17 @@ Post-merge offline regression: Paper Reconciliation Gate `43726989131` passed 63
 The legacy Core had execute=True as the default and could route positive-size NOVEL_RISK decisions to its Paper adapter. That contradicted the current project state (no Paper approval and no approved strategy). The Core now defaults to execute=False and requires an explicit Paper approval reference plus a strategy-ID allowlist before any order can be submitted. An unlisted strategy is blocked even when the global approval flag is set. Test-only validation uses a local counting adapter and no broker.
 
 This does not enable Paper orders. Current approval remains false, candidate promotion remains false, and Live remains disabled. The numeric risk defaults remain uncalibrated prototypes.
+
+
+## 2026-11-15 — PR #237: corporate-action event identity correction
+
+The 2022-09-19 QQQ corporate-action response contained two Alpaca IDs with identical economic attributes (same CUSIP, ex-date, record date, rate USD 0.51856 and ordinary classification), but different processing/payable dates. Independent distribution history lists one QQQ distribution for that ex-date. The audit now collapses only exact economic duplicates and preserves all source IDs. Distinct same-date distributions remain unresolved and are never summed.
+
+The previous SPY 2018 narrative was corrected: SEC evidence confirms USD 1.24557 declared 2018-06-14 and payable 2018-07-31; independent dividend history reports ex-date 2018-06-15 and record date 2018-06-18, consistent with Yahoo's 2018-06-15 event. Alpaca has no matching corporate-action record in the current historical response window, so this remains a possible Alpaca action-coverage gap. QQQ 2020-09-21 USD 0.38824 is corroborated by independent dividend histories, while Yahoo's action series omits it; issuer-primary confirmation is still pending.
+
+The raw 2020 price divergences remain unresolved. No vendor is designated as truth and the overall data-quality gate remains false; only TLT currently passes.
+
+
+## 2026-11-15 — PR #236 merged: Core execution defaults fail closed
+
+PR #236 (`ac8b42de9026ffbd32a6daa51d39fc846bee5395`) changes RocketTraderCore to default execute=False and requires explicit Paper approval, an approval reference and a strategy-ID allowlist before any order submission. Unlisted strategies remain blocked. All offline risk, capital, crypto/Paper safety and regression workflows passed; the read-only Paper audit's live API job was skipped on the PR event. No Paper order or Live action occurred.

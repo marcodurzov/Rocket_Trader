@@ -297,3 +297,14 @@ A review of the current official Alpaca documentation found that the prior blank
 - The dedicated cross-check and v0.1–v0.4 workflows install `requirements-yahoo.txt`, which supplies `exchange_calendars`. No paid data subscription, Tiingo token or account change is required.
 - PR #181 offline crosscheck and v0.1 checks passed on the latest tested code head. v0.2–v0.4 final-head checks are being rerun after normalizing the Alpaca SDK's naive UTC request-end representation in tests.
 - PR CI intentionally skips actual broker history retrieval. After squash-merging, the main-branch push workflow must perform a read-only 10-year SIP/Yahoo cross-check with the existing Paper API credentials. Verify pre-2020 bars, all eight symbols, session coverage, adjustments and immutable artifacts. Until then, credential-specific historical SIP entitlement remains unverified.
+
+
+## 2026-11-15 — Corporate-action identity and source adjudication
+
+The 2022-09-19 QQQ Alpaca API response contains two IDs for the same economic distribution: same symbol, CUSIP 46090E103, ex-date 2022-09-19, record date 2022-09-20, rate USD 0.51856, and ordinary/non-special classification. The only differences are process/payable dates. Independent distribution history lists one USD 0.51856 event. PR #237 deduplicates these lifecycle records by economic identity, preserves both source IDs, and does not collapse records with different rates or issuer identity.
+
+The QQQ 2020-09-21 Alpaca USD 0.38824 dividend is corroborated by independent distribution histories; Yahoo has no dividend action on that date. This remains a provider-action-feed mismatch pending a captured primary issuer record.
+
+Correction to the previous SPY 2018 interpretation: the SEC filing states State Street declared USD 1.24557 on 2018-06-14 payable 2018-07-31. Independent dividend history gives ex-date 2018-06-15 and record date 2018-06-18, matching Yahoo's 2018-06-15 action date. Alpaca's historical corporate-action response has no matching event within the current review window; this remains an unresolved Alpaca historical action-coverage issue. The earlier claim of ex-date 2018-06-12 / record date 2018-06-15 is withdrawn as incorrect.
+
+The seven ETF raw-price divergence findings remain open. The overall data-quality gate remains false; only TLT passes. No source is designated as truth and no strategy is approved.
