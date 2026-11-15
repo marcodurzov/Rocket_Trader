@@ -653,7 +653,7 @@ def compare_adjustment_factors(
         deduplicate_alpaca_corporate_action_events(alpaca_corporate_actions)
         if alpaca_corporate_actions is not None else None
     )
-    alpaca_action_raw_count = len(alpaca_actions or [])
+    alpaca_action_raw_count = len(alpaca_corporate_actions or [])
     alpaca_action_economic_count = len(alpaca_actions or [])
 
     raw_returns = pd.concat([
@@ -667,8 +667,8 @@ def compare_adjustment_factors(
     ) * 100.0
 
     # Compare every cash-dividend ex-date, not only the ten largest adjustment
-    # factor steps. Duplicate API records are unresolved until their identity
-    # is independently established; they are never summed.
+    # factor steps. Exact economic duplicates have already been collapsed with
+    # all source IDs retained; distinct same-date events remain unresolved.
     alpaca_cash_by_date: Dict[str, List[Dict[str, Any]]] = {}
     if alpaca_actions is not None:
         for event in alpaca_actions:
@@ -799,11 +799,11 @@ def compare_adjustment_factors(
         event_date = str(session)
         previous_date = str(previous_session) if previous_session is not None else None
         alpaca_events_current = [
-            event for event in (alpaca_corporate_actions or [])
+            event for event in (alpaca_actions or [])
             if str(event.get("ex_date") or "") == event_date
         ]
         alpaca_events_previous = [
-            event for event in (alpaca_corporate_actions or [])
+            event for event in (alpaca_actions or [])
             if previous_date is not None and str(event.get("ex_date") or "") == previous_date
         ]
         alpaca_cash_dividend_events = [
@@ -869,6 +869,8 @@ def compare_adjustment_factors(
             "alpaca_corporate_actions_on_previous_session": [
                 {
                     "id": event.get("id"),
+                    "source_record_ids": event.get("source_record_ids") or ([event.get("id")] if event.get("id") else []),
+                    "duplicate_record_count": event.get("duplicate_record_count", 1),
                     "cusip": event.get("cusip"),
                     "isin": event.get("isin"),
                     "record_date": event.get("record_date"),
@@ -882,7 +884,10 @@ def compare_adjustment_factors(
             ],
             "alpaca_cash_dividend_event_count": alpaca_cash_dividend_event_count,
             "alpaca_cash_dividend_event_ids": [
-                event.get("id") for event in alpaca_cash_dividend_events
+                source_id
+                for event in alpaca_cash_dividend_events
+                for source_id in (event.get("source_record_ids") or [event.get("id")])
+                if source_id
             ],
             "alpaca_cash_dividend_total_status": (
                 alpaca_cash_dividend_total_status
