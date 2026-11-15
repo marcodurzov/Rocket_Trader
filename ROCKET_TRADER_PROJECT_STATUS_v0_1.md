@@ -1146,7 +1146,7 @@ The integration is merged and the container image is published, but the actual P
 
 ## 2026-11-15 — PR #212: full-account Paper evidence coordinator
 
-PR #212 (`e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`) wires the bounded Activity SSE coverage audit and durable fee-to-fill allocation audit into a separate full-account Paper reconciliation coordinator. It binds both audits to the same account, cash anchor, time window and broker positions/account snapshot; verifies the fill ledger did not change during the audit; and only reports full reconciliation when positions, USD cash, account equity, activity coverage and fee allocation all reconcile.
+PR #212 (`e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`) wires the bounded Activity SSE coverage audit and durable fee-to-fill allocation audit into a separate full-account Paper reconciliation coordinator. It binds both audits to the same account, cash anchor, time window and paired, time-bounded broker positions/account read set (not an atomic cross-endpoint snapshot); verifies the fill ledger did not change during the audit; and only reports full reconciliation when positions, USD cash, account equity, activity coverage and fee allocation all reconcile.
 
 The integration remains opt-in: `ROCKET_TRADER_CASH_LEDGER_ENABLED=false` by default. Existing persistent database files and a verified cash anchor are mandatory; runtime does not create replacements. The repository's actual deployment host and persistent volume remain unidentified, so the coordinator has not been enabled on the user's host.
 
@@ -1168,3 +1168,13 @@ PR #217 (`74481f69194659556842cc3a6de45329bfe86fe2`) removes stale statements th
 Validation: PR workflow Durable Activity SSE and Paper Reconciliation Gate passed. Post-merge main runs `43694984477` and `43694984460` passed offline tests and Compose validation. These workflows do not perform a live Paper account audit or deploy the image.
 
 No host or persistent DB was accessed, no migration/deployment/account mutation/order occurred, and Live remains disabled. Progress remains 58%.
+
+
+## 2026-11-15 — PRs #217, #219, #220 and #223: operational and research status
+
+- PR #217 corrected stale deployment documentation: the optional full-account coordinator is wired to the runtime, but remains disabled by default and requires verified existing persistent databases and cash anchor.
+- PR #219 recorded the runbook correction and offline CI evidence. The PR and post-merge workflows did not query the user's Paper account.
+- PR #220 clarified that Holm-Bonferroni family-wise correction is implemented in the ETF and crypto research pipelines. No hypothesis has passed adjusted OOS acceptance. Independent replication, verified SIP parity, portfolio-level robustness, point-in-time provenance and realistic cost stress remain open gates.
+- PR #223 refreshed the operational readiness review. No provider-specific deployment workflow, host identifier, provisioned cloud project, persistent volume or running service is evidenced in the repository. No hosting provider is identified; do not assume one.
+- The full-account coordinator uses a bounded, non-atomic paired read of Alpaca positions and account cash/equity. It does not provide an atomic broker snapshot.
+- No persistent host/database inspection, migration, live Paper full-account audit, deployment, account mutation, order or Live action occurred. Progress remains 58%.
