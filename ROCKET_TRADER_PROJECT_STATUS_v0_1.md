@@ -1287,3 +1287,10 @@ The 10-year ETF cross-check's 2020 raw close discrepancies may reflect different
 ## 2026-11-15 — PR #238 merged: whole-share equity sizing
 
 PR #238 (`cf9e805c09a13309f6390879b04e1061fe2afc82`) aligns RiskEngine with the current equity adapter by rounding down to whole shares and rejecting any position that cannot afford one share. Core risk, capital, drawdown, observer, Paper execution safety and crypto Paper safety workflows passed. No Paper or Live order was sent.
+
+
+## 2026-11-15 — PR #240: refine SIP close trade diagnosis (under review)
+
+The first post-merge trade-condition artifact contained 48 observations: 25 closes agreed, 14 Yahoo closes matched condition-6 closing trades while differing from Alpaca daily closes, and 9 Alpaca daily closes were not reproduced by the last eligible trade across the entire window. The diagnostic had mixed trades before and after 16:00 ET and retained repeated SIP representations of the same trade ID. These results were inconclusive, not proof of incorrect Alpaca bars.
+
+PR #240 splits pre-16:00 and post-16:00 eligible trades, reports both separately, and collapses only identical trade-ID records with identical economic fields. This is a diagnostic refinement only. The data-quality gate remains false; no strategy is approved.
