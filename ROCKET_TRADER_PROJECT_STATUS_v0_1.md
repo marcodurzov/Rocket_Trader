@@ -1,5 +1,5 @@
 # Rocket Trader — Project Status v0.1
-**Last reviewed:** 2026-11-14  
+**Last reviewed:** 2026-11-15  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Primary reference system:** https://github.com/marcodurzov/mdv-ps-jefe-maestro
 
@@ -1142,3 +1142,20 @@ No live Paper API audit, persistent-host access, database migration, deployment,
 ### Current blocker
 
 The integration is merged and the container image is published, but the actual Paper runtime host and persistent volume are still unidentified. Do not enable `ROCKET_TRADER_CASH_LEDGER_ENABLED` until all existing database paths, schema versions, account IDs, anchor and volume relationships are inspected and backed up. Then run the bounded read-only Paper audit and collect successful evidence across multiple sessions. This does not authorize orders or Live trading.
+
+
+## 2026-11-15 — PR #212: full-account Paper evidence coordinator
+
+PR #212 (`e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`) wires the bounded Activity SSE coverage audit and durable fee-to-fill allocation audit into a separate full-account Paper reconciliation coordinator. It binds both audits to the same account, cash anchor, time window and broker positions/account snapshot; verifies the fill ledger did not change during the audit; and only reports full reconciliation when positions, USD cash, account equity, activity coverage and fee allocation all reconcile.
+
+The integration remains opt-in: `ROCKET_TRADER_CASH_LEDGER_ENABLED=false` by default. Existing persistent database files and a verified cash anchor are mandatory; runtime does not create replacements. The repository's actual deployment host and persistent volume remain unidentified, so the coordinator has not been enabled on the user's host.
+
+Post-merge main validation:
+- Paper Reconciliation Gate `43694561871`: 12 reconciliation + 25 cash-ledger + 26 Activity SSE tests passed.
+- Durable Activity SSE `43694561856`: 26 tests and Compose validation passed.
+- Runtime Freshness `43694561786`: 37 tests passed.
+- Paper Observer Runtime `43694561771`: 250 offline tests across 17 suites passed, including 7 full-account coordinator tests.
+- Paper Observer Container `43694561813`: Compose validation and image build passed.
+- GHCR publication `43694561839`: image `ghcr.io/marcodurzov/rocket_trader:e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`, digest `sha256:d8bc52d31ccabd6b727c9bb94d7b1e5088fead3c09cac00ce4d1b1c95a8ce0ee`. Image publication is not deployment.
+
+No live Paper account audit, persistent-host migration, service deployment, broker order or Live action occurred. Research has not approved a strategy. Progress remains 58%.
