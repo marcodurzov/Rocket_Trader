@@ -1250,3 +1250,9 @@ PR #234 (`cd3f71c0ea84e44815b3c88edfc03e7a360ac82e`) adds nearby-date cash-divid
 Post-merge read-only 10-year SIP/Yahoo audit `43726989269` completed; 33 offline cross-check tests passed. Artifact `14167320360`, ZIP SHA256 `bf4382e40482a85372489b3bc3d65d6334570b4344e595f567d97e4e9f0980f6`. The data-quality gate remains false: only TLT passes; seven ETFs remain review-required. QQQ still has a 2020 dividend mismatch and duplicate 2022-09-19 Alpaca records. SPY's 2018-06-15 Yahoo distribution has no matching Alpaca corporate-action event on that date or within ±5 calendar days. State Street identifies ex-date 2018-06-12, record date 2018-06-15 and $1.24557, so the Yahoo date aligns with record date; the missing nearby Alpaca event remains unresolved and may reflect historical corporate-action coverage.
 
 Post-merge offline regression: Paper Reconciliation Gate `43726989131` passed 63 tests; Observer Runtime `43726989123` passed 260 tests across 17 suites; Activity Stager `43726989119` passed 19 tests. No live Paper account query, broker mutation, deployment, orders or Live action occurred. No strategy approval; progress remains 58%.
+
+## 2026-11-15 — PR #235: Core Paper execution authorization gate (under review)
+
+The legacy Core had execute=True as the default and could route positive-size NOVEL_RISK decisions to its Paper adapter. That contradicted the current project state (no Paper approval and no approved strategy). The Core now defaults to execute=False and requires an explicit Paper approval reference plus a strategy-ID allowlist before any order can be submitted. An unlisted strategy is blocked even when the global approval flag is set. Test-only validation uses a local counting adapter and no broker.
+
+This does not enable Paper orders. Current approval remains false, candidate promotion remains false, and Live remains disabled. The numeric risk defaults remain uncalibrated prototypes.
