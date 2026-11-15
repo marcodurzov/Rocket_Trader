@@ -199,6 +199,28 @@ class PaperAccountEvidenceCoordinatorTests(unittest.TestCase):
         self.assertEqual(self.client.position_calls, 1)
         self.assertFalse(report["orders_enabled"])
 
+    def test_fill_arriving_during_final_reconciliation_blocks_success_report(self):
+        original_reconcile = self.gate.reconcile
+
+        def reconcile_then_append_fill(**kwargs):
+            report = original_reconcile(**kwargs)
+            self.ledger.record_fill(
+                fill_id="late-fill-during-gate",
+                symbol="SPY",
+                side="BUY",
+                quantity="0.01",
+                price_usd="100",
+                fee_usd="0",
+                fx=LedgerFX(Decimal("18"), SNAPSHOT_AT, "LATE_FILL_FX"),
+                occurred_at=SNAPSHOT_AT + timedelta(seconds=1),
+                asset_class="US_EQUITY",
+            )
+            return report
+
+        self.gate.reconcile = reconcile_then_append_fill
+        with self.assertRaisesRegex(PaperAccountEvidenceError, "changed during final account reconciliation"):
+            self.coordinator().reconcile()
+
     def test_cash_mismatch_blocks_full_account_reconciliation(self):
         with self.assertRaisesRegex(PaperAccountEvidenceError, "did not fully reconcile"):
             self.coordinator(cash="900.02").reconcile()
