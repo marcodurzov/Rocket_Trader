@@ -322,3 +322,8 @@ PR #239 adds a read-only forensic workflow for the six suspect sessions. It retr
 The initial v0.1 artifact returned 48 observations (25 close matches, 14 Yahoo/condition-6 close matches differing from Alpaca daily close, 9 daily closes not reproduced by the selected last eligible trade). The classifier included post-16:00 trades in the same sequence as pre-close trades and counted duplicate SIP representations of identical trade IDs. It was not valid to treat the nine rows as evidence of bad daily bars.
 
 PR #240 separates the pre-16:00 and post-16:00 trade candidates and deduplicates only identical trade-ID/price/size/exchange/condition/tape representations. It preserves changed/corrected trade records. The resulting pattern remains diagnostic and does not relax the source-parity gate.
+
+
+## 2026-11-15 — Full postmarket daily-close reconstruction
+
+The Alpaca FAQ states daily bars are aggregated from trades truncated to the New York day, not simply the regular 09:30–16:00 session. Condition T (Extended Hours Trade) does not update daily bars, but other conditions can. Therefore a daily bar may close on an eligible postmarket trade. PR #242 searches from 16:00 to 20:00 ET, newest-first, to identify the latest eligible trade and compares it to the daily bar; it separately records the official closing-auction trade candidates around 16:00. It also implements the tape-specific condition B rule (A/B average-price is excluded; C bunched trade is eligible). This is an audit refinement, not a data-quality pass.
