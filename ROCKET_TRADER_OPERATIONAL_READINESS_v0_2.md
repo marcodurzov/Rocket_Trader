@@ -214,3 +214,7 @@ PR #234 merged at `cd3f71c0ea84e44815b3c88edfc03e7a360ac82e`. The dividend audit
 QQQ's 2020 Yahoo/Alpaca dividend mismatch and duplicate 2022 records remain unresolved. SPY's 2018 dividend date is explained partly by issuer metadata (ex-date June 12, record date June 15, amount $1.24557), but no matching Alpaca event was found within ±5 days. This could reflect API historical coverage or an absent event; unresolved.
 
 Post-merge offline regression passed: Paper Reconciliation 63 tests, Observer Runtime 260 tests across 17 suites, Activity Stager 19 tests. No live Paper account audit, deployment, broker mutation, orders or Live action occurred.
+
+## 2026-11-15 — Core order-routing authorization hardening (PR #235 under review)
+
+A code review found that the legacy Core's evaluate_and_maybe_execute defaulted to execute=True and allowed positive-quantity NOVEL_RISK decisions to reach the Paper adapter. This was inconsistent with the current project status: no strategy has passed promotion and Paper approval is false. The Core now defaults to no execution and requires an explicit Paper approval reference and strategy-ID allowlist. Test-only checks use a local counting adapter only. This is a fail-closed authorization fix; it does not approve Paper or Live orders. RiskConfig numeric values remain uncalibrated prototypes.
