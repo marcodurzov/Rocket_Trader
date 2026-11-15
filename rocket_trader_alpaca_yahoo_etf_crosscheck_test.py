@@ -435,10 +435,27 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
     def test_tiingo_token_is_ignored_without_explicit_opt_in(self):
         self.assertEqual(resolve_tiingo_token(False, "secret-token"), "")
 
+    def test_tiingo_cross_provider_validation_requires_specific_written_permission(self):
+        with self.assertRaisesRegex(CrosscheckError, "written exception"):
+            resolve_tiingo_token(True, "starter-token")
+        self.assertEqual(
+            resolve_tiingo_token(
+                True,
+                "licensed-token",
+                "written-exception-reference-2026-001",
+            ),
+            "licensed-token",
+        )
+
     def test_tiingo_token_requires_explicit_opt_in_and_token(self):
         with self.assertRaisesRegex(CrosscheckError, "explicitly requested"):
-            resolve_tiingo_token(True, None)
-        self.assertEqual(resolve_tiingo_token(True, "starter-token"), "starter-token")
+            resolve_tiingo_token(True, None, "written-exception-reference")
+        with self.assertRaisesRegex(CrosscheckError, "written exception"):
+            resolve_tiingo_token(True, "starter-token")
+        self.assertEqual(
+            resolve_tiingo_token(True, "licensed-token", "written-exception-reference"),
+            "licensed-token",
+        )
 
     def test_historical_request_end_is_a_completed_safe_utc_boundary(self):
         for now in (

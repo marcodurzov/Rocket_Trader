@@ -845,7 +845,7 @@ PR #101 merged as `e265cc92a0eb931031151d963e1d320ced990cf7`, synchronizing the 
 - PR #179 initially restricted research to IEX under the assumption that SIP required a paid plan. That restriction is superseded by the historical-SIP correction below: Alpaca Basic permits SIP for historical requests whose `end` is at least 15 minutes old.
 - Equity research v0.1–v0.4 now reject SIP in code and CLI. Their GitHub Actions workflows no longer offer SIP.
 - Public equity research v0.4 no longer offers Tiingo as a primary source and no longer receives `TIINGO_API_TOKEN`.
-- The public ETF cross-check workflow does not inject Tiingo credentials and does not opt in. Its optional Tiingo comparison is disabled unless a local/programmatic caller explicitly sets `include_tiingo` and supplies a token; the zero-cost Starter comparison is limited to five years. No Tiingo account was created and no Tiingo request was made.
+- The public ETF cross-check workflow does not inject Tiingo credentials and does not opt in. Its optional Tiingo comparison is blocked unless a local/programmatic caller supplies both a token and a reference to a specific written exception authorizing cross-provider validation. The previous five-year Starter assumption is superseded by Tiingo's current pricing page, but Starter's retention restrictions and the cross-validation prohibition make it unsuitable for this persisted audit. No Tiingo account was created and no Tiingo request was made.
 - The scheduled entitlement probe is now an IEX-only health probe. Its successful run `43080158991` returned IEX `AVAILABLE` (5 bars); SIP was intentionally not queried because this workflow checks the recent/live free feed. Historical SIP is separately allowed only with a 15-minute-safe end.
 - Repository audit identified the four ETF research workflows, the ETF cross-check workflow and the entitlement probe as the relevant SIP/Tiingo workflow surfaces. Those public paths have now been hardened.
 - Post-merge workflow runs for the IEX probe, ETF cross-check and research versions 0.1–0.4 all completed successfully: `43080158991`, `43080158893`, `43080158810`, `43080158982`, `43080158898`, and `43080158764`.
@@ -1226,3 +1226,13 @@ Post-merge run `43725907128` completed a read-only 10-year SIP/Yahoo comparison 
 Post-merge runtime/accounting workflow `43725907133` passed 258 tests across 17 suites. Artifact `14166835027` SHA256 `58dcb9ce2fa94068894d19bfca5654d31f8d3a5cb8faded14d58803425e8b7eb`.
 
 Candidate promotion false; Paper approval false; orders disabled; zero orders submitted. Cost assumptions unvalidated; no strategy approved. No persistent host/database inspection, live Paper account audit, deployment, broker account mutation, order or Live action occurred. Progress remains 58%.
+
+## 2026-11-15 — Tiingo terms-of-use restriction on cross-provider validation
+
+A review of Tiingo's Terms of Use (last updated 2026-11-05) found a material restriction omitted from the earlier research plan. Section 1.6(c) expressly prohibits using Tiingo Data to validate, reconcile or confirm another dataset, including using Tiingo EOD data to validate another EOD dataset. Starter/Trial plans additionally prohibit persistent storage of Tiingo Data and Derived Products; both must be removed before the job/session ends. A paid Power plan's persistence rights do not by themselves authorize cross-provider validation. The terms describe a separate written exception for eligible Start-up, Enterprise or Institutional accounts; no such permission exists or is authorized for Rocket Trader.
+
+The current Tiingo pricing page lists 30+ years of historical price coverage for Starter and Power; the repository's previous five-year Starter statement was outdated. That historical depth does not grant the rights needed for this validation workflow or its durable artifacts.
+
+PR under review adds a fail-closed permission-reference requirement to the optional Tiingo adapter. Without a specific written exception reference, include_tiingo fails before any Tiingo API request. No Tiingo account, token, API request or subscription was used.
+
+Official sources: https://www.tiingo.com/tos/ (last updated 2026-11-05), https://www.tiingo.com/pricing .

@@ -914,15 +914,33 @@ def require_zero_budget_feed(
 
 
 def resolve_tiingo_token(
-    include_tiingo: bool, token: Optional[str] = None
+    include_tiingo: bool,
+    token: Optional[str] = None,
+    validation_permission_reference: Optional[str] = None,
 ) -> str:
-    """Never consume Tiingo API quota unless explicitly opted in."""
+    """Require written Tiingo permission for cross-provider validation.
+
+    Tiingo's current Terms of Use prohibit using Tiingo Data to validate,
+    reconcile, or confirm another dataset without a specific written exception.
+    A token or paid Power plan alone does not satisfy that requirement.
+    """
     if not include_tiingo:
         return ""
     resolved = str(token or os.getenv("TIINGO_API_TOKEN", "")).strip()
     if not resolved:
         raise CrosscheckError(
             "Tiingo comparison was explicitly requested but TIINGO_API_TOKEN is missing."
+        )
+    permission = str(
+        validation_permission_reference
+        or os.getenv("TIINGO_DATA_VALIDATION_PERMISSION_REFERENCE", "")
+    ).strip()
+    if not permission:
+        raise CrosscheckError(
+            "Tiingo cross-provider validation is blocked: current Tiingo Terms of Use "
+            "prohibit using Tiingo Data to validate, reconcile, or confirm another dataset. "
+            "A specific written exception reference is required; a Starter token or paid "
+            "Power plan alone is not sufficient. No Tiingo API request was made."
         )
     return resolved
 
@@ -974,6 +992,7 @@ def run_audit(
     alpaca_loader=fetch_alpaca_history,
     tiingo_loader=fetch_tiingo_history,
     tiingo_token: Optional[str] = None,
+    tiingo_validation_permission_reference: Optional[str] = None,
     yahoo_adjustment_loader=fetch_yahoo_adjustment_fields,
     alpaca_raw_loader=fetch_alpaca_raw_history,
     alpaca_corporate_actions_loader=fetch_alpaca_corporate_actions,
@@ -983,11 +1002,11 @@ def run_audit(
         raise CrosscheckError("years must be between 1 and 20")
     if not api_key or not secret_key:
         raise CrosscheckError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
-    token = resolve_tiingo_token(include_tiingo, tiingo_token)
-    if token and years > 5:
-        raise CrosscheckError(
-            "The zero-cost Tiingo Starter tier provides 5 years of history; use --years 5 or less."
-        )
+    token = resolve_tiingo_token(
+        include_tiingo,
+        tiingo_token,
+        tiingo_validation_permission_reference,
+    )
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None or current.utcoffset() is None:
         raise CrosscheckError("now must be timezone-aware")
@@ -1137,7 +1156,12 @@ def main() -> int:
     parser.add_argument("--feed", choices=("IEX", "SIP"), default="SIP")
     parser.add_argument(
         "--include-tiingo", action="store_true",
-        help="Explicitly opt in to Tiingo; requires a free Starter token and a maximum 5-year window."
+        help="Request optional Tiingo comparison; blocked unless a written cross-provider validation exception is referenced."
+    )
+    parser.add_argument(
+        "--tiingo-validation-permission-reference",
+        default=os.getenv("TIINGO_DATA_VALIDATION_PERMISSION_REFERENCE", ""),
+        help="Reference to the specific written Tiingo exception authorizing cross-provider validation; token/paid plan alone is insufficient.",
     )
     parser.add_argument("--output", default="artifacts/alpaca_yahoo_etf_crosscheck.json")
     args = parser.parse_args()
@@ -1152,6 +1176,7 @@ def main() -> int:
             years=args.years,
             feed_name=args.feed,
             include_tiingo=args.include_tiingo,
+            tiingo_validation_permission_reference=args.tiingo_validation_permission_reference,
         )
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
