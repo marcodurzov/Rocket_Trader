@@ -132,6 +132,24 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertEqual(normalized[0]["duplicate_record_count"], 2)
         self.assertEqual(normalized[0]["process_date"], "2022-09-23")
 
+    def test_adjustment_factor_report_includes_raw_close_pairs_for_outliers(self):
+        yahoo = self.yahoo.copy()
+        alpaca = yahoo.copy()
+        alpaca.iloc[4:] = alpaca.iloc[4:] * 1.03
+        result = compare_adjustment_factors(
+            "SPY", yahoo, yahoo, alpaca, alpaca,
+            min_common_sessions=5,
+            yahoo_dividends=pd.Series([0.0] * 8, index=self.dates),
+            alpaca_corporate_actions=[],
+        )
+        outlier = result["largest_raw_return_divergences"][0]
+        self.assertEqual(outlier["session"], str(self.dates[4].date()))
+        self.assertEqual(outlier["previous_yahoo_raw_close"], float(yahoo.iloc[3]))
+        self.assertEqual(outlier["previous_alpaca_raw_close"], float(alpaca.iloc[3]))
+        self.assertEqual(outlier["yahoo_raw_close"], float(yahoo.iloc[4]))
+        self.assertEqual(outlier["alpaca_raw_close"], float(alpaca.iloc[4]))
+        self.assertAlmostEqual(outlier["alpaca_minus_yahoo_raw_close_pct"], 3.0, places=5)
+
     def test_adjustment_factor_audit_deduplicates_same_economic_dividend_records(self):
         raw = self.yahoo.copy()
         factors = pd.Series([1.0] * 8, index=self.dates)
