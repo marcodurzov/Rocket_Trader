@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "rocket_trader_paper_activity_reconciliation.py"
       - "Dockerfile.paper-observer"
       - "docker-compose.paper-observer.yml"
       - "rocket_trader_stream_runtime.py"
@@ -42,6 +43,22 @@ on:
   push:
     branches: [main]
     paths:
+      - "rocket_trader_alpaca_news_observer.py"
+      - "rocket_trader_gdelt_news_observer.py"
+      - "rocket_trader_regime_selector.py"
+      - "rocket_trader_regime_observer.py"
+      - "rocket_trader_news_event_assessment.py"
+      - "rocket_trader_execution_cost_telemetry.py"
+      - "rocket_trader_paper_activity_reconciliation.py"
+      - "rocket_trader_alpaca_cash_ledger.py"
+      - "rocket_trader_paper_activity_coverage_audit.py"
+      - "rocket_trader_paper_cash_coverage_migration.py"
+      - "rocket_trader_paper_fee_allocation_audit.py"
+      - "rocket_trader_paper_cash_ledger_admin.py"
+      - "rocket_trader_alpaca_activity_stager.py"
+      - "rocket_trader_alpaca_activity_sse_consumer.py"
+      - "rocket_trader_alpaca_cash_activity_bridge.py"
+      - "rocket_trader_cash_activity_admin.py"
       - "Dockerfile.paper-observer"
       - "rocket_trader_paper_account_reconciliation.py"
       - "rocket_trader_paper_account_reconciliation_test.py"
@@ -85,6 +102,7 @@ jobs:
             /app/rocket_trader_news_event_assessment.py \
             /app/rocket_trader_execution_cost_telemetry.py \
             /app/rocket_trader_realized_pnl_ledger.py \
+            /app/rocket_trader_paper_activity_reconciliation.py \
             /app/rocket_trader_paper_fill_ledger_bridge.py \
             /app/rocket_trader_alpaca_fee_resolver.py \
             /app/rocket_trader_fx_provider.py \
