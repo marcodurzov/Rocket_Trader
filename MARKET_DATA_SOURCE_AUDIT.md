@@ -327,3 +327,8 @@ PR #240 separates the pre-16:00 and post-16:00 trade candidates and deduplicates
 ## 2026-11-15 — Full postmarket daily-close reconstruction
 
 The Alpaca FAQ states daily bars are aggregated from trades truncated to the New York day, not simply the regular 09:30–16:00 session. Condition T (Extended Hours Trade) does not update daily bars, but other conditions can. Therefore a daily bar may close on an eligible postmarket trade. PR #242 searches from 16:00 to 20:00 ET, newest-first, to identify the latest eligible trade and compares it to the daily bar; it separately records the official closing-auction trade candidates around 16:00. It also implements the tape-specific condition B rule (A/B average-price is excluded; C bunched trade is eligible). This is an audit refinement, not a data-quality pass.
+
+
+## 2026-11-15 — Expand daily-close definition audit to all material outliers
+
+The six-session March 2020 trade audit cannot explain every raw price divergence in the 10-year ETF cross-check. The top-10 raw return divergences include additional symbol/session pairs from 2016, 2018, 2020 and 2021. PR #244 adds 55 per-symbol/session targets (abs return difference >10 bps or abs raw close difference >0.5%) so the trade-condition audit can verify the actual outlier sessions without querying all 8 symbols on all 53 unique dates. The previous 48-row result is a confirmed observed pattern only for those 48 rows; it is not a global pass.
