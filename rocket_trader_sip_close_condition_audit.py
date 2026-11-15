@@ -512,6 +512,7 @@ def run_audit(
                 row["status"] in {
                     "CLOSES_AGREE",
                     "PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED",
+                    "POSTMARKET_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED",
                 }
                 for row in results
             )
