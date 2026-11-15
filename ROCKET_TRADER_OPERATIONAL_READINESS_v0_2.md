@@ -1,12 +1,12 @@
 # Rocket Trader — Operational Readiness v0.2
 
-**Reviewed:** 2026-11-10  
+**Reviewed:** 2026-11-15  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
-**Code baseline reviewed:** c47010e595f9f2ec8c1aaf1a3eee11f60068a79d
+**Code baseline reviewed:** e5bb0fbc6ef13e42fdfa4c4d231156700d45944dd
 
 ## Executive verdict
 
-Rocket Trader now has a CI-validated, Docker-packaged, read-only Paper observer with durable fill-accounting integration. It is **not yet deployed to a persistent host**, has not completed a live Paper forward-observation period, and is **not an autonomous order-execution system**. No strategy is approved. No orders have been submitted by this work. LIVE remains blocked.
+Rocket Trader now has a CI-validated, Docker-packaged, read-only Paper observer with durable fill accounting, bounded Activity SSE coverage, fee-to-fill allocation, and an opt-in full-account reconciliation coordinator. It is **not yet deployed to a persistent host**, has not completed a live Paper forward-observation period, and is **not an autonomous order-execution system**. No strategy is approved. No orders have been submitted by this work. LIVE remains blocked.
 
 A successful unit test, image build, or image publication is not evidence of trading profitability or a completed production deployment.
 
@@ -126,3 +126,27 @@ GitHub-hosted Actions runners are ephemeral and must not be used as a 24/7 tradi
 - No order submission or cancellation.
 - No LIVE credentials or LIVE mode.
 - Do not enable trading merely because the container is running or health checks pass.
+
+
+## 2026-11-15 update — full-account Paper evidence coordinator (PR #212)
+
+**Integrated main revision:** `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`.
+
+The Paper Observer now contains an opt-in `PaperAccountEvidenceCoordinator` that combines:
+- Bounded read-only Alpaca Activity SSE replay compared against the durable local inbox.
+- Durable cash activity mirror and immutable coverage attestation.
+- Exact fee-to-fill allocation audit across cash activities, processed fill bridge and the FX-aware MXN FIFO ledger.
+- One broker positions/account snapshot, reconciled against local quantities, USD cash and account equity.
+- Before/after checks that block a successful report if the fill bridge or ledger changes during the audit.
+
+The feature requires the existing cash ledger, Activity SSE inbox, realized-P&L ledger, fill-bridge inbox and active cash anchor. It is disabled by default and must not be enabled until the actual persistent host, mounted volume, database paths, schemas and anchor have been verified. The coordinator performs read-only broker queries; it does not place, replace or cancel orders.
+
+Post-merge main CI:
+- Paper Reconciliation Gate `43694561871`: 12 + 25 + 26 tests passed.
+- Durable Activity SSE `43694561856`: 26 tests and Compose validation passed.
+- Runtime Freshness `43694561786`: 37 tests passed.
+- Paper Observer Runtime `43694561771`: 250 offline tests across 17 suites passed (includes 7 coordinator tests).
+- Paper Observer Container `43694561813`: Compose validation and image build passed.
+- GHCR publication `43694561839`: `ghcr.io/marcodurzov/rocket_trader:e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`, digest `sha256:d8bc52d31ccabd6b727c9bb94d7b1e5088fead3c09cac00ce4d1b1c95a8ce0ee`.
+
+**Not evidenced:** persistent-host deployment, actual database/anchor integrity, successful live Paper coverage and fee audit, sustained forward observation, strategy approval or profitability. No Paper orders or Live activity. Current progress remains 58%.
