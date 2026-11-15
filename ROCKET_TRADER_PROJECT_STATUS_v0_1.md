@@ -1123,3 +1123,22 @@ Validation on PR head `d4b56487d5258bd6cec83f5706cccb96e47e1a9a`: 10 relevant wo
 
 ### Next gate
 Review and integrate the bounded Activity SSE coverage and fee allocation audits into the Paper Observer snapshot cycle. Bind both audit references to the same account, anchor, snapshot/window and verified persistent database paths. Fail closed on stale/missing evidence, anchor changes, new post-audit activities, unprocessed fills, unlinked fees or mismatched ledgers. Keep orders disabled and add offline runtime tests before any deployment or real Paper validation.
+
+
+## 2026-11-15 — PR #212: full Paper account evidence in runtime
+
+PR #212 (`e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`) integrates the durable Activity SSE coverage and fee-to-fill allocation auditors into the Paper Observer runtime. The coordinator binds both audits to the existing Paper cash anchor, account ID, local observation-time boundary and existing persistent databases. It passes one time-bounded read-only broker positions/account read set to the reconciliation gate; Alpaca does not provide an atomic cross-endpoint snapshot, so the docs now state this limitation explicitly.
+
+The fill bridge and realized-P&L ledger are checked before audits, after audits and after final reconciliation. The coordinator fails closed on pending/failed fills, stale/missing anchor, failed coverage or fee audit, fill-ledger changes, and cash/equity/position mismatches. A new concurrency test verifies that a fill arriving during final reconciliation cannot produce a success report. Full-account evidence runs at a default 15-minute cadence; healthcheck requires a successful report no older than 30 minutes. The optional cash ledger remains disabled by default; OBSERVE_ONLY and `orders_enabled=false` remain mandatory.
+
+Validation:
+- Final PR head `68cf18a00a9366199b86004b272f8ca38130056d`: all five PR workflows passed (runtime/accounting, reconciliation, runtime freshness, durable Activity SSE, container).
+- Post-merge main workflows passed: `43694561871`, `43694561856`, `43694561786`, `43694561771`, `43694561813`, `43694561839`.
+- The full runtime/accounting workflow ran 17 offline test modules; the new coordinator module passed 7 tests.
+- Paper Observer image published (not deployed): `ghcr.io/marcodurzov/rocket_trader:e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`, digest `sha256:d8bc52d31ccabd6b727c9bb94d7b1e5088fead3c09cac00ce4d1b1c95a8ce0ee`.
+
+No live Paper API audit, persistent-host access, database migration, deployment, broker account mutation or order occurred. PR #209 was closed as superseded by merged PR #210. No strategy is approved and profitability is unproven. Progress remains **58%**.
+
+### Current blocker
+
+The integration is merged and the container image is published, but the actual Paper runtime host and persistent volume are still unidentified. Do not enable `ROCKET_TRADER_CASH_LEDGER_ENABLED` until all existing database paths, schema versions, account IDs, anchor and volume relationships are inspected and backed up. Then run the bounded read-only Paper audit and collect successful evidence across multiple sessions. This does not authorize orders or Live trading.
