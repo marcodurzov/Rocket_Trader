@@ -1822,7 +1822,28 @@ class RocketTraderCore:
         drawdown_guard_path: Optional[str] = None,
         require_persistent_drawdown_guard: bool = True,
         max_drawdown_pct: float = 0.15,
+        paper_execution_approved: bool = False,
+        paper_execution_approval_reference: Optional[str] = None,
+        paper_approved_strategy_ids: Optional[Sequence[str]] = None,
     ) -> None:
+
+        self.paper_execution_approved = bool(paper_execution_approved)
+        self.paper_execution_approval_reference = str(
+            paper_execution_approval_reference or ""
+        ).strip()
+        self.paper_approved_strategy_ids = frozenset(
+            str(item).strip()
+            for item in (paper_approved_strategy_ids or ())
+            if str(item).strip()
+        )
+        if self.paper_execution_approved and not self.paper_execution_approval_reference:
+            raise ValueError(
+                "Paper execution approval requires a non-empty approval reference."
+            )
+        if self.paper_execution_approved and not self.paper_approved_strategy_ids:
+            raise ValueError(
+                "Paper execution approval requires an explicit strategy ID allowlist."
+            )
 
         self.require_persistent_milestone = bool(require_persistent_milestone)
         configured_milestone_path = (
@@ -1894,7 +1915,7 @@ class RocketTraderCore:
         account: AccountState,
         snapshot: MarketSnapshot,
         signal: StrategySignal,
-        execute: bool = True,
+        execute: bool = False,
         market_regime: str = "NEUTRAL",
         news_impact: str = "NONE",
     ) -> Decision:
@@ -1985,6 +2006,35 @@ class RocketTraderCore:
                 news_impact=news_impact,
             )
 
+        execution_block_reason = None
+        if execute and decision.quantity > 0:
+            if not self.paper_execution_approved:
+                execution_block_reason = "paper_execution_not_approved"
+            elif signal.strategy_id not in self.paper_approved_strategy_ids:
+                execution_block_reason = "strategy_not_in_paper_approval_allowlist"
+
+        if execution_block_reason:
+            self.audit.write(
+                "execution_blocked",
+                {
+                    "decision_id": decision.decision_id,
+                    "strategy_id": signal.strategy_id,
+                    "reason": execution_block_reason,
+                    "approval_reference": self.paper_execution_approval_reference or None,
+                },
+            )
+            decision = dataclasses.replace(
+                decision,
+                status=DecisionStatus.SAFE_MODE,
+                side=Side.HOLD,
+                quantity=0.0,
+                stop_price=None,
+                take_profit_price=None,
+                adaptive_multiplier=0.0,
+                adaptive_reason="Explicit Paper execution approval gate.",
+                reason=execution_block_reason,
+            )
+
         self.audit.write(
             "decision",
             dataclasses.asdict(decision),
@@ -2023,7 +2073,11 @@ class RocketTraderCore:
 
             self.audit.write(
                 "execution",
-                result,
+                {
+                    "result": result,
+                    "approval_reference": self.paper_execution_approval_reference,
+                    "strategy_id": signal.strategy_id,
+                },
             )
 
         return decision
@@ -2260,6 +2314,26 @@ def self_test() -> Dict[str, Any]:
     assert decision.stop_price is None
     assert decision.take_profit_price is None
 
+    # Paper order submission is opt-in, never the Core default.
+    class CountingPaperAdapter:
+        def __init__(self):
+            self.submitted = []
+
+        def submit(self, order):
+            self.submitted.append(order)
+            return {"accepted": True, "mode": "PAPER", "client_order_id": order.client_order_id}
+
+    blocked_adapter = CountingPaperAdapter()
+    blocked_core = RocketTraderCore(
+        risk_config=core.risk_engine.config,
+        benchmark_config=core.benchmark_engine.config,
+        benchmark_repository=InMemoryBenchmarkRepository(),
+        execution_adapter=blocked_adapter,
+        require_persistent_milestone=False,
+        require_persistent_drawdown_guard=False,
+        audit_path=str(Path(tempfile.gettempdir()) / "rocket-trader-core-gate-test.jsonl"),
+    )
+
     # A larger explicit MXN ledger can pass the USD minimum-order gate.
     larger_account = AccountState(
         equity=1000.0,
@@ -2283,6 +2357,67 @@ def self_test() -> Dict[str, Any]:
     assert larger_budget_decision.status == DecisionStatus.NOVEL_RISK
     assert larger_budget_decision.quantity * snapshot.price >= 1.0
     assert larger_budget_decision.quantity * snapshot.price <= (6000.0 / 18.0) * 0.01 * larger_budget_decision.adaptive_multiplier * 0.80 + 1e-9
+
+    blocked_decision = blocked_core.evaluate_and_maybe_execute(
+        account=larger_account, snapshot=snapshot, signal=signal, execute=True,
+    )
+    assert blocked_decision.status == DecisionStatus.SAFE_MODE
+    assert blocked_decision.quantity == 0.0
+    assert blocked_decision.reason == "paper_execution_not_approved"
+    assert blocked_adapter.submitted == []
+
+    allowlisted_adapter = CountingPaperAdapter()
+    allowlisted_core = RocketTraderCore(
+        risk_config=core.risk_engine.config,
+        benchmark_config=core.benchmark_engine.config,
+        benchmark_repository=InMemoryBenchmarkRepository(),
+        execution_adapter=allowlisted_adapter,
+        require_persistent_milestone=False,
+        require_persistent_drawdown_guard=False,
+        paper_execution_approved=True,
+        paper_execution_approval_reference="TEST_FIXTURE_ONLY_NOT_A_REAL_APPROVAL",
+        paper_approved_strategy_ids=["different_strategy"],
+        audit_path=str(Path(tempfile.gettempdir()) / "rocket-trader-core-allowlist-test.jsonl"),
+    )
+    unlisted_strategy_decision = allowlisted_core.evaluate_and_maybe_execute(
+        account=larger_account, snapshot=snapshot, signal=signal, execute=True,
+    )
+    assert unlisted_strategy_decision.status == DecisionStatus.SAFE_MODE
+    assert unlisted_strategy_decision.reason == "strategy_not_in_paper_approval_allowlist"
+    assert unlisted_strategy_decision.quantity == 0.0
+    assert allowlisted_adapter.submitted == []
+
+    approved_test_adapter = CountingPaperAdapter()
+    approved_test_core = RocketTraderCore(
+        risk_config=core.risk_engine.config,
+        benchmark_config=core.benchmark_engine.config,
+        benchmark_repository=InMemoryBenchmarkRepository(),
+        execution_adapter=approved_test_adapter,
+        require_persistent_milestone=False,
+        require_persistent_drawdown_guard=False,
+        paper_execution_approved=True,
+        paper_execution_approval_reference="TEST_FIXTURE_ONLY_NOT_A_REAL_APPROVAL",
+        paper_approved_strategy_ids=["demo"],
+        audit_path=str(Path(tempfile.gettempdir()) / "rocket-trader-core-approved-test.jsonl"),
+    )
+    approved_test_decision = approved_test_core.evaluate_and_maybe_execute(
+        account=larger_account, snapshot=snapshot, signal=signal, execute=True,
+    )
+    assert approved_test_decision.quantity > 0.0
+    assert len(approved_test_adapter.submitted) == 1
+
+    invalid_paper_approval_rejected = False
+    try:
+        RocketTraderCore(
+            risk_config=core.risk_engine.config,
+            benchmark_config=core.benchmark_engine.config,
+            require_persistent_milestone=False,
+            require_persistent_drawdown_guard=False,
+            paper_execution_approved=True,
+        )
+    except ValueError as exc:
+        invalid_paper_approval_rejected = "approval reference" in str(exc)
+    assert invalid_paper_approval_rejected is True
 
     # Missing FX must fail closed even if the broker reports abundant Paper cash.
     missing_fx_account = AccountState(
