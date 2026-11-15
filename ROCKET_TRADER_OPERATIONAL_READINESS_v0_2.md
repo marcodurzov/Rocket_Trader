@@ -169,3 +169,12 @@ The Paper Observer Dockerfile packages 26 Python modules. PR #222 ensures that c
 Published image (not deployed): `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
 
 This closes the CI packaging-trigger gap only. It does not identify or deploy a persistent host, inspect/migrate existing databases, run a real Paper account audit, or approve orders. Runtime remains OBSERVE_ONLY, the cash ledger coordinator remains disabled by default, no strategy passed adjusted OOS acceptance, and profitability remains unproven. Progress remains 58%.
+
+
+## 2026-11-15 update — persistent accounting startup preflight (PR #227)
+
+The Paper Observer now refuses to construct the realized-P&L ledger, fill-bridge inbox or account-activity stager unless their existing SQLite files pass a read-only integrity/schema check. The ledger must have the configured capital policy, initial-capital event, compatible FX accounting-method marker and append-only triggers. The fill bridge must have the current schema including `fx_json`; the activity stager must have its expected tables, columns and append-only triggers. These three files must be separate. Missing, partial or corrupt state blocks startup; runtime does not create replacements or auto-repair older schemas.
+
+Post-merge validation passed: Runtime Freshness `43695736834`, Paper Observer Runtime `43695736753` (255 offline tests across 17 suites), Container `43695736908`, and GHCR publication `43695736729`. Image published (not deployed): `ghcr.io/marcodurzov/rocket_trader:a8095a767f02377b19b1950a08fd73e154388235`, digest `sha256:9642fe3d80ebb24bd37072238a09426da63bf1ff8b7dbf2851855a4243cc3238`.
+
+Operational consequence: a new/empty persistent volume cannot start with accounting enabled until the account history and initial state have been explicitly reconstructed and verified. A market-data-only mode is available by disabling the ledger and activity stager, but it is not account reconciled. No host/database was accessed, and no real Paper audit or deployment occurred.
