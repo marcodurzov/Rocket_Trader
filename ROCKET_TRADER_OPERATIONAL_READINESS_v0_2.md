@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-11-15  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
-**Code baseline reviewed:** ea772a07ff69dc0e1c2a684395cee9fa6c4baf87
+**Code baseline reviewed:** a8095a767f02377b19b1950a08fd73e154388235 (PR #229 changed Compose configuration and documentation only)
 
 ## Executive verdict
 
@@ -178,3 +178,12 @@ The Paper Observer now refuses to construct the realized-P&L ledger, fill-bridge
 Post-merge validation passed: Runtime Freshness `43695736834`, Paper Observer Runtime `43695736753` (255 offline tests across 17 suites), Container `43695736908`, and GHCR publication `43695736729`. Image published (not deployed): `ghcr.io/marcodurzov/rocket_trader:a8095a767f02377b19b1950a08fd73e154388235`, digest `sha256:9642fe3d80ebb24bd37072238a09426da63bf1ff8b7dbf2851855a4243cc3238`.
 
 Operational consequence: a new/empty persistent volume cannot start with accounting enabled until the account history and initial state have been explicitly reconstructed and verified. A market-data-only mode is available by disabling the ledger and activity stager, but it is not account reconciled. No host/database was accessed, and no real Paper audit or deployment occurred.
+
+
+## 2026-11-15 update — persistent-state startup gate and Compose overrides (PR #229)
+
+The deployment runbook now requires the existing FX-aware MXN ledger, fill-bridge inbox and activity-stager SQLite files before default accounting startup. Runtime checks them read-only and fails closed on missing, partial, corrupt or incompatible state. Compose exposes explicit ledger/stager overrides; disabling both permits market-data-only observation but does not provide account/fill reconciliation. No empty database bootstrap is approved when prior Paper fills may exist.
+
+Post-merge workflows all passed: Reconciliation `43696040849`, GHCR publication `43696040783`, Container `43696040771`, Observer Runtime `43696040769`, Activity Stager `43696040754`, Durable Activity SSE `43696040739`. The image was published (not deployed) at digest `sha256:33d6f8c4924267b4940bc2fef050ac9b88d8497720ad137b6e32511508405673`.
+
+The manual read-only Paper API audit has not run. The actual persistent host and database volume remain unidentified. No strategy passed adjusted OOS acceptance; no orders or Live actions are approved.

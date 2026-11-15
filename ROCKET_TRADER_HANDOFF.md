@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-15 (PR #227 merged; runtime now fails closed on missing persistent accounting state)
+**Last updated:** 2026-11-15 (PR #229 merged; persistent-state startup gate and market-data-only override documented)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest verified main HEAD before this Handoff refresh:** `a8095a767f02377b19b1950a08fd73e154388235` (PR #227; runtime persistent-state preflight integrated)
+**Latest verified main HEAD before this Handoff refresh:** `f4587c163dbd97b40c87eb7e28d41a721ac99875` (PR #229; startup gate and Compose overrides documented)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1617,3 +1617,15 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Updated Paper Observer image (published, not deployed): `ghcr.io/marcodurzov/rocket_trader:a8095a767f02377b19b1950a08fd73e154388235`, digest `sha256:9642fe3d80ebb24bd37072238a09426da63bf1ff8b7dbf2851855a4243cc3238`.
 - **Operational implication:** a first-time/empty volume cannot start with default accounting settings until the persistent databases are explicitly initialized/reconstructed and verified. Do not create empty files to bypass the guard. A market-data-only observer can be run with ledger and activity stager disabled, but it is not account-reconciled.
 - No real Paper API audit, persistent host/database access, migration, deployment, account mutation, order or Live action occurred. The actual host and persistent volume remain unidentified. Progress remains **58%**.
+
+
+### 2026-11-15 continuation — PR #229 persistent-state startup runbook and Compose overrides
+
+- PR #229 merged to `main` at `f4587c163dbd97b40c87eb7e28d41a721ac99875`.
+- The deployment runbook now lists the three existing accounting databases that must be present before default runtime startup: MXN realized-P&L ledger, Paper fill-bridge inbox (including `fx_json`) and Paper activity-stager DB. Missing, partial or corrupt state must stop startup; do not create empty SQLite files to bypass the preflight.
+- Compose now exposes `ROCKET_TRADER_LEDGER_ENABLED` and `ROCKET_TRADER_ACTIVITY_STAGER_ENABLED` through environment interpolation, retaining `true` as the default. A market-data-only mode can set both false, but it is explicitly not fill/account reconciled. Full cash evidence remains separately disabled by default.
+- PR workflows passed: Durable Activity SSE `43695973377`, Paper Observer Container `43695973306`, read-only Paper audit static checks `43695973303` (the actual Paper API job was skipped because this was a PR event).
+- Post-merge main workflows passed: Paper Reconciliation `43696040849`, GHCR publish `43696040783`, Paper Observer Container `43696040771`, Paper Observer Runtime `43696040769`, Activity Stager `43696040754`, Durable Activity SSE `43696040739`.
+- Updated image published (not deployed): `ghcr.io/marcodurzov/rocket_trader:f4587c163dbd97b40c87eb7e28d41a721ac99875`, digest `sha256:33d6f8c4924267b4940bc2fef050ac9b88d8497720ad137b6e32511508405673`.
+- The manual read-only Paper activity audit remains unrun; PR checks skip it. The repository integration available here can inspect workflow runs but cannot start a manual `workflow_dispatch`. No persistent host/database was accessed, no migration/deployment occurred, and no order/Live action occurred.
+- Progress remains **58%**; no strategy passed adjusted OOS acceptance and profitability remains unproven.
