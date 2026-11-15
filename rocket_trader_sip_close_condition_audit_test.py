@@ -7,6 +7,8 @@ from rocket_trader_sip_close_condition_audit import (
     classify_close_discrepancy,
     daily_close_eligible,
     select_last_eligible_postmarket_trade,
+    run_audit,
+    CloseAuditError,
 )
 
 
@@ -72,6 +74,13 @@ class SipCloseConditionAuditTests(unittest.TestCase):
         self.assertFalse(daily_close_eligible(["B"], tape="B"))
         self.assertTrue(daily_close_eligible(["B"], tape="C"))
         self.assertFalse(daily_close_eligible(["B"], tape=None))
+
+    def test_run_audit_rejects_duplicate_targets_before_network(self):
+        with self.assertRaisesRegex(CloseAuditError, "Duplicate symbol/session"):
+            run_audit(targets=[
+                {"symbol": "SPY", "session": "2020-03-12"},
+                {"symbol": "spy", "session": "2020-03-12"},
+            ])
 
     def test_market_center_official_close_is_not_daily_close_eligible(self):
         self.assertFalse(daily_close_eligible(["M"]))

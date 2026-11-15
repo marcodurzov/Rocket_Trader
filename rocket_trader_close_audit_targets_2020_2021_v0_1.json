@@ -1,0 +1,339 @@
+{
+  "version": "0.1",
+  "source_workflow_run_id": 43733588103,
+  "source_commit": "b0e5312601fb9cefa27da793a12a5857df60325c",
+  "selection_rule": "Top-10 raw return divergences per ETF from the post-dedup Alpaca SIP vs Yahoo cross-check, retaining rows where abs(return_difference_bps) > 10 or abs(raw_close_difference_pct) > 0.5.",
+  "target_count": 55,
+  "targets": [
+    {
+      "symbol": "DIA",
+      "session": "2020-03-17",
+      "source_return_difference_bps": -235.1656,
+      "source_raw_close_difference_pct": -0.000001
+    },
+    {
+      "symbol": "DIA",
+      "session": "2020-03-16",
+      "source_return_difference_bps": 207.8939,
+      "source_raw_close_difference_pct": 2.281591
+    },
+    {
+      "symbol": "DIA",
+      "session": "2020-03-24",
+      "source_return_difference_bps": 22.5911,
+      "source_raw_close_difference_pct": 0.009679
+    },
+    {
+      "symbol": "DIA",
+      "session": "2020-03-27",
+      "source_return_difference_bps": 22.254,
+      "source_raw_close_difference_pct": 0.120173
+    },
+    {
+      "symbol": "DIA",
+      "session": "2021-03-01",
+      "source_return_difference_bps": 22.1293,
+      "source_raw_close_difference_pct": 0.000001
+    },
+    {
+      "symbol": "DIA",
+      "session": "2021-02-26",
+      "source_return_difference_bps": -21.339,
+      "source_raw_close_difference_pct": -0.216517
+    },
+    {
+      "symbol": "DIA",
+      "session": "2020-03-30",
+      "source_return_difference_bps": -18.8409,
+      "source_raw_close_difference_pct": -0.062755
+    },
+    {
+      "symbol": "DIA",
+      "session": "2020-03-23",
+      "source_return_difference_bps": -18.7603,
+      "source_raw_close_difference_pct": -0.193416
+    },
+    {
+      "symbol": "DIA",
+      "session": "2020-04-02",
+      "source_return_difference_bps": 16.553,
+      "source_raw_close_difference_pct": 0.028039
+    },
+    {
+      "symbol": "DIA",
+      "session": "2020-06-29",
+      "source_return_difference_bps": 15.7465,
+      "source_raw_close_difference_pct": 0.082059
+    },
+    {
+      "symbol": "EEM",
+      "session": "2020-03-17",
+      "source_return_difference_bps": -126.8955,
+      "source_raw_close_difference_pct": -0.000004
+    },
+    {
+      "symbol": "EEM",
+      "session": "2020-03-16",
+      "source_return_difference_bps": 105.1467,
+      "source_raw_close_difference_pct": 1.201394
+    },
+    {
+      "symbol": "EEM",
+      "session": "2020-03-02",
+      "source_return_difference_bps": -20.2558,
+      "source_raw_close_difference_pct": -0.001211
+    },
+    {
+      "symbol": "EEM",
+      "session": "2016-12-02",
+      "source_return_difference_bps": -19.9365,
+      "source_raw_close_difference_pct": 0.000003
+    },
+    {
+      "symbol": "EEM",
+      "session": "2020-02-28",
+      "source_return_difference_bps": 19.67,
+      "source_raw_close_difference_pct": 0.197432
+    },
+    {
+      "symbol": "EEM",
+      "session": "2021-03-22",
+      "source_return_difference_bps": 16.6235,
+      "source_raw_close_difference_pct": 0.018549
+    },
+    {
+      "symbol": "EEM",
+      "session": "2021-03-19",
+      "source_return_difference_bps": -14.9764,
+      "source_raw_close_difference_pct": -0.147932
+    },
+    {
+      "symbol": "EEM",
+      "session": "2020-03-19",
+      "source_return_difference_bps": -13.0328,
+      "source_raw_close_difference_pct": 0.000003
+    },
+    {
+      "symbol": "EEM",
+      "session": "2018-12-28",
+      "source_return_difference_bps": -12.9276,
+      "source_raw_close_difference_pct": -0.050973
+    },
+    {
+      "symbol": "EEM",
+      "session": "2018-10-12",
+      "source_return_difference_bps": -12.775,
+      "source_raw_close_difference_pct": -0.124103
+    },
+    {
+      "symbol": "EFA",
+      "session": "2020-03-17",
+      "source_return_difference_bps": 216.5494,
+      "source_raw_close_difference_pct": 0.000003
+    },
+    {
+      "symbol": "EFA",
+      "session": "2020-03-16",
+      "source_return_difference_bps": -181.4404,
+      "source_raw_close_difference_pct": -2.023184
+    },
+    {
+      "symbol": "EFA",
+      "session": "2018-12-26",
+      "source_return_difference_bps": 12.4783,
+      "source_raw_close_difference_pct": 0.086756
+    },
+    {
+      "symbol": "EFA",
+      "session": "2020-06-30",
+      "source_return_difference_bps": -11.4597,
+      "source_raw_close_difference_pct": -0.049284
+    },
+    {
+      "symbol": "EFA",
+      "session": "2018-10-17",
+      "source_return_difference_bps": -10.7409,
+      "source_raw_close_difference_pct": -0.01552
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-03-17",
+      "source_return_difference_bps": 320.9733,
+      "source_raw_close_difference_pct": 0.195042
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-03-16",
+      "source_return_difference_bps": -291.4532,
+      "source_raw_close_difference_pct": -2.880542
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-03-12",
+      "source_return_difference_bps": 172.1562,
+      "source_raw_close_difference_pct": 1.793089
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-03-13",
+      "source_return_difference_bps": -164.1277,
+      "source_raw_close_difference_pct": 0.069794
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-03-18",
+      "source_return_difference_bps": -19.7734,
+      "source_raw_close_difference_pct": -0.007105
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-05-12",
+      "source_return_difference_bps": -12.5782,
+      "source_raw_close_difference_pct": 0.000004
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-05-11",
+      "source_return_difference_bps": 12.4673,
+      "source_raw_close_difference_pct": 0.125456
+    },
+    {
+      "symbol": "GLD",
+      "session": "2020-04-15",
+      "source_return_difference_bps": 10.4442,
+      "source_raw_close_difference_pct": 0.092675
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-17",
+      "source_return_difference_bps": -139.9525,
+      "source_raw_close_difference_pct": 0.46138
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-16",
+      "source_return_difference_bps": 136.813,
+      "source_raw_close_difference_pct": 1.82397
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-19",
+      "source_return_difference_bps": -92.6752,
+      "source_raw_close_difference_pct": -0.00963
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-02",
+      "source_return_difference_bps": -76.313,
+      "source_raw_close_difference_pct": 0.000001
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-02-28",
+      "source_return_difference_bps": 71.7978,
+      "source_raw_close_difference_pct": 0.74489
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-13",
+      "source_return_difference_bps": 49.834,
+      "source_raw_close_difference_pct": 0.242738
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-18",
+      "source_return_difference_bps": 39.3825,
+      "source_raw_close_difference_pct": 0.890266
+    },
+    {
+      "symbol": "IWM",
+      "session": "2020-03-27",
+      "source_return_difference_bps": 37.8823,
+      "source_raw_close_difference_pct": 0.195453
+    },
+    {
+      "symbol": "IWM",
+      "session": "2021-03-01",
+      "source_return_difference_bps": 34.0865,
+      "source_raw_close_difference_pct": 0.044231
+    },
+    {
+      "symbol": "IWM",
+      "session": "2021-02-26",
+      "source_return_difference_bps": -26.9941,
+      "source_raw_close_difference_pct": -0.283999
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-13",
+      "source_return_difference_bps": -268.748,
+      "source_raw_close_difference_pct": 0.326746
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-12",
+      "source_return_difference_bps": 263.6084,
+      "source_raw_close_difference_pct": 2.873725
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-18",
+      "source_return_difference_bps": -221.4728,
+      "source_raw_close_difference_pct": -1.795833
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-19",
+      "source_return_difference_bps": 184.9533,
+      "source_raw_close_difference_pct": 0.016634
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-10",
+      "source_return_difference_bps": -79.9127,
+      "source_raw_close_difference_pct": -0.003472
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-09",
+      "source_return_difference_bps": 71.1979,
+      "source_raw_close_difference_pct": 0.76213
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-25",
+      "source_return_difference_bps": 48.2321,
+      "source_raw_close_difference_pct": 0.000003
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-24",
+      "source_return_difference_bps": -38.4199,
+      "source_raw_close_difference_pct": -0.472957
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-23",
+      "source_return_difference_bps": -37.256,
+      "source_raw_close_difference_pct": -0.121102
+    },
+    {
+      "symbol": "SPY",
+      "session": "2020-03-27",
+      "source_return_difference_bps": 32.2681,
+      "source_raw_close_difference_pct": 0.22887
+    },
+    {
+      "symbol": "TLT",
+      "session": "2016-12-02",
+      "source_return_difference_bps": -12.7047,
+      "source_raw_close_difference_pct": -0.00836
+    },
+    {
+      "symbol": "TLT",
+      "session": "2016-12-01",
+      "source_return_difference_bps": 10.8208,
+      "source_raw_close_difference_pct": 0.117912
+    }
+  ]
+}

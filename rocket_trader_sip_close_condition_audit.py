@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from zoneinfo import ZoneInfo
@@ -368,19 +368,22 @@ def _fetch_last_postmarket_eligible_trade(
 def _fetch_alpaca_daily_closes(
     client: StockHistoricalDataClient,
     symbols: Iterable[str],
+    *,
+    start_date: date,
+    end_date: date,
 ) -> Dict[str, Dict[str, float]]:
-    request = StockBarsRequest(
-        symbol_or_symbols=list(symbols),
-        timeframe=TimeFrame.Day,
-        start=datetime(2020, 3, 11, tzinfo=timezone.utc),
-        end=datetime(2020, 3, 20, tzinfo=timezone.utc),
-        adjustment=Adjustment.RAW,
-        feed=DataFeed.SIP,
-        limit=10000,
-    )
-    bars = client.get_stock_bars(request)
     output: Dict[str, Dict[str, float]] = {}
     for symbol in symbols:
+        request = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TimeFrame.Day,
+            start=datetime.combine(start_date, time.min, tzinfo=timezone.utc),
+            end=datetime.combine(end_date, time.min, tzinfo=timezone.utc),
+            adjustment=Adjustment.RAW,
+            feed=DataFeed.SIP,
+            limit=10000,
+        )
+        bars = client.get_stock_bars(request)
         output[symbol] = {}
         for bar in bars[symbol]:
             local_session = bar.timestamp.astimezone(NY).date().isoformat()
@@ -388,12 +391,17 @@ def _fetch_alpaca_daily_closes(
     return output
 
 
-def _fetch_yahoo_raw_closes(symbols: Iterable[str]) -> Dict[str, Dict[str, float]]:
+def _fetch_yahoo_raw_closes(
+    symbols: Iterable[str],
+    *,
+    start_date: date,
+    end_date: date,
+) -> Dict[str, Dict[str, float]]:
     output: Dict[str, Dict[str, float]] = {}
     for symbol in symbols:
         history = yf.Ticker(symbol).history(
-            start="2020-03-11",
-            end="2020-03-20",
+            start=start_date.isoformat(),
+            end=end_date.isoformat(),
             auto_adjust=False,
             actions=False,
             repair=False,
@@ -415,19 +423,36 @@ def _fetch_yahoo_raw_closes(symbols: Iterable[str]) -> Dict[str, Dict[str, float
 
 def run_audit(
     *,
-    symbols: Iterable[str] = DEFAULT_SYMBOLS,
-    sessions: Iterable[str] = DEFAULT_SESSIONS,
+    targets: Iterable[Dict[str, str]],
+    target_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    normalized_targets = []
+    for item in targets:
+        symbol = str(item["symbol"]).upper()
+        session_date = date.fromisoformat(str(item["session"])).isoformat()
+        normalized_targets.append({"symbol": symbol, "session": session_date})
+    if not normalized_targets:
+        raise CloseAuditError("At least one symbol/session target is required")
+    if len({(x["symbol"], x["session"]) for x in normalized_targets}) != len(normalized_targets):
+        raise CloseAuditError("Duplicate symbol/session targets are not allowed")
+
     api_key = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
     secret_key = os.getenv("ALPACA_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
     if not api_key or not secret_key:
         raise CloseAuditError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
 
-    symbols = tuple(str(item).upper() for item in symbols)
-    sessions = tuple(str(item) for item in sessions)
+    symbols = tuple(sorted({item["symbol"] for item in normalized_targets}))
+    first_session = min(date.fromisoformat(item["session"]) for item in normalized_targets)
+    last_session = max(date.fromisoformat(item["session"]) for item in normalized_targets)
+    history_start = first_session - timedelta(days=3)
+    history_end = last_session + timedelta(days=2)
     client = StockHistoricalDataClient(api_key, secret_key)
-    alpaca_daily = _fetch_alpaca_daily_closes(client, symbols)
-    yahoo_daily = _fetch_yahoo_raw_closes(symbols)
+    alpaca_daily = _fetch_alpaca_daily_closes(
+        client, symbols, start_date=history_start, end_date=history_end,
+    )
+    yahoo_daily = _fetch_yahoo_raw_closes(
+        symbols, start_date=history_start, end_date=history_end,
+    )
 
     http = requests.Session()
     http.headers.update({
@@ -438,45 +463,46 @@ def run_audit(
 
     results = []
     errors = []
-    for symbol in symbols:
-        for session_date in sessions:
-            try:
-                trade_payload = _fetch_trades(
-                    http,
-                    symbol=symbol,
-                    session_date=session_date,
-                )
-                postmarket_payload = _fetch_last_postmarket_eligible_trade(
-                    http,
-                    symbol=symbol,
-                    session_date=session_date,
-                )
-                row = classify_close_discrepancy(
-                    symbol=symbol,
-                    session=session_date,
-                    alpaca_daily_close=alpaca_daily.get(symbol, {}).get(session_date),
-                    yahoo_close=yahoo_daily.get(symbol, {}).get(session_date),
-                    trades=trade_payload["trades"],
-                    postmarket_last_eligible_trade=postmarket_payload["trade"],
-                )
-                row["auction_trade_pages"] = trade_payload["pages"]
-                row["auction_trade_query_complete"] = trade_payload["complete"]
-                row["postmarket_trade_pages_scanned"] = postmarket_payload["pages"]
-                row["postmarket_trade_records_scanned"] = postmarket_payload["scanned_trade_count"]
-                row["postmarket_trade_search_complete"] = postmarket_payload["complete"]
-                row["postmarket_selection_reason"] = postmarket_payload["selection_reason"]
-                row["trade_query_complete"] = (
-                    trade_payload["complete"] and postmarket_payload["complete"]
-                )
-                if not row["trade_query_complete"]:
-                    row["status"] = "TRADE_QUERY_INCOMPLETE"
-                results.append(row)
-            except Exception as exc:
-                errors.append({
-                    "symbol": symbol,
-                    "session": session_date,
-                    "error": str(exc),
-                })
+    for target in normalized_targets:
+        symbol = target["symbol"]
+        session_date = target["session"]
+        try:
+            trade_payload = _fetch_trades(
+                http,
+                symbol=symbol,
+                session_date=session_date,
+            )
+            postmarket_payload = _fetch_last_postmarket_eligible_trade(
+                http,
+                symbol=symbol,
+                session_date=session_date,
+            )
+            row = classify_close_discrepancy(
+                symbol=symbol,
+                session=session_date,
+                alpaca_daily_close=alpaca_daily.get(symbol, {}).get(session_date),
+                yahoo_close=yahoo_daily.get(symbol, {}).get(session_date),
+                trades=trade_payload["trades"],
+                postmarket_last_eligible_trade=postmarket_payload["trade"],
+            )
+            row["auction_trade_pages"] = trade_payload["pages"]
+            row["auction_trade_query_complete"] = trade_payload["complete"]
+            row["postmarket_trade_pages_scanned"] = postmarket_payload["pages"]
+            row["postmarket_trade_records_scanned"] = postmarket_payload["scanned_trade_count"]
+            row["postmarket_trade_search_complete"] = postmarket_payload["complete"]
+            row["postmarket_selection_reason"] = postmarket_payload["selection_reason"]
+            row["trade_query_complete"] = (
+                trade_payload["complete"] and postmarket_payload["complete"]
+            )
+            if not row["trade_query_complete"]:
+                row["status"] = "TRADE_QUERY_INCOMPLETE"
+            results.append(row)
+        except Exception as exc:
+            errors.append({
+                "symbol": symbol,
+                "session": session_date,
+                "error": str(exc),
+            })
 
     statuses: Dict[str, int] = {}
     for row in results:
@@ -484,16 +510,20 @@ def run_audit(
     return {
         "ok": (
             not errors
-            and len(results) == len(symbols) * len(sessions)
+            and len(results) == len(normalized_targets)
             and all(row.get("trade_query_complete") is True for row in results)
         ),
-        "pipeline": "rocket_trader_sip_daily_close_trade_condition_audit_v0_1",
+        "pipeline": "rocket_trader_sip_daily_close_trade_condition_audit_v0_3",
         "mode": "HISTORICAL_TRADE_CONDITION_DIAGNOSTIC_ONLY",
+        "target_count": len(normalized_targets),
+        "target_selection_metadata": target_metadata or {},
         "symbols": list(symbols),
-        "sessions": list(sessions),
+        "targets": normalized_targets,
         "trade_window_new_york": {
-            "start": TRADE_QUERY_START.isoformat(),
-            "end": TRADE_QUERY_END.isoformat(),
+            "auction_start": TRADE_QUERY_START.isoformat(),
+            "auction_end": TRADE_QUERY_END.isoformat(),
+            "postmarket_start": POSTMARKET_QUERY_START.isoformat(),
+            "postmarket_end": POSTMARKET_QUERY_END.isoformat(),
         },
         "data_sources": {
             "alpaca_daily": "SIP historical daily bars, Adjustment.RAW",
@@ -522,12 +552,26 @@ def run_audit(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--symbols", nargs="+", default=list(DEFAULT_SYMBOLS))
-    parser.add_argument("--sessions", nargs="+", default=list(DEFAULT_SESSIONS))
+    parser.add_argument("--targets-file", default="rocket_trader_close_audit_targets_2020_2021_v0_1.json")
+    parser.add_argument("--symbols", nargs="+", default=None)
+    parser.add_argument("--sessions", nargs="+", default=None)
     parser.add_argument("--output", default="artifacts/sip_close_condition_audit.json")
     args = parser.parse_args()
     try:
-        result = run_audit(symbols=args.symbols, sessions=args.sessions)
+        target_metadata = {}
+        if args.targets_file:
+            targets_payload = json.loads(Path(args.targets_file).read_text(encoding="utf-8"))
+            targets = targets_payload.get("targets")
+            if not isinstance(targets, list):
+                raise CloseAuditError("Targets file must contain a targets array")
+            target_metadata = {
+                key: value for key, value in targets_payload.items() if key != "targets"
+            }
+        else:
+            symbols = args.symbols or DEFAULT_SYMBOLS
+            sessions = args.sessions or DEFAULT_SESSIONS
+            targets = [{"symbol": symbol, "session": session} for symbol in symbols for session in sessions]
+        result = run_audit(targets=targets, target_metadata=target_metadata)
     except Exception as exc:
         result = {
             "ok": False,

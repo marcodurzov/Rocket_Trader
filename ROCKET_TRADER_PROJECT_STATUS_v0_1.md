@@ -1304,3 +1304,8 @@ The observer image previously ran as root. PR #241 changes it to UID/GID 10001 a
 ## 2026-11-15 — PR #242: full postmarket daily-close eligibility (under review)
 
 The v0.2 close audit's 15-second window still did not reproduce 9/48 Alpaca daily closes. Alpaca's FAQ defines daily bars as New York calendar-day aggregations and excludes condition T (Extended Hours Trade), but other trade conditions can update the daily close. The last eligible daily-close trade may therefore occur later in postmarket. PR #242 searches 16:00–20:00 ET newest-first until it finds the last eligible trade, and corrects tape-specific condition B handling. No data gate or backtest series is changed.
+
+
+## 2026-11-15 — PR #244: expand trade-condition evidence to 55 material outliers (under review)
+
+The first full-session audit covered 48 rows across six March 2020 sessions and found 25 close matches, 19 postmarket-vs-official-close patterns and 4 preclose-vs-official-close patterns. It did not cover every material outlier in the 10-year cross-check. PR #244 targets 55 symbol/session pairs selected from the top-10 divergences where absolute return difference exceeds 10 bps or raw close difference exceeds 0.5%, using a per-symbol target list. This is a diagnostic expansion only; source parity and strategy promotion remain gated.
