@@ -35,14 +35,16 @@ DEFAULT_SESSIONS = (
 )
 TRADE_QUERY_START = time(15, 59, 50)
 TRADE_QUERY_END = time(16, 0, 5)
-MAX_TRADE_PAGES = 5
+POSTMARKET_QUERY_START = time(16, 0, 0)
+POSTMARKET_QUERY_END = time(20, 0, 5)
+MAX_TRADE_PAGES = 20
 PAGE_LIMIT = 10000
 PRICE_TOLERANCE_USD = 0.005
 # These SIP conditions do not update the daily close according to Alpaca's
 # published aggregation table. G/P/Z/4 are excluded here because their daily
 # close update is conditional on being the first trade of the day.
 DAILY_CLOSE_EXCLUDED_CONDITIONS = frozenset({
-    "B", "C", "G", "H", "I", "M", "N", "P", "Q", "R",
+    "C", "G", "H", "I", "M", "N", "P", "Q", "R",
     "T", "U", "V", "W", "Z", "4", "7",
 })
 OFFICIAL_CLOSE_CONDITIONS = frozenset({"M", "6", "9"})
@@ -62,9 +64,36 @@ def _timestamp(value: Any) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def daily_close_eligible(conditions: Iterable[str]) -> bool:
-    """Whether a trade may update the Alpaca daily close under the published table."""
-    return not (set(str(code).strip() for code in (conditions or ())) & DAILY_CLOSE_EXCLUDED_CONDITIONS)
+def daily_close_eligible(conditions: Iterable[str], tape: Optional[str] = None) -> bool:
+    """Whether a trade may update the daily close under Alpaca's tape-aware table."""
+    codes = set(str(code).strip() for code in (conditions or ()))
+    if codes & DAILY_CLOSE_EXCLUDED_CONDITIONS:
+        return False
+    # SIP condition B means Average Price Trade on tapes A/B (red), but
+    # Bunched Trade on tape C (green). Unknown tape is handled conservatively.
+    if "B" in codes and str(tape or "").upper() != "C":
+        return False
+    return True
+
+
+def select_last_eligible_postmarket_trade(
+    trades_descending: Iterable[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Select the latest daily-close-eligible trade from a descending SIP page."""
+    for raw in trades_descending:
+        conditions = raw.get("c") or raw.get("conditions") or []
+        tape = raw.get("z") or raw.get("tape")
+        if daily_close_eligible(conditions, tape):
+            return {
+                "timestamp": raw.get("t") or raw.get("timestamp"),
+                "price": raw.get("p") if raw.get("p") is not None else raw.get("price"),
+                "size": raw.get("s", raw.get("size", 0)),
+                "exchange": raw.get("x") or raw.get("exchange"),
+                "conditions": conditions,
+                "trade_id": raw.get("i") or raw.get("trade_id"),
+                "tape": tape,
+            }
+    return None
 
 
 def classify_close_discrepancy(
@@ -74,6 +103,7 @@ def classify_close_discrepancy(
     alpaca_daily_close: Optional[float],
     yahoo_close: Optional[float],
     trades: Iterable[Dict[str, Any]],
+    postmarket_last_eligible_trade: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compare daily close with pre/post-close SIP trades and auction candidates."""
     raw_count = 0
@@ -108,12 +138,12 @@ def classify_close_discrepancy(
             deduplicated[key] = item
 
     normalized = sorted(deduplicated.values(), key=lambda item: item["timestamp"])
-    eligible = [item for item in normalized if daily_close_eligible(item["conditions"])]
+    eligible = [item for item in normalized if daily_close_eligible(item["conditions"], item["tape"])]
     pre_close = [
         item for item in eligible
         if item["timestamp"].astimezone(NY).time() < time(16, 0, 0)
     ]
-    post_close = [
+    post_close_window = [
         item for item in eligible
         if item["timestamp"].astimezone(NY).time() >= time(16, 0, 0)
     ]
@@ -125,7 +155,18 @@ def classify_close_discrepancy(
         )
     ]
     last_pre_close = pre_close[-1] if pre_close else None
-    last_post_close = post_close[-1] if post_close else None
+    last_post_close_window = post_close_window[-1] if post_close_window else None
+    last_postmarket = None
+    if postmarket_last_eligible_trade is not None:
+        last_postmarket = {
+            "timestamp": _timestamp(postmarket_last_eligible_trade["timestamp"]),
+            "price": float(postmarket_last_eligible_trade["price"]),
+            "size": float(postmarket_last_eligible_trade.get("size") or 0),
+            "exchange": postmarket_last_eligible_trade.get("exchange"),
+            "conditions": [str(x).strip() for x in (postmarket_last_eligible_trade.get("conditions") or [])],
+            "trade_id": postmarket_last_eligible_trade.get("trade_id"),
+            "tape": postmarket_last_eligible_trade.get("tape"),
+        }
     yahoo_matches = [
         item for item in official
         if yahoo_close is not None and abs(item["price"] - float(yahoo_close)) <= PRICE_TOLERANCE_USD
@@ -136,9 +177,9 @@ def classify_close_discrepancy(
         and abs(last_pre_close["price"] - float(alpaca_daily_close)) <= PRICE_TOLERANCE_USD
     )
     daily_matches_post = (
-        last_post_close is not None
+        last_postmarket is not None
         and alpaca_daily_close is not None
-        and abs(last_post_close["price"] - float(alpaca_daily_close)) <= PRICE_TOLERANCE_USD
+        and abs(last_postmarket["price"] - float(alpaca_daily_close)) <= PRICE_TOLERANCE_USD
     )
     closes_agree = (
         alpaca_daily_close is not None
@@ -154,8 +195,10 @@ def classify_close_discrepancy(
         status = "PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED"
     elif daily_matches_pre:
         status = "ALPACA_DAILY_CLOSE_MATCHES_PRE_CLOSE_TRADE_ONLY"
+    elif daily_matches_post and yahoo_matches:
+        status = "POSTMARKET_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED"
     elif daily_matches_post:
-        status = "ALPACA_DAILY_CLOSE_MATCHES_POST_CLOSE_TRADE"
+        status = "ALPACA_DAILY_CLOSE_MATCHES_POSTMARKET_TRADE_ONLY"
     else:
         status = "ALPACA_DAILY_CLOSE_NOT_REPRODUCED_FROM_WINDOW_TRADES"
 
@@ -171,7 +214,7 @@ def classify_close_discrepancy(
             "conditions": item["conditions"],
             "trade_id": item["trade_id"],
             "tape": item["tape"],
-            "daily_close_eligible": daily_close_eligible(item["conditions"]),
+            "daily_close_eligible": daily_close_eligible(item["conditions"], item["tape"]),
         }
 
     return {
@@ -184,9 +227,10 @@ def classify_close_discrepancy(
             if alpaca_daily_close is not None and yahoo_close is not None else None
         ),
         "last_eligible_trade_before_1600": public_trade(last_pre_close),
-        "last_eligible_trade_after_1600": public_trade(last_post_close),
+        "last_eligible_trade_after_1600_window": public_trade(last_post_close_window),
+        "last_eligible_trade_after_1600": public_trade(last_postmarket),
         "alpaca_daily_close_matches_pre_close_trade": bool(daily_matches_pre),
-        "alpaca_daily_close_matches_post_close_trade": bool(daily_matches_post),
+        "alpaca_daily_close_matches_postmarket_last_eligible_trade": bool(daily_matches_post),
         "official_close_condition_trades": [public_trade(item) for item in official[-20:]],
         "official_close_trades_matching_yahoo": [public_trade(item) for item in yahoo_matches],
         "trade_record_count_in_window": raw_count,
@@ -251,6 +295,74 @@ def _fetch_trades(
         "complete": next_page_token is None,
         "remaining_page_token": next_page_token,
     }
+
+
+def _fetch_last_postmarket_eligible_trade(
+    session: requests.Session,
+    *,
+    symbol: str,
+    session_date: str,
+) -> Dict[str, Any]:
+    """Find the latest daily-close-eligible SIP trade between 16:00 and 20:00 ET.
+
+    The endpoint is queried newest-first. Once an eligible trade is found, it
+    is the latest eligible trade for the session; older pages cannot supersede
+    it. If no eligible trade is found before the page cap, the result is marked
+    incomplete and cannot be used as evidence.
+    """
+    start_dt = datetime.combine(date.fromisoformat(session_date), POSTMARKET_QUERY_START, tzinfo=NY)
+    end_dt = datetime.combine(date.fromisoformat(session_date), POSTMARKET_QUERY_END, tzinfo=NY)
+    params: Dict[str, Any] = {
+        "start": start_dt.isoformat(),
+        "end": end_dt.isoformat(),
+        "feed": "sip",
+        "sort": "desc",
+        "limit": PAGE_LIMIT,
+    }
+    url = f"https://data.alpaca.markets/v2/stocks/{symbol}/trades"
+    pages = 0
+    scanned = 0
+    next_page_token = None
+    while True:
+        if next_page_token:
+            params["page_token"] = next_page_token
+        response = session.get(url, params=params, timeout=30)
+        if response.status_code != 200:
+            raise CloseAuditError(
+                f"Alpaca postmarket trade search failed for {symbol} {session_date}: "
+                f"HTTP {response.status_code} {response.text[:300]}"
+            )
+        payload = response.json()
+        page = payload.get("trades") or []
+        pages += 1
+        scanned += len(page)
+        ordered = sorted(page, key=lambda item: str(item.get("t") or ""), reverse=True)
+        selected = select_last_eligible_postmarket_trade(ordered)
+        if selected is not None:
+            return {
+                "trade": selected,
+                "pages": pages,
+                "scanned_trade_count": scanned,
+                "complete": True,
+                "selection_reason": "first daily-close-eligible trade in descending SIP order",
+            }
+        next_page_token = payload.get("next_page_token")
+        if not next_page_token:
+            return {
+                "trade": None,
+                "pages": pages,
+                "scanned_trade_count": scanned,
+                "complete": True,
+                "selection_reason": "no eligible postmarket trade found through 20:00 ET",
+            }
+        if pages >= MAX_TRADE_PAGES:
+            return {
+                "trade": None,
+                "pages": pages,
+                "scanned_trade_count": scanned,
+                "complete": False,
+                "selection_reason": "page cap reached before finding an eligible trade",
+            }
 
 
 def _fetch_alpaca_daily_closes(
@@ -334,16 +446,29 @@ def run_audit(
                     symbol=symbol,
                     session_date=session_date,
                 )
+                postmarket_payload = _fetch_last_postmarket_eligible_trade(
+                    http,
+                    symbol=symbol,
+                    session_date=session_date,
+                )
                 row = classify_close_discrepancy(
                     symbol=symbol,
                     session=session_date,
                     alpaca_daily_close=alpaca_daily.get(symbol, {}).get(session_date),
                     yahoo_close=yahoo_daily.get(symbol, {}).get(session_date),
                     trades=trade_payload["trades"],
+                    postmarket_last_eligible_trade=postmarket_payload["trade"],
                 )
-                row["trade_pages"] = trade_payload["pages"]
-                row["trade_query_complete"] = trade_payload["complete"]
-                if not trade_payload["complete"]:
+                row["auction_trade_pages"] = trade_payload["pages"]
+                row["auction_trade_query_complete"] = trade_payload["complete"]
+                row["postmarket_trade_pages_scanned"] = postmarket_payload["pages"]
+                row["postmarket_trade_records_scanned"] = postmarket_payload["scanned_trade_count"]
+                row["postmarket_trade_search_complete"] = postmarket_payload["complete"]
+                row["postmarket_selection_reason"] = postmarket_payload["selection_reason"]
+                row["trade_query_complete"] = (
+                    trade_payload["complete"] and postmarket_payload["complete"]
+                )
+                if not row["trade_query_complete"]:
                     row["status"] = "TRADE_QUERY_INCOMPLETE"
                 results.append(row)
             except Exception as exc:
