@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -163,8 +162,6 @@ def _fetch_trades(
     *,
     symbol: str,
     session_date: str,
-    api_key: str,
-    secret_key: str,
 ) -> Dict[str, Any]:
     start_dt = datetime.combine(date.fromisoformat(session_date), TRADE_QUERY_START, tzinfo=NY)
     end_dt = datetime.combine(date.fromisoformat(session_date), TRADE_QUERY_END, tzinfo=NY)
@@ -296,8 +293,6 @@ def run_audit(
                     http,
                     symbol=symbol,
                     session_date=session_date,
-                    api_key=api_key,
-                    secret_key=secret_key,
                 )
                 row = classify_close_discrepancy(
                     symbol=symbol,
