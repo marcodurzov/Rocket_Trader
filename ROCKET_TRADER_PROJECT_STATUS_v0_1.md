@@ -1180,3 +1180,11 @@ Validation:
 - Post-merge image publication `43695359959`: passed. Image: `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`; digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
 
 Publication is not deployment. No host or persistent database was accessed, no real Paper API audit, account mutation, order or Live action occurred. Strategy approval/profitability remain unproven. Progress remains 58%.
+
+
+## 2026-11-15 — PRs #220, #223 and #225: current research and deployment facts
+
+- PR #220 clarified that Holm-Bonferroni family-wise correction is implemented in the current ETF/crypto research pipelines. No hypothesis passed adjusted OOS acceptance. Independent replication, verified SIP parity, portfolio-level robustness, point-in-time data provenance and realistic cost stress remain open.
+- PR #223 confirmed there is no provider-specific deployment workflow or host identifier in the repository and no verified evidence of a provisioned cloud project, persistent volume or running service. No hosting provider is identified; do not assume one.
+- PR #225 recorded PR #222's complete packaged-module CI coverage: all 26 Python modules copied by the Paper Observer Dockerfile are compiled in the built image, and container validation/GHCR publication trigger on any packaged-module change. Post-merge container workflow `43695359960` and image-publish workflow `43695359959` passed. Published image (not deployed): `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
+- No persistent host/database inspection, migration, live Paper full-account audit, deployment, broker account mutation, order or Live action occurred. The cash ledger coordinator remains disabled by default. Progress remains 58%.
