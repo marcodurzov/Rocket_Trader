@@ -317,7 +317,11 @@ def run_audit(
     for row in results:
         statuses[row["status"]] = statuses.get(row["status"], 0) + 1
     return {
-        "ok": not errors and len(results) == len(symbols) * len(sessions),
+        "ok": (
+            not errors
+            and len(results) == len(symbols) * len(sessions)
+            and all(row.get("trade_query_complete") is True for row in results)
+        ),
         "pipeline": "rocket_trader_sip_daily_close_trade_condition_audit_v0_1",
         "mode": "HISTORICAL_TRADE_CONDITION_DIAGNOSTIC_ONLY",
         "symbols": list(symbols),
