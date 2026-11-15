@@ -225,6 +225,19 @@ class PaperAccountEvidenceCoordinator:
                 f"Paper cash/equity reconciliation failed closed: {exc}"
             ) from exc
 
+        # The reconciliation gate itself performs local ledger/cash checks.
+        # Recheck after it returns so a fill arriving during that final work
+        # cannot leave a stale success report in the runtime recorder.
+        bridge_final = self._assert_fill_bridge_clear()
+        ledger_final = self.fill_ledger_bridge.ledger.snapshot()
+        if (
+            int(ledger_final.event_count) != ledger_event_count
+            or bridge_final.get("counts") != bridge_before.get("counts")
+        ):
+            raise PaperAccountEvidenceError(
+                "Fill ledger changed during final account reconciliation; retry on the next cycle"
+            )
+
         report.update({
             "account_evidence_status": (
                 "RECONCILED"
