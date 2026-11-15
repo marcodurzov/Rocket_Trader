@@ -439,6 +439,73 @@ class StreamRuntimeTests(unittest.TestCase):
                 build_activity_stager(config)
         self.assertFalse(os.path.exists(stager_path))
 
+    def test_enabled_ledger_bridge_refuses_partial_fill_inbox_without_schema_repair(self):
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        ledger_path = os.path.join(self.tmp.name, "partial-ledger.sqlite3")
+        inbox_path = os.path.join(self.tmp.name, "partial-fill-inbox.sqlite3")
+        stager_path = os.path.join(self.tmp.name, "partial-stager.sqlite3")
+        RealizedPnLLedger(ledger_path)
+        AlpacaPaperActivityStager(
+            db_path=stager_path, fetch_page=lambda _cursor, _size: [],
+        )
+        with sqlite3.connect(inbox_path) as conn:
+            conn.execute("""
+                CREATE TABLE paper_fill_ledger_inbox (
+                    execution_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL,
+                    payload_json TEXT NOT NULL, status TEXT NOT NULL,
+                    last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE paper_fill_manual_review (
+                    review_id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL,
+                    payload_json TEXT NOT NULL, reason TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+        env = {
+            "ROCKET_TRADER_LEDGER_ENABLED": "true",
+            "ROCKET_TRADER_LEDGER_DB": ledger_path,
+            "ROCKET_TRADER_LEDGER_INBOX_DB": inbox_path,
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB": stager_path,
+            "ROCKET_TRADER_INITIAL_CAPITAL_MXN": "1000.00",
+            "ROCKET_TRADER_MILESTONE_MXN": "100000.00",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaisesRegex(RuntimeConfigurationError, "missing columns: fx_json"):
+                build_fill_ledger_bridge(config)
+        with sqlite3.connect(inbox_path) as conn:
+            columns = {
+                row[1] for row in conn.execute(
+                    "PRAGMA table_info(paper_fill_ledger_inbox)"
+                ).fetchall()
+            }
+        self.assertNotIn("fx_json", columns)
+
+    def test_activity_stager_builder_uses_existing_valid_database(self):
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        stager_path = os.path.join(self.tmp.name, "valid-stager.sqlite3")
+        AlpacaPaperActivityStager(
+            db_path=stager_path, fetch_page=lambda _cursor, _size: [],
+        )
+        env = {
+            "ROCKET_TRADER_ACTIVITY_STAGER_ENABLED": "true",
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB": stager_path,
+            "ALPACA_PAPER": "true",
+            "ALPACA_LIVE_ENABLED": "false",
+            "ROCKET_TRADER_EXECUTION_MODE": "PAPER",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            stager = build_activity_stager(config)
+        self.assertEqual(stager.db_path, stager_path)
+        self.assertTrue(os.path.isfile(stager_path))
+
     def test_account_activity_stager_sync_sets_healthy_heartbeat(self):
         class FakeStager:
             def __init__(self):
