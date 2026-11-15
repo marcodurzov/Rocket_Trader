@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-15 (PR #212 merged; full Paper account evidence coordinator wired into OBSERVE_ONLY runtime)
+**Last updated:** 2026-11-15 (PRs #217–#223 reviewed; deployment facts and research acceptance gates refreshed)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d` (PR #212 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest verified main HEAD before this Handoff refresh:** `c937e8fb801ba33f9aa5d515e1c908d799e9b4b5` (PR #223; documentation-only changes after runtime baseline `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1586,3 +1586,14 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - PR CI passed: Paper Reconciliation Gate and Durable Paper Activity SSE Consumer Tests. Post-merge main runs `43694984460` (Paper Reconciliation Gate) and `43694984477` (Durable Activity SSE) both completed successfully. The jobs ran offline tests and Compose validation; they did not call the user's Paper account.
 - This was a documentation correction only. No broker API call, database inspection/migration, host deployment, account mutation, order or Live action occurred. The optional cash ledger/coordinator remains disabled by default.
 - Progress remains 58%; actual host and persistent volume are still unidentified. The next operational step cannot safely be automated from repository access alone: identify the host and preserve/inspect the existing databases before enabling the coordinator.
+
+
+### 2026-11-15 continuation — PRs #217, #219, #220 and #223
+
+- PR #217 corrected stale deployment documentation: Activity SSE coverage and fee-to-fill allocation are now integrated through `PaperAccountEvidenceCoordinator` when the optional cash ledger is enabled. It documents the bounded, non-atomic positions/account read set and the actual-host/persistent-volume gate.
+- PR #219 recorded the runbook correction and its offline CI evidence. Main workflows `43694984460` (Paper Reconciliation Gate) and `43694984477` (Durable Activity SSE) passed; neither performed a live Paper account audit.
+- PR #220 clarified the remaining research gate: family-wise Holm-Bonferroni correction is implemented in the current ETF/crypto pipelines, but **no hypothesis passed adjusted out-of-sample acceptance**. Remaining research work includes independent replication, verified SIP parity, portfolio-level robustness, point-in-time data provenance and realistic cost stress. Do not describe multiple-testing correction as a missing feature, and do not describe it as strategy approval.
+- PR #223 refreshed operational readiness at main `c937e8fb801ba33f9aa5d515e1c908d799e9b4b5`. Repository inspection found no provider-specific deployment workflow or host identifier, no verified provisioned cloud project/volume, and no evidence of a running persistent service. No hosting provider is identified; do not assume Railway, Render, VPS or another platform.
+- The published GHCR image is only a package artifact. It is not a deployment, running process or evidence of a durable volume.
+- The actual host and five persistent DB files remain unknown/uninspected. Do not migrate, rebase an anchor, enable the optional cash ledger or start the coordinator until the host, volume and existing data are identified and verified. No live Paper account audit, deployment, broker account mutation, order or Live action has occurred.
+- Progress remains **58%**. The figure is engineering/evidence maturity, not profitability or readiness to trade.
