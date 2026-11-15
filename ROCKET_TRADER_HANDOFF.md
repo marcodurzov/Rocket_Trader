@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-14 (PR #210 merged; durable Paper fee-to-fill allocation attestation integrated)
+**Last updated:** 2026-11-15 (PR #212 merged; full Paper account evidence coordinator wired into OBSERVE_ONLY runtime)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `0f603e9462d0652210c992c464cdd61746d17245` (PR #210 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest main HEAD before this Handoff refresh:** `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d` (PR #212 merged; strategy runtime baseline remains unchanged unless separately evidenced)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1534,3 +1534,26 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 3. Keep runtime `orders_enabled=false`; no execution path may treat successful accounting reconciliation as strategy approval.
 4. Add offline end-to-end runtime tests for missing/stale coverage, missing/stale fee audit, anchor changes, new cash activity after audit, missing fills, unlinked fees, database mismatch and successful fully evidenced reconciliation.
 5. Run the relevant CI and container workflows. Only after the runtime wiring is reviewed should we identify the actual persistent host and plan a separately backed-up migration. The real read-only Paper audit and sustained Paper operation remain later evidence gates.
+
+
+### 2026-11-15 continuation — PR #212 full Paper account evidence coordinator
+
+- PR #212 merged to `main` at `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`.
+- The Paper Observer now has a runtime coordinator that consumes the existing cash ledger, durable Activity SSE inbox, realized-P&L ledger, fill-bridge inbox, bounded coverage auditor and exact fee-allocation auditor. It binds coverage and fee evidence to the active Paper cash anchor and one local account-observation time boundary.
+- The coordinator captures one time-bounded read-only positions/account read set and passes the same objects to the reconciliation gate, avoiding a second broker fetch. Alpaca does not expose an atomic cross-endpoint positions-plus-account snapshot; the implementation documents this limitation and uses a bounded observation-time window rather than claiming atomicity.
+- Fill bridge and ledger are checked before audits, after audits, and again after final cash/equity reconciliation. A fill arriving during final reconciliation blocks the success report. Offline coordinator tests cover successful full reconciliation, cash mismatch, equity mismatch, pending fills, stale anchor, coverage failure and a fill arriving during final reconciliation.
+- Full-account reports are stored separately from 60-second position-only reports. Default full evidence cadence is 900 seconds; healthcheck requires a fresh successful full-account report no older than 1800 seconds. The USD cash ledger remains opt-in and disabled by default. Missing databases/anchor or incomplete evidence fail closed.
+- PR #212 initially exposed a malformed shell line-continuation in the container workflow. It was corrected, then all five PR workflows passed on final head `68cf18a00a9366199b86004b272f8ca38130056d`: Paper Observer Runtime, Paper Reconciliation Gate, Runtime Freshness, Durable Activity SSE and Paper Observer Container.
+- Post-merge main workflows passed: Paper Reconciliation `43694561871`, Durable Activity SSE `43694561856`, Runtime Freshness `43694561786`, Paper Observer Runtime `43694561771`, Container `43694561813`, and GHCR publish `43694561839`. Runtime suite included 17 offline modules; the coordinator's own suite passed 7 tests.
+- Paper Observer image was published (not deployed): `ghcr.io/marcodurzov/rocket_trader:e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`, digest `sha256:d8bc52d31ccabd6b727c9bb94d7b1e5088fead3c09cac00ce4d1b1c95a8ce0ee`.
+- Old PR #209 was closed as superseded by the merged fee-allocation implementation in PR #210; no code was lost.
+- **Not done:** no real Paper account audit/Activity SSE query was run; no existing persistent host or database was accessed, migrated or deployed; no order was submitted and no Live action occurred. CI evidence is offline and does not prove the user's actual account is reconciled.
+- Progress remains **58%**. The engineering integration is now present, but actual persistent-volume identification, backed-up schema migration if required, first bounded read-only Paper audit, multi-session Paper validation, strategy OOS approval and autonomous execution remain unproven.
+
+### Next gate — identify and validate the actual Paper runtime, without enabling orders
+
+1. Identify the real host/platform and persistent volume that currently run the Paper Observer. Do not infer it from GitHub Actions or GHCR.
+2. On that host, inventory the exact paths and ownership of the cash ledger, Activity SSE inbox, fill bridge inbox and FX-aware MXN ledger. Verify they are on the same durable volume and back up each DB before any schema change.
+3. Inspect the active cash anchor and current schemas read-only. If schema migration is needed, stop every writer and use the explicit migration with a new verified backup path; do not create or rebase an anchor without reviewing the existing broker history.
+4. Keep `ROCKET_TRADER_CASH_LEDGER_ENABLED=false` until the paths, schema, anchor and database relationships are verified. Only then enable the optional evidence coordinator in Paper OBSERVE_ONLY mode and run the bounded read-only Paper audit.
+5. Collect repeated successful account-evidence reports across multiple sessions and reconcile all unsupported fee/correction activity manually. No strategy or order execution is approved by this integration.
