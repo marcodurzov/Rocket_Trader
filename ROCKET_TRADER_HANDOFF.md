@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-15 (PRs #217–#225 reviewed; deployment facts, research gates and image CI evidence current)
+**Last updated:** 2026-11-15 (PR #227 merged; runtime now fails closed on missing persistent accounting state)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest verified main HEAD before this Handoff refresh:** `09144c5bee3ad6237d5098c72c29b8e741e53630` (PR #225; latest observer runtime source baseline remains `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`; PR #222 updated CI triggers and image packaging)
+**Latest verified main HEAD before this Handoff refresh:** `a8095a767f02377b19b1950a08fd73e154388235` (PR #227; runtime persistent-state preflight integrated)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1605,3 +1605,15 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - PR #225 recorded PR #222's complete packaged-module CI coverage: all 26 Python modules copied by the Paper Observer Dockerfile are compiled in the built image, and container validation/GHCR publication now trigger when any packaged module changes. Post-merge workflows passed: container `43695359960`, publish `43695359959`. Image `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`. Image publication is not deployment.
 - The actual host and five persistent database files remain unknown/uninspected. The optional cash ledger/coordinator remains disabled by default. Do not migrate, rebase an anchor, or enable it until the real host, durable volume and existing databases are identified and verified.
 - No live Paper full-account audit, persistent-host deployment, database migration, broker account mutation, order or Live action occurred. Progress remains **58%**; no strategy is approved and profitability is unproven.
+
+
+### 2026-11-15 continuation — PR #227 fail-closed persistent accounting state
+
+- PR #227 merged to `main` at `a8095a767f02377b19b1950a08fd73e154388235`.
+- Found that the runtime previously constructed `RealizedPnLLedger`, `PaperFillLedgerBridge` and `AlpacaPaperActivityStager` before checking their persistent files. Their constructors can create missing SQLite files/tables or alter an older bridge schema.
+- The runtime now performs read-only SQLite integrity/schema checks before those constructors. It requires the existing ledger's capital policy, initial-capital event, FX accounting-method compatibility and append-only protections; the fill bridge's current tables/columns including `fx_json`; and the activity stager's tables/columns and append-only triggers. The three DB paths must be distinct.
+- Missing, partial, corrupt or overlapping state fails startup without creating replacement files or repairing schemas. Offline tests cover missing ledger, missing fill inbox, missing stager, partial fill-inbox schema, and valid pre-existing state.
+- PR CI passed: Runtime Freshness `43695668309`, Paper Observer Runtime `43695668304`, Paper Observer Container `43695668297`. Post-merge main CI passed: Runtime Freshness `43695736834`, Paper Observer Runtime `43695736753` (255 tests across 17 suites), Paper Observer Container `43695736908`, and GHCR publication `43695736729`.
+- Updated Paper Observer image (published, not deployed): `ghcr.io/marcodurzov/rocket_trader:a8095a767f02377b19b1950a08fd73e154388235`, digest `sha256:9642fe3d80ebb24bd37072238a09426da63bf1ff8b7dbf2851855a4243cc3238`.
+- **Operational implication:** a first-time/empty volume cannot start with default accounting settings until the persistent databases are explicitly initialized/reconstructed and verified. Do not create empty files to bypass the guard. A market-data-only observer can be run with ledger and activity stager disabled, but it is not account-reconciled.
+- No real Paper API audit, persistent host/database access, migration, deployment, account mutation, order or Live action occurred. The actual host and persistent volume remain unidentified. Progress remains **58%**.

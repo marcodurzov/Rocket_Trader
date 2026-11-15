@@ -41,6 +41,28 @@ ROCKET_TRADER_ALPACA_NEWS_SYMBOLS=SPY,QQQ,IWM,BTCUSD,ETHUSD,SOLUSD
 
 ## 2. Validate and start
 
+### Required persistent accounting state
+
+The observer now performs a read-only preflight before constructing its realized-P&L ledger, fill-bridge inbox or activity stager. With the default accounting settings enabled, these **existing, valid files** must already be present on the persistent volume:
+
+- `/app/data/rocket_trader_ledger.sqlite3` — FX-aware MXN realized-P&L ledger, including its initial-capital event, accounting-method marker (or a valid empty legacy state), and append-only protections.
+- `/app/data/rocket_trader_fill_inbox.sqlite3` — fill bridge inbox with its current schema, including the persisted `fx_json` column and manual-review table.
+- `/app/data/rocket_trader_activity_stager.sqlite3` — staged Paper account activities, metadata table and append-only protections.
+
+Missing, partial, corrupt, overlapping or incompatible files cause startup to fail. The runtime will not create replacement files or repair these schemas. This prevents a lost/mis-mounted Docker volume from silently looking like a new empty account ledger.
+
+**First deployment / empty volume:** do not create empty SQLite files with `touch`, do not copy a database from another account, and do not start the default accounting configuration until the Paper history has been reviewed and the ledgers have been explicitly initialized or reconstructed from broker evidence. There is currently no generic bootstrap command approved for an account that may already have Paper fills; a fresh empty ledger could omit prior trades and fees.
+
+For temporary market-data-only observation on a new host, the accounting components can be disabled explicitly in the private `.env`:
+
+```dotenv
+ROCKET_TRADER_LEDGER_ENABLED=false
+ROCKET_TRADER_ACTIVITY_STAGER_ENABLED=false
+ROCKET_TRADER_CASH_LEDGER_ENABLED=false
+```
+
+That mode does **not** provide fill accounting, account activity reconciliation or full-account readiness. Re-enable the components only after their existing persistent databases are verified. The full cash/coverage/fee coordinator remains separately disabled by default.
+
 ```bash
 docker compose -f docker-compose.paper-observer.yml config
 docker compose -f docker-compose.paper-observer.yml up -d --build
