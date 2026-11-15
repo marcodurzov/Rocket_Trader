@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-15 (PR #212 merged; full Paper account evidence coordinator wired into OBSERVE_ONLY runtime)
+**Last updated:** 2026-11-15 (PRs #217–#223 reviewed; deployment facts, research gates and image-trigger coverage refreshed)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d` (PR #212 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest verified main HEAD before this Handoff refresh:** `ea772a07ff69dc0e1c2a684395cee9fa6c4baf87` (PR #222; workflow-trigger changes only after runtime baseline `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1596,3 +1596,14 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Post-merge main container workflow `43695359960` passed. Post-merge GHCR publication `43695359959` passed and published image `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
 - This is CI coverage and image publication only, not deployment. No Paper API query, persistent database access/migration, host deployment, account mutation, order or Live action occurred. The actual host/provider and persistent volume remain unidentified; the coordinator remains disabled by default.
 - Progress remains 58%; no strategy has passed adjusted OOS acceptance and profitability remains unproven.
+
+
+### 2026-11-15 continuation — PRs #217, #219, #220, #222 and #223
+
+- PR #217 corrected stale deployment documentation: Activity SSE coverage and fee-to-fill allocation are integrated through `PaperAccountEvidenceCoordinator` when the optional cash ledger is enabled. It documents the bounded, non-atomic positions/account read set and the actual-host/persistent-volume gate.
+- PR #219 recorded the runbook correction and its offline CI evidence. Main workflows `43694984460` (Paper Reconciliation Gate) and `43694984477` (Durable Activity SSE) passed; neither performed a live Paper account audit.
+- PR #220 clarified the remaining research gate: family-wise Holm-Bonferroni correction is implemented in the current ETF/crypto pipelines, but **no hypothesis passed adjusted out-of-sample acceptance**. Remaining research work includes independent replication, verified SIP parity, portfolio-level robustness, point-in-time data provenance and realistic cost stress. Do not describe multiple-testing correction as a missing feature, and do not describe it as strategy approval.
+- PR #223 refreshed operational readiness at main `c937e8fb801ba33f9aa5d515e1c908d799e9b4b5`. Repository inspection found no provider-specific deployment workflow or host identifier, no verified provisioned cloud project/volume, and no evidence of a running persistent service. No hosting provider is identified; do not assume Railway, Render, VPS or another platform.
+- PR #222 (`ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`) expanded Docker validation and GHCR publication path filters so changes to all packaged runtime/accounting/news modules trigger image checks and publication. Both post-merge workflows passed: container `43695359960` and publish `43695359959`. Published image: `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`. This is still image publication, not deployment.
+- The actual host and five persistent DB files remain unknown/uninspected. Do not migrate, rebase an anchor, enable the optional cash ledger or start the coordinator until the host, volume and existing data are identified and verified. No live Paper account audit, deployment, broker account mutation, order or Live action has occurred.
+- Progress remains **58%**. The figure is engineering/evidence maturity, not profitability or readiness to trade.
