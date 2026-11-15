@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-11-15  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
-**Code baseline reviewed:** e5bb0fbc6ef13e42fdfa4c4d231156700d45944d
+**Code baseline reviewed:** 9bb3692b0ab1bbcd1a01210e820e7b55a71883b3
 
 ## Executive verdict
 
@@ -107,7 +107,7 @@ The remaining infrastructure requirement is a persistent host with a durable mou
 - ALPACA_SECRET_KEY (Paper)
 - Optional EXCHANGERATE_DEV_API_KEY
 
-GitHub-hosted Actions runners are ephemeral and must not be used as a 24/7 trading host. A persistent Railway/Render/VPS service is required. Railway connection was suggested in ChatGPT but is not confirmed connected; no cloud project, volume, or running service has been created.
+GitHub-hosted Actions runners are ephemeral and must not be used as a 24/7 trading host. A persistent host with a durable volume is required; it may be a VPS or managed container platform, but **no hosting provider is currently identified or verified**. Repository inspection found no provider-specific deployment workflow or host identifier, and no evidence of a provisioned cloud project, persistent volume, or running service. Do not assume Railway, Render, or any other provider. The user has not identified the platform, and the repo/GHCR publication cannot establish where (or whether) a runtime currently exists.
 
 ## Not yet complete
 
@@ -150,3 +150,13 @@ Post-merge main CI:
 - GHCR publication `43694561839`: `ghcr.io/marcodurzov/rocket_trader:e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`, digest `sha256:d8bc52d31ccabd6b727c9bb94d7b1e5088fead3c09cac00ce4d1b1c95a8ce0ee`.
 
 **Not evidenced:** persistent-host deployment, actual database/anchor integrity, successful live Paper coverage and fee audit, sustained forward observation, strategy approval or profitability. No Paper orders or Live activity. Current progress remains 58%.
+
+
+## 2026-11-15 update — deployment runbook and runtime evidence status
+
+- PR #212 integrated the `PaperAccountEvidenceCoordinator` into the Paper Observer runtime. It binds bounded Activity SSE coverage, exact fee-to-fill allocation, the cash anchor, fill bridge, FX-aware MXN ledger, and one time-bounded read-only positions/account observation. Alpaca does not provide an atomic positions-plus-account endpoint; the code uses a bounded read set and repeats ledger checks after final reconciliation.
+- PR #217 corrected stale deployment documentation that still said the coverage and fee audits were not wired into runtime. The runbook now reflects the integrated coordinator and explicitly retains the default-disabled setting and host/database verification gate. PR #219 recorded that correction and exact offline CI evidence in the handoff/status docs.
+- PR #217 post-merge main runs: Paper Reconciliation Gate `43694984460` and Durable Activity SSE `43694984477` both passed. These were offline tests/Compose validation; the read-only Paper audit job was skipped on PR event. No broker API activity is implied.
+- The actual persistent host, volume and existing database files remain unidentified. No deployment, migration, real Paper audit, account mutation, order, or Live action has occurred. The coordinator remains disabled by default and runtime mode remains OBSERVE_ONLY.
+- Research status is unchanged: Holm-Bonferroni correction exists in the current ETF/crypto pipelines, but no hypothesis passed the adjusted OOS acceptance gate. Independent replication, verified SIP parity, portfolio-level robustness and point-in-time data provenance remain open.
+- Progress remains 58%; this is engineering/evidence maturity, not a probability of profit or completion percentage for live trading.
