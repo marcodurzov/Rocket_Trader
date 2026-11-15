@@ -1759,3 +1759,10 @@ The v0.2 audit separated the 15:59:50–16:00:05 window but still did not reprod
 PR #242 searches postmarket trades from 16:00 through 20:00 ET in descending timestamp order and stops at the first trade eligible under the tape-aware SIP rules. It also corrects condition B: Average Price Trade on tapes A/B is excluded, while Bunched Trade on tape C is eligible. The official closing-auction candidates remain isolated in the 16:00 window. This should determine whether Alpaca daily closes reflect later eligible postmarket prints, while Yahoo reflects the official closing auction.
 
 The result remains diagnostic only. It will not change the canonical price series or relax the source-parity gate without review.
+
+
+### 2026-11-15 continuation — PR #244: extend close-definition evidence to every material outlier (under review)
+
+The first 48-row close audit confirmed the pattern for its six March 2020 sessions, but the 10-year cross-check's top raw-return outliers include additional dates from 2016, 2018, 2020 and 2021. PR #244 creates a target list of 55 symbol/session pairs selected from the cross-check's top-10 raw-return divergences where absolute return difference exceeds 10 bps or absolute raw close difference exceeds 0.5%. The trade-condition audit now accepts explicit per-symbol/session targets rather than querying every symbol for every date. This closes the evidence gap without making 424 unnecessary queries.
+
+The 48-row v0.3 result (run 43735431402) was complete: 25 closes agreed, 19 showed Alpaca's last eligible postmarket trade versus Yahoo's official close, and 4 showed a pre-close trade versus official close. All 48 had a consistent observed pattern; no source was designated truth and no data gate was relaxed. The 55-row extension is required before we can classify the remaining large outliers.
