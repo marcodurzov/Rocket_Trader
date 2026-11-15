@@ -90,6 +90,23 @@ class SipCloseConditionAuditTests(unittest.TestCase):
             result["official_close_trades_matching_yahoo"][0]["conditions"], ["M"]
         )
 
+    def test_condition_six_before_1600_is_not_mislabelled_as_auction_close(self):
+        result = classify_close_discrepancy(
+            symbol="DIA",
+            session="2020-03-16",
+            alpaca_daily_close=202.49,
+            yahoo_close=202.49,
+            trades=[{
+                "timestamp": "2020-03-16T19:59:59.900000Z",
+                "price": 202.49,
+                "size": 500000,
+                "conditions": ["6"],
+            }],
+        )
+        self.assertEqual(result["status"], "CLOSES_AGREE")
+        self.assertEqual(result["official_close_condition_trades"], [])
+        self.assertTrue(result["alpaca_daily_close_matches_pre_close_trade"])
+
     def test_closing_trade_condition_six_is_eligible_and_reproduces_daily_close(self):
         trades = [
             {
