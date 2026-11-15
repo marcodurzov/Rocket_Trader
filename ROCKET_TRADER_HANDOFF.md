@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-15 (PR #231 merged; ETF source-integrity gates corrected and new 10-year SIP audit reviewed)
+**Last updated:** 2026-11-15 (PR #234 merged; dividend date-alignment diagnostics refined and post-merge audit rerun)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest verified main HEAD before this Handoff refresh:** `15c269eee60bf76cbe252a69fea2674e8e227a08` (PR #231; ETF adjusted-history and corporate-action divergence gates integrated)
+**Latest verified main HEAD before this Handoff refresh:** `cd3f71c0ea84e44815b3c88edfc03e7a360ac82e` (PR #234; nearby dividend date-alignment candidates and deduplicated review flags)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1664,3 +1664,10 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - The SPY flag from the 10-year audit was too categorical. Yahoo reported a $1.246 distribution on 2018-06-15; State Street's official historical distribution table lists the corresponding SPY distribution as $1.24557 with ex-date 2018-06-12, record date 2018-06-15 and payable date 2018-08-10. Thus the exact-date comparison can be explained by a date convention/field mismatch; it is not evidence that Alpaca omitted the event. Source: https://www.ssga.com/au/en_gb/individual/etfs/state-street-spdr-sp-500-etf-spy .
 - PR #234 changes the audit output to search a ±5-calendar-day window for matching cash-dividend amounts when dates do not align. It labels a nearby match as `CASH_DIVIDEND_DATE_ALIGNMENT_REVIEW_REQUIRED`, preserving the fail-closed gate while avoiding the unsupported claim that the event is missing. The candidate is not auto-accepted; it still requires issuer/primary-source review.
 - QQQ's 2020 Yahoo/Alpaca dividend mismatch and 2022 duplicate same-ex-date Alpaca records remain unresolved. The 2020 raw-price divergence across several ETFs also remains unresolved. No source is designated as truth by this diagnostic.
+### 2026-11-15 continuation — PR #234 merged and post-merge validation
+
+- PR #234 merged to main at `cd3f71c0ea84e44815b3c88edfc03e7a360ac82e`. It adds a ±5-calendar-day amount-matching review for dividend date mismatches and deduplicates the paired event so one distribution does not create two flags. Nearby matches remain review-required and never auto-pass.
+- PR validation run `43726905176` passed 33 ETF cross-check tests. Post-merge cross-check run `43726989269` passed the same 33 offline tests and completed the read-only 10-year SIP/Yahoo audit. Artifact `14167320360`, ZIP SHA256 `bf4382e40482a85372489b3bc3d65d6334570b4344e595f567d97e4e9f0980f6`.
+- Post-merge Paper Reconciliation Gate `43726989131` passed 63 offline tests across reconciliation, USD cash ledger and durable Activity SSE. Observer Runtime `43726989123` passed 260 tests across 17 suites. Activity Stager `43726989119` passed 19 tests. These were offline tests; no live Paper account audit or broker activity query occurred.
+- The new report still has `all_diagnostic_gates_pass=false`; only TLT passes. DIA, EEM, EFA, GLD, IWM, QQQ and SPY remain review-required. QQQ still has two corporate-action flags: the 2020 Yahoo/Alpaca cash-dividend mismatch and two Alpaca records on 2022-09-19. SPY's 2018-06-15 Yahoo dividend has no matching Alpaca event on that date or within ±5 calendar days. State Street's issuer table lists SPY ex-date 2018-06-12, record date 2018-06-15 and $1.24557; this establishes that Yahoo's date aligns with the record date, but does not explain the missing nearby Alpaca event. The API may have incomplete historical corporate-action coverage; this remains unproven.
+- The broad 2020 raw-price divergences for DIA/EEM/EFA/GLD/IWM/SPY remain. No source is designated as truth. Tiingo remains excluded absent written permission; it was not requested. Candidate promotion, Paper approval and orders remain disabled; zero orders submitted. No deployment, persistent-host access, account mutation or Live action occurred. Progress remains 58%.
