@@ -1159,3 +1159,12 @@ Post-merge main validation:
 - GHCR publication `43694561839`: image `ghcr.io/marcodurzov/rocket_trader:e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`, digest `sha256:d8bc52d31ccabd6b727c9bb94d7b1e5088fead3c09cac00ce4d1b1c95a8ce0ee`. Image publication is not deployment.
 
 No live Paper account audit, persistent-host migration, service deployment, broker order or Live action occurred. Research has not approved a strategy. Progress remains 58%.
+
+
+## 2026-11-15 — PR #217: correct Paper Observer deployment runbook
+
+PR #217 (`74481f69194659556842cc3a6de45329bfe86fe2`) removes stale statements that the Activity SSE coverage and fee-to-fill allocation audits were not yet integrated into the runtime. The deployment guide now documents the current `PaperAccountEvidenceCoordinator`, fail-closed behavior, the fact that Alpaca positions/account reads are time-bounded rather than atomic, and the requirement to verify the actual host and persistent volume before enabling the optional coordinator.
+
+Validation: PR workflow Durable Activity SSE and Paper Reconciliation Gate passed. Post-merge main runs `43694984477` and `43694984460` passed offline tests and Compose validation. These workflows do not perform a live Paper account audit or deploy the image.
+
+No host or persistent DB was accessed, no migration/deployment/account mutation/order occurred, and Live remains disabled. Progress remains 58%.

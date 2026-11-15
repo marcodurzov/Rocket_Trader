@@ -1577,3 +1577,12 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 4. Only after the host and persistent state are verified, enable the optional cash ledger/coordinator in Paper OBSERVE_ONLY. Run it read-only, collect its full-account reports, and resolve every unmatched activity/fee before considering the account reconciled.
 5. Operate the observer through a sustained Paper forward period and verify restart/recovery, data freshness, fills, fees, cash, equity and positions. This still does not authorize Paper orders.
 6. Strategy research remains a separate gate: no strategy has passed statistical OOS acceptance. Keep order execution and Live disabled until both strategy and operational evidence gates independently pass.
+
+
+### 2026-11-15 continuation — PR #217 deployment runbook correction
+
+- PR #217 merged to `main` at `74481f69194659556842cc3a6de45329bfe86fe2`.
+- Corrected stale operational documentation that still claimed Activity SSE coverage and fee-to-fill audits were not integrated into the observer runtime. The runbook now describes the `PaperAccountEvidenceCoordinator`, its fail-closed checks, the bounded non-atomic broker read-set limitation, and the actual-host/persistent-volume gate.
+- PR CI passed: Paper Reconciliation Gate and Durable Paper Activity SSE Consumer Tests. Post-merge main runs `43694984460` (Paper Reconciliation Gate) and `43694984477` (Durable Activity SSE) both completed successfully. The jobs ran offline tests and Compose validation; they did not call the user's Paper account.
+- This was a documentation correction only. No broker API call, database inspection/migration, host deployment, account mutation, order or Live action occurred. The optional cash ledger/coordinator remains disabled by default.
+- Progress remains 58%; actual host and persistent volume are still unidentified. The next operational step cannot safely be automated from repository access alone: identify the host and preserve/inspect the existing databases before enabling the coordinator.
