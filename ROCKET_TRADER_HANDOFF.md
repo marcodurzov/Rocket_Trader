@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-15 (PR #212 merged; full Paper account evidence coordinator wired into OBSERVE_ONLY runtime)
+**Last updated:** 2026-11-15 (PRs #217–#225 reviewed; deployment facts, research gates and image CI evidence current)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest main HEAD before this Handoff refresh:** `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d` (PR #212 merged; strategy runtime baseline remains unchanged unless separately evidenced)
+**Latest verified main HEAD before this Handoff refresh:** `09144c5bee3ad6237d5098c72c29b8e741e53630` (PR #225; latest observer runtime source baseline remains `e5bb0fbc6ef13e42fdfa4c4d231156700d45944d`; PR #222 updated CI triggers and image packaging)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1596,3 +1596,12 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Post-merge main container workflow `43695359960` passed. Post-merge GHCR publication `43695359959` passed and published image `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`.
 - This is CI coverage and image publication only, not deployment. No Paper API query, persistent database access/migration, host deployment, account mutation, order or Live action occurred. The actual host/provider and persistent volume remain unidentified; the coordinator remains disabled by default.
 - Progress remains 58%; no strategy has passed adjusted OOS acceptance and profitability remains unproven.
+
+
+### 2026-11-15 continuation — PRs #220, #223 and #225
+
+- PR #220 clarified research acceptance status: Holm-Bonferroni family-wise correction is already implemented in the current ETF and crypto pipelines, but **no hypothesis passed adjusted out-of-sample acceptance**. Remaining research gates are independent replication, verified SIP parity, portfolio-level robustness, point-in-time data provenance and realistic cost stress.
+- PR #223 refreshed operational readiness and confirmed the repository has no provider-specific deployment workflow or host identifier, and no evidence of a provisioned cloud project, persistent volume or running service. No hosting provider is identified; do not assume Railway, Render, VPS or any other platform.
+- PR #225 recorded PR #222's complete packaged-module CI coverage: all 26 Python modules copied by the Paper Observer Dockerfile are compiled in the built image, and container validation/GHCR publication now trigger when any packaged module changes. Post-merge workflows passed: container `43695359960`, publish `43695359959`. Image `ghcr.io/marcodurzov/rocket_trader:ea772a07ff69dc0e1c2a684395cee9fa6c4baf87`, digest `sha256:22b004e58feaff4ed33f0b154c9d22538d21d44952bba85c91478a2b51f6a873`. Image publication is not deployment.
+- The actual host and five persistent database files remain unknown/uninspected. The optional cash ledger/coordinator remains disabled by default. Do not migrate, rebase an anchor, or enable it until the real host, durable volume and existing databases are identified and verified.
+- No live Paper full-account audit, persistent-host deployment, database migration, broker account mutation, order or Live action occurred. Progress remains **58%**; no strategy is approved and profitability is unproven.
