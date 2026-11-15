@@ -424,6 +424,7 @@ def _fetch_yahoo_raw_closes(
 def run_audit(
     *,
     targets: Iterable[Dict[str, str]],
+    target_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     normalized_targets = []
     for item in targets:
@@ -515,6 +516,7 @@ def run_audit(
         "pipeline": "rocket_trader_sip_daily_close_trade_condition_audit_v0_3",
         "mode": "HISTORICAL_TRADE_CONDITION_DIAGNOSTIC_ONLY",
         "target_count": len(normalized_targets),
+        "target_selection_metadata": target_metadata or {},
         "symbols": list(symbols),
         "targets": normalized_targets,
         "trade_window_new_york": {
@@ -556,16 +558,20 @@ def main() -> int:
     parser.add_argument("--output", default="artifacts/sip_close_condition_audit.json")
     args = parser.parse_args()
     try:
+        target_metadata = {}
         if args.targets_file:
             targets_payload = json.loads(Path(args.targets_file).read_text(encoding="utf-8"))
             targets = targets_payload.get("targets")
             if not isinstance(targets, list):
                 raise CloseAuditError("Targets file must contain a targets array")
+            target_metadata = {
+                key: value for key, value in targets_payload.items() if key != "targets"
+            }
         else:
             symbols = args.symbols or DEFAULT_SYMBOLS
             sessions = args.sessions or DEFAULT_SESSIONS
             targets = [{"symbol": symbol, "session": session} for symbol in symbols for session in sessions]
-        result = run_audit(targets=targets)
+        result = run_audit(targets=targets, target_metadata=target_metadata)
     except Exception as exc:
         result = {
             "ok": False,
