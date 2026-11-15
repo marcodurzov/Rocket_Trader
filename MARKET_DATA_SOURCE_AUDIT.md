@@ -308,3 +308,10 @@ The QQQ 2020-09-21 Alpaca USD 0.38824 dividend is corroborated by independent di
 Correction to the previous SPY 2018 interpretation: the SEC filing states State Street declared USD 1.24557 on 2018-06-14 payable 2018-07-31. Independent dividend history gives ex-date 2018-06-15 and record date 2018-06-18, matching Yahoo's 2018-06-15 action date. Alpaca's historical corporate-action response has no matching event within the current review window; this remains an unresolved Alpaca historical action-coverage issue. The earlier claim of ex-date 2018-06-12 / record date 2018-06-15 is withdrawn as incorrect.
 
 The seven ETF raw-price divergence findings remain open. The overall data-quality gate remains false; only TLT passes. No source is designated as truth and no strategy is approved.
+
+
+## 2026-11-15 — Daily close definition versus raw-price parity
+
+Raw daily close differences in the March 2020 stress window are not automatically evidence of corrupted data. Alpaca's published SIP aggregation rules determine which trade conditions update the daily close. Its FAQ says condition M (Market Center Official Close) does not update the daily bar close, while condition 6 (Market Center Closing Trade) does; extended-hours condition T does not update daily bars. A 2020 Alpaca forum thread documents similar differences between Alpaca and Yahoo/Nasdaq daily closes. Therefore a provider-definition difference is plausible and must be checked trade by trade.
+
+PR #239 adds a read-only forensic workflow for the six suspect sessions. It retrieves Alpaca SIP trades around 16:00 ET, compares the last daily-close-eligible trade to the Alpaca daily bar, and checks whether Yahoo's close matches a market-center official-close trade. An explanation is not a pass for historical research: the strategy's close definition must be selected and used consistently in backtests and live signals. Until then the 10-year data gate remains false.
