@@ -1265,3 +1265,8 @@ The 2022-09-19 QQQ corporate-action response contained two Alpaca IDs with ident
 The previous SPY 2018 narrative was corrected: SEC evidence confirms USD 1.24557 declared 2018-06-14 and payable 2018-07-31; independent dividend history reports ex-date 2018-06-15 and record date 2018-06-18, consistent with Yahoo's 2018-06-15 event. Alpaca has no matching corporate-action record in the current historical response window, so this remains a possible Alpaca action-coverage gap. QQQ 2020-09-21 USD 0.38824 is corroborated by independent dividend histories, while Yahoo's action series omits it; issuer-primary confirmation is still pending.
 
 The raw 2020 price divergences remain unresolved. No vendor is designated as truth and the overall data-quality gate remains false; only TLT currently passes.
+
+
+## 2026-11-15 — PR #236 merged: Core execution defaults fail closed
+
+PR #236 (`ac8b42de9026ffbd32a6daa51d39fc846bee5395`) changes RocketTraderCore to default execute=False and requires explicit Paper approval, an approval reference and a strategy-ID allowlist before any order submission. Unlisted strategies remain blocked. All offline risk, capital, crypto/Paper safety and regression workflows passed; the read-only Paper audit's live API job was skipped on the PR event. No Paper order or Live action occurred.
