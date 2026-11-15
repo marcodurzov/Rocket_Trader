@@ -1713,3 +1713,24 @@ PR #237's deduplication is a normalization fix only. It does not make the overal
 - The current novel-strategy allocation is a 1% notional cap. With confidence 0.8 and MXN/USD 18.55, MXN 1,000 permits only about USD 0.43 notional, below Alpaca's USD 1 minimum; MXN 6,000 permits only about USD 2.6 before whole-share rounding. That can support only very low-priced shares, not SPY/QQQ. This is why increasing capital alone is not a substitute for fixing the fractional/whole-share execution design.
 - Alpaca documents fractional orders from USD 1 for eligible equities, but the current Rocket Trader bracket adapter deliberately blocks fractional quantities pending a separate Paper compatibility and reconciliation gate. No Paper order was sent.
 - Capital suggestion is provisional: for a future approved strategy with full 25% position cap and a typical 0.8 confidence × 0.8 adaptive multiplier, one SPY share at USD 754.37 and FX 18.5525 requires about MXN 87,500 of strategy capital; MXN 100,000 is a more practical engineering target. This does not fund novel strategies at the 1% notional cap, and no Live deposit is recommended until the execution model and strategy approvals are complete. The 25% and multiplier values remain prototype assumptions, not approved risk policy.
+
+
+### 2026-11-15 continuation — PR #239: forensic close-definition audit (under review)
+
+- The latest 10-year SIP/Yahoo artifact now includes actual raw close pairs. The 2020 return divergences are concentrated on sessions where one provider's close differs from the other provider's prior close; for example DIA 2020-03-16 Yahoo USD 202.49 vs Alpaca USD 207.11, followed by 2020-03-17 closes converging at USD 213.47. SPY 2020-03-12 Yahoo USD 248.11 vs Alpaca USD 255.24. This is not enough to label either source wrong.
+- Alpaca's current Market Data FAQ documents that daily bars are aggregated from SIP trades using condition-specific rules. In particular, condition M (Market Center Official Close) does not update the daily close, while condition 6 (Market Center Closing Trade) does; extended-hours condition T does not update daily bars. A 2020 Alpaca forum thread describes similar Yahoo/Nasdaq vs Alpaca close differences. This makes a close-definition difference a plausible explanation, but it must be confirmed against the exact trades for the flagged ETF sessions.
+- PR #239 adds a historical trade-level audit of the final seconds around 16:00 New York time. It compares the Alpaca raw daily bar with the last trade eligible under Alpaca's documented daily-close rules and checks whether Yahoo's close matches a market-center official-close trade. It preserves all trade conditions and IDs, marks truncated trade queries incomplete, and never designates a vendor as truth.
+- This audit is diagnostic only. It does not relax the existing source-parity gate, change strategy prices, or enable orders. The overall historical data gate remains false until the close definition is deliberately selected and used consistently for both research and live signal generation.
+
+References:
+- Alpaca Market Data FAQ / SIP trade-condition rules: https://docs.alpaca.markets/us/docs/market-data-faq
+- Alpaca 2020 close-price discussion: https://forum.alpaca.markets/t/alpaca-bars-api-close-price-data-variation/1047
+- Alpaca explanation that 1-minute bars cannot reconstruct daily close due to closing-auction and after-hours trades: https://forum.alpaca.markets/t/historical-data/11966
+- Alpaca historical trades API: https://docs.alpaca.markets/us/reference/stocktrades-1
+
+
+### 2026-11-15 continuation — PR #238 merged: whole-share equity sizing
+
+- PR #238 merged to main at `cf9e805c09a13309f6390879b04e1061fe2afc82`.
+- RiskEngine now rounds equity quantities down to whole shares to match the current MARKET_BRACKET adapter. It rejects a position when the available notional cannot buy one whole share, rather than generating a fractional quantity the adapter will reject.
+- Core Risk Safety, Earned Growth Milestone Guard, Durable Activity SSE, Paper Execution Safety, Crypto Paper Execution Safety and Persistent Drawdown Guard workflows passed. No broker order or Live action occurred.

@@ -1,0 +1,57 @@
+name: Rocket Trader - SIP Daily Close Trade Condition Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_sip_close_condition_audit.py"
+      - "rocket_trader_sip_close_condition_audit_test.py"
+      - ".github/workflows/rocket-trader-sip-close-condition-audit.yml"
+  push:
+    branches: [main]
+    paths:
+      - "rocket_trader_sip_close_condition_audit.py"
+      - "rocket_trader_sip_close_condition_audit_test.py"
+      - ".github/workflows/rocket-trader-sip-close-condition-audit.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "30 7 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Alpaca and Yahoo dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - name: Compile and run offline tests
+        run: |
+          python -m py_compile rocket_trader_sip_close_condition_audit.py rocket_trader_sip_close_condition_audit_test.py
+          python -m unittest -v rocket_trader_sip_close_condition_audit_test.py
+      - name: Run historical SIP trade-condition audit
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'push'
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          python rocket_trader_sip_close_condition_audit.py \
+            --symbols DIA EEM EFA GLD IWM QQQ SPY TLT \
+            --sessions 2020-03-12 2020-03-13 2020-03-16 2020-03-17 2020-03-18 2020-03-19 \
+            --output artifacts/sip_close_condition_audit.json
+      - name: Upload immutable trade-condition evidence
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'push')
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocket-trader-sip-close-condition-audit
+          path: artifacts/sip_close_condition_audit.json
+          if-no-files-found: warn
+          retention-days: 30
