@@ -147,6 +147,36 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertTrue(gates["maximum_raw_normalized_close_difference"])
         self.assertTrue(gates["maximum_raw_single_daily_return_difference"])
 
+    def test_dividend_date_mismatch_is_reported_as_candidate_not_missing(self):
+        raw = self.yahoo.copy()
+        factors = pd.Series([1.0] * 8, index=self.dates)
+        yahoo_dividends = pd.Series([0.0] * 8, index=self.dates)
+        yahoo_dividends.iloc[5] = 1.24557
+        actions = [{
+            "id": "issuer-ex-date-event",
+            "action_type": "cash_dividend",
+            "symbol": "SPY",
+            "ex_date": str(self.dates[2].date()),
+            "rate": "1.24557",
+        }]
+        result = compare_adjustment_factors(
+            "SPY", raw, raw * factors, raw, raw * factors,
+            min_common_sessions=5,
+            yahoo_dividends=yahoo_dividends,
+            alpaca_corporate_actions=actions,
+        )
+        self.assertEqual(result["corporate_action_review_flag_count"], 1)
+        flag = result["corporate_action_review_flags"][0]
+        self.assertEqual(
+            flag["reason"],
+            "CASH_DIVIDEND_DATE_ALIGNMENT_REVIEW_REQUIRED",
+        )
+        self.assertEqual(flag["session"], str(self.dates[2].date()))
+        self.assertEqual(
+            flag["nearby_yahoo_dividend_dates"],
+            [str(self.dates[5].date())],
+        )
+
     def test_adjustment_integrity_gates_fail_on_material_raw_price_divergence(self):
         gates = evaluate_adjustment_diagnostic_gates({
             "corporate_action_data_available": True,

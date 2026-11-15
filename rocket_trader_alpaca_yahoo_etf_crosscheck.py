@@ -604,6 +604,9 @@ def compare_adjustment_factors(
                 alpaca_cash_by_date.setdefault(ex_date, []).append(event)
 
     corporate_action_review_flags = []
+    # A single dividend with two vendor date conventions must yield one review
+    # item, not one duplicate flag from each side of the same date mismatch.
+    dividend_date_alignment_pairs = set()
     for session in common.index:
         session_key = str(session)
         yahoo_cash = float(dividend_events.loc[session])
@@ -625,22 +628,75 @@ def compare_adjustment_factors(
                 if np.isfinite(alpaca_cash) else 0.0,
             )
             if not np.isfinite(alpaca_cash) or abs(yahoo_cash - alpaca_cash) > tolerance:
+                nearby_yahoo_dates = []
+                for offset in range(-5, 6):
+                    if offset == 0:
+                        continue
+                    candidate_date = session + timedelta(days=offset)
+                    if candidate_date not in dividend_events.index:
+                        continue
+                    candidate_cash = float(dividend_events.loc[candidate_date])
+                    if np.isfinite(alpaca_cash) and abs(candidate_cash - alpaca_cash) <= tolerance:
+                        nearby_yahoo_dates.append(str(candidate_date))
+                new_alignment_dates = []
+                for candidate_date in nearby_yahoo_dates:
+                    pair = tuple(sorted((session_key, candidate_date)))
+                    if pair not in dividend_date_alignment_pairs:
+                        dividend_date_alignment_pairs.add(pair)
+                        new_alignment_dates.append(candidate_date)
+                if not nearby_yahoo_dates or new_alignment_dates:
+                    corporate_action_review_flags.append({
+                        "session": session_key,
+                        "reason": (
+                            "CASH_DIVIDEND_DATE_ALIGNMENT_REVIEW_REQUIRED"
+                            if nearby_yahoo_dates else "YAHOO_ALPACA_CASH_DIVIDEND_MISMATCH"
+                        ),
+                        "yahoo_cash_dividend": round(yahoo_cash, 8),
+                        "alpaca_cash_dividend": (
+                            round(alpaca_cash, 8) if np.isfinite(alpaca_cash) else None
+                        ),
+                        "nearby_yahoo_dividend_dates": new_alignment_dates,
+                        "event_ids": [alpaca_events[0].get("id")],
+                    })
+        elif yahoo_cash > DIVIDEND_MATCH_ABSOLUTE_TOLERANCE:
+            nearby_alpaca_candidates = []
+            for offset in range(-5, 6):
+                if offset == 0:
+                    continue
+                candidate_date = session + timedelta(days=offset)
+                candidate_events = alpaca_cash_by_date.get(str(candidate_date), [])
+                for candidate_event in candidate_events:
+                    try:
+                        candidate_cash = float(candidate_event.get("rate"))
+                    except (TypeError, ValueError):
+                        continue
+                    tolerance = max(
+                        DIVIDEND_MATCH_ABSOLUTE_TOLERANCE,
+                        abs(candidate_cash) * DIVIDEND_MATCH_RELATIVE_TOLERANCE,
+                    )
+                    if abs(yahoo_cash - candidate_cash) <= tolerance:
+                        nearby_alpaca_candidates.append({
+                            "candidate_ex_date": str(candidate_date),
+                            "cash_dividend": round(candidate_cash, 8),
+                            "event_id": candidate_event.get("id"),
+                        })
+            new_candidates = []
+            for candidate in nearby_alpaca_candidates:
+                pair = tuple(sorted((session_key, candidate["candidate_ex_date"])))
+                if pair not in dividend_date_alignment_pairs:
+                    dividend_date_alignment_pairs.add(pair)
+                    new_candidates.append(candidate)
+            if not nearby_alpaca_candidates or new_candidates:
                 corporate_action_review_flags.append({
                     "session": session_key,
-                    "reason": "YAHOO_ALPACA_CASH_DIVIDEND_MISMATCH",
-                    "yahoo_cash_dividend": round(yahoo_cash, 8),
-                    "alpaca_cash_dividend": (
-                        round(alpaca_cash, 8) if np.isfinite(alpaca_cash) else None
+                    "reason": (
+                        "CASH_DIVIDEND_DATE_ALIGNMENT_REVIEW_REQUIRED"
+                        if nearby_alpaca_candidates else "YAHOO_DIVIDEND_WITHOUT_SAME_DATE_ALPACA_EVENT"
                     ),
-                    "event_ids": [alpaca_events[0].get("id")],
+                    "yahoo_cash_dividend": round(yahoo_cash, 8),
+                    "event_ids": [],
+                    "nearby_alpaca_candidates": new_candidates,
                 })
-        elif yahoo_cash > DIVIDEND_MATCH_ABSOLUTE_TOLERANCE:
-            corporate_action_review_flags.append({
-                "session": session_key,
-                "reason": "ALPACA_CASH_DIVIDEND_EVENT_MISSING",
-                "yahoo_cash_dividend": round(yahoo_cash, 8),
-                "event_ids": [],
-            })
 
     top_steps = []
     for session, _ in factor_step_change_bps.abs().sort_values(ascending=False).head(10).items():
