@@ -89,6 +89,9 @@ jobs:
           ACTIVITY_SSE_BOOTSTRAP_SINCE=2026-11-11T04:55:00Z docker compose -f docker-compose.paper-observer.yml config --quiet
       - name: Build Paper observer image
         run: docker build --pull -f Dockerfile.paper-observer -t rocket-trader-paper-observer:ci .
+      - name: Verify image runs non-root with writable data directory
+        run: |
+          docker run --rm --entrypoint sh rocket-trader-paper-observer:ci -c 'test "$(id -u)" -eq 10001 && test -w /app/data'
       - name: Verify image includes runtime and accounting modules
         run: |
           docker run --rm --entrypoint python rocket-trader-paper-observer:ci -m py_compile \

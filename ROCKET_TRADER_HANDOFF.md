@@ -1743,3 +1743,10 @@ The first post-merge v0.1 trade-condition artifact was informative but not concl
 PR #240 separates eligible trades strictly before 16:00 ET from eligible trades at/after 16:00 ET, reports both last trades, deduplicates only identical trade-ID records with identical economic fields, and preserves distinct corrected records. The new status PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED is diagnostic evidence, not a final adjudication. We still must verify that the daily bar consistently matches the pre-close trade and that Yahoo's close matches the official auction trade across the flagged sessions.
 
 No price series, thresholds or strategies were changed. The raw close parity gate remains closed until the v0.2 artifact and the actual close semantics are reviewed.
+
+
+### 2026-11-15 continuation — PR #241: non-root observer image and deployment plan (under review)
+
+- The Paper Observer Dockerfile previously ran as root. PR #241 switches the image to fixed UID/GID 10001 and gives that identity ownership of /app/data. Container CI verifies non-root execution and writable data directory.
+- A server deployment plan records that no host exists, the six-service Compose stack is observer-only, GHCR publication is not deployment, and the current Compose builds locally rather than pulling a pinned digest. It defines a conservative untested host estimate, security baseline, persistent SQLite/backup requirements and deployment gates.
+- No VPS was provisioned, no volume was created/migrated, and no deployment or broker action occurred.

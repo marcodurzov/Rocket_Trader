@@ -28,5 +28,12 @@ COPY rocket_trader_alpaca_activity_stager.py /app/rocket_trader_alpaca_activity_
 COPY rocket_trader_alpaca_activity_sse_consumer.py /app/rocket_trader_alpaca_activity_sse_consumer.py
 COPY rocket_trader_alpaca_cash_activity_bridge.py /app/rocket_trader_alpaca_cash_activity_bridge.py
 COPY rocket_trader_cash_activity_admin.py /app/rocket_trader_cash_activity_admin.py
-RUN mkdir -p /app/data
+RUN addgroup --system --gid 10001 rockettrader \
+    && adduser --system --uid 10001 --ingroup rockettrader --home /app rockettrader \
+    && mkdir -p /app/data \
+    && chown -R 10001:10001 /app
+
+# Observer services need write access only to the mounted data directory.
+# Running as a fixed non-root UID makes volume ownership deterministic.
+USER 10001:10001
 CMD ["python", "/app/rocket_trader_stream_runtime.py"]

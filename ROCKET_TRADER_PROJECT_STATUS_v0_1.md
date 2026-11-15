@@ -1294,3 +1294,8 @@ PR #238 (`cf9e805c09a13309f6390879b04e1061fe2afc82`) aligns RiskEngine with the 
 The first post-merge trade-condition artifact contained 48 observations: 25 closes agreed, 14 Yahoo closes matched condition-6 closing trades while differing from Alpaca daily closes, and 9 Alpaca daily closes were not reproduced by the last eligible trade across the entire window. The diagnostic had mixed trades before and after 16:00 ET and retained repeated SIP representations of the same trade ID. These results were inconclusive, not proof of incorrect Alpaca bars.
 
 PR #240 splits pre-16:00 and post-16:00 eligible trades, reports both separately, and collapses only identical trade-ID records with identical economic fields. This is a diagnostic refinement only. The data-quality gate remains false; no strategy is approved.
+
+
+## 2026-11-15 — PR #241: server deployment design and non-root container (under review)
+
+The observer image previously ran as root. PR #241 changes it to UID/GID 10001 and adds CI validation of non-root execution and writable /app/data. A server deployment plan documents that no VPS is selected or deployed, GHCR publication is not runtime deployment, the six-service Compose stack is observer-only, and SQLite persistent-state/backup requirements must be met before startup. Resource sizing is an estimate pending load tests. No server was purchased or provisioned; no database volume or broker account was touched.
