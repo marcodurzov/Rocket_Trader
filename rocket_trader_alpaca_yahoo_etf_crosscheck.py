@@ -553,20 +553,30 @@ def deduplicate_alpaca_corporate_action_events(
         if event.get("action_type") != "cash_dividend":
             key = ("non_cash_event", index)
         else:
-            key = (
-                "cash_dividend",
-                str(event.get("symbol") or "").strip().upper(),
-                str(event.get("ex_date") or "").strip(),
-                str(event.get("record_date") or "").strip(),
-                str(event.get("cusip") or "").strip().upper() or None,
-                str(event.get("isin") or "").strip().upper() or None,
-                _canonical_action_decimal(event.get("rate")),
-                _canonical_action_decimal(event.get("long_term_rate")),
-                _canonical_action_decimal(event.get("short_term_rate")),
-                bool(event.get("special", False)),
-                str(event.get("sub_type") or "").strip() or None,
-                str(event.get("currency") or "").strip().upper() or None,
-            )
+            symbol = str(event.get("symbol") or "").strip().upper()
+            ex_date = str(event.get("ex_date") or "").strip()
+            record_date = str(event.get("record_date") or "").strip()
+            cusip = str(event.get("cusip") or "").strip().upper() or None
+            isin = str(event.get("isin") or "").strip().upper() or None
+            # Without both a record date and an issuer identifier, two
+            # same-date/same-rate records are not proven to be the same event.
+            if not record_date or not (cusip or isin):
+                key = ("unverified_cash_event", index)
+            else:
+                key = (
+                    "cash_dividend",
+                    symbol,
+                    ex_date,
+                    record_date,
+                    cusip,
+                    isin,
+                    _canonical_action_decimal(event.get("rate")),
+                    _canonical_action_decimal(event.get("long_term_rate")),
+                    _canonical_action_decimal(event.get("short_term_rate")),
+                    bool(event.get("special", False)),
+                    str(event.get("sub_type") or "").strip() or None,
+                    str(event.get("currency") or "").strip().upper() or None,
+                )
         grouped.setdefault(key, []).append(event)
         first_seen.setdefault(key, index)
 
