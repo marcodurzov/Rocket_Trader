@@ -2,11 +2,12 @@
 
 ## Scope and safety
 
-This Compose stack runs five separate services on a shared persistent volume:
+This Compose stack runs six separate services on a shared persistent volume:
 
 | Service | Responsibility |
 |---|---|
 | `rocket-trader-paper-observer` | Alpaca Paper bars, quote streams, account activity, fills and reconciliation |
+| `rocket-trader-alpaca-activity-sse` | Durable, read-only Alpaca Paper Activity SSE inbox |
 | `rocket-trader-regime-observer` | Read-only market regime features and cash/abstain decision snapshots |
 | `rocket-trader-alpaca-news` | Read-only symbol-linked Alpaca/Benzinga news ingestion |
 | `rocket-trader-gdelt-news` | Read-only global/geopolitical news discovery |
