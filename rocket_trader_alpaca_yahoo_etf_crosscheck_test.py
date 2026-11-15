@@ -132,6 +132,7 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertEqual(normalized[0]["duplicate_record_count"], 2)
         self.assertEqual(normalized[0]["process_date"], "2022-09-23")
 
+    # Keep raw price levels in the audit artifact so 2020 close discrepancies can be independently investigated.
     def test_adjustment_factor_report_includes_raw_close_pairs_for_outliers(self):
         yahoo = self.yahoo.copy()
         alpaca = yahoo.copy()
