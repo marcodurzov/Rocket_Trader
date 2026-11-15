@@ -1213,3 +1213,16 @@ PR workflows passed: Activity SSE `43695973377`, Container `43695973306`, read-o
 Image published, not deployed: `ghcr.io/marcodurzov/rocket_trader:f4587c163dbd97b40c87eb7e28d41a721ac99875`, digest `sha256:33d6f8c4924267b4940bc2fef050ac9b88d8497720ad137b6e32511508405673`.
 
 No live Paper audit, persistent-host access, database migration, deployment, broker account mutation, order or Live action occurred. Progress remains 58%; strategy approval and profitability remain unproven.
+
+
+## 2026-11-15 — PR #231: ETF adjusted-history and corporate-action gates corrected
+
+The scheduled 10-year SIP/Yahoo audit (`43724308433`) had marked all eight ETFs as passing while its own report showed QQQ cumulative adjusted-return drift of +203.1583 bps, duplicate Alpaca dividend records for 2022-09-19, a 2020 Yahoo/Alpaca dividend mismatch, and SPY cumulative drift of -176.3187 bps with a 2.4246% normalized adjusted-close divergence and a 268.8339 bps single-day difference. The prior pass/fail logic omitted these measures.
+
+PR #231 (`15c269eee60bf76cbe252a69fea2674e8e227a08`) adds conservative fail-closed thresholds for cumulative return drift, normalized closes, single-session outliers, raw-price parity, adjustment factors and corporate-action matching. Duplicate same-ex-date dividend records are not summed. Offline PR CI passed 31 tests (`43725813380`).
+
+Post-merge run `43725907128` completed a read-only 10-year SIP/Yahoo comparison with 2,514 common sessions for each of eight ETFs (2016-11-14 to 2026-11-13) and 410 corporate-action records. The API/data run completed (`ok=true`), but data-quality acceptance failed (`all_diagnostic_gates_pass=false`): only TLT passed; DIA, EEM, EFA, GLD, IWM, QQQ and SPY remain review-required. The report identifies material raw-price divergences during 2020 stress sessions for several symbols, two QQQ corporate-action flags, and a missing SPY Alpaca dividend event. Tiingo was not requested; source correctness is not established by this two-provider comparison.
+
+Post-merge runtime/accounting workflow `43725907133` passed 258 tests across 17 suites. Artifact `14166835027` SHA256 `58dcb9ce2fa94068894d19bfca5654d31f8d3a5cb8faded14d58803425e8b7eb`.
+
+Candidate promotion false; Paper approval false; orders disabled; zero orders submitted. Cost assumptions unvalidated; no strategy approved. No persistent host/database inspection, live Paper account audit, deployment, broker account mutation, order or Live action occurred. Progress remains 58%.
