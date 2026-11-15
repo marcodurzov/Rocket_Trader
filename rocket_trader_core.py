@@ -1167,8 +1167,14 @@ class RiskEngine:
         if not budget.allowed:
             return 0.0
 
-        # Alpaca equity orders are sized in USD notional; quantity is shares.
-        return float(budget.max_notional_usd) / snapshot.price
+        # The current equity execution adapter only accepts whole-share
+        # MARKET_BRACKET orders. Never return a fractional quantity that the
+        # adapter will reject; fractional execution requires a separately
+        # validated order/exit lifecycle before this can be relaxed.
+        whole_share_quantity = int(
+            budget.max_notional_usd / Decimal(str(snapshot.price))
+        )
+        return float(max(0, whole_share_quantity))
 
     def prices_for_long(
         self,
@@ -2348,25 +2354,37 @@ def self_test() -> Dict[str, Any]:
         strategy_equity_mxn=6000.0,
         strategy_daily_pnl_pct=0.0,
     )
+    # The USD notional budget alone is not enough: this equity adapter
+    # requires a whole share. A $100 asset is therefore rejected at this
+    # small novel-strategy allocation instead of emitting an unusable fraction.
+    expensive_share_decision = core.evaluate_and_maybe_execute(
+        account=larger_account, snapshot=snapshot, signal=signal, execute=False,
+    )
+    assert expensive_share_decision.status == DecisionStatus.REJECTED
+    assert expensive_share_decision.quantity == 0.0
+
+    low_price_snapshot = dataclasses.replace(snapshot, price=1.0)
     larger_budget_decision = core.evaluate_and_maybe_execute(
         account=larger_account,
-        snapshot=snapshot,
+        snapshot=low_price_snapshot,
         signal=signal,
         execute=False,
     )
     assert larger_budget_decision.status == DecisionStatus.NOVEL_RISK
-    assert larger_budget_decision.quantity * snapshot.price >= 1.0
-    assert larger_budget_decision.quantity * snapshot.price <= (6000.0 / 18.0) * 0.01 * larger_budget_decision.adaptive_multiplier * 0.80 + 1e-9
+    assert larger_budget_decision.quantity >= 1.0
+    assert float(larger_budget_decision.quantity).is_integer()
+    assert larger_budget_decision.quantity * low_price_snapshot.price >= 1.0
+    assert larger_budget_decision.quantity * low_price_snapshot.price <= (6000.0 / 18.0) * 0.01 * larger_budget_decision.adaptive_multiplier * 0.80 + 1e-9
 
     default_execute_decision = blocked_core.evaluate_and_maybe_execute(
-        account=larger_account, snapshot=snapshot, signal=signal,
+        account=larger_account, snapshot=low_price_snapshot, signal=signal,
     )
     assert default_execute_decision.status == DecisionStatus.NOVEL_RISK
     assert default_execute_decision.quantity > 0.0
     assert blocked_adapter.submitted == []
 
     blocked_decision = blocked_core.evaluate_and_maybe_execute(
-        account=larger_account, snapshot=snapshot, signal=signal, execute=True,
+        account=larger_account, snapshot=low_price_snapshot, signal=signal, execute=True,
     )
     assert blocked_decision.status == DecisionStatus.SAFE_MODE
     assert blocked_decision.quantity == 0.0
@@ -2387,7 +2405,7 @@ def self_test() -> Dict[str, Any]:
         audit_path=str(Path(tempfile.gettempdir()) / "rocket-trader-core-allowlist-test.jsonl"),
     )
     unlisted_strategy_decision = allowlisted_core.evaluate_and_maybe_execute(
-        account=larger_account, snapshot=snapshot, signal=signal, execute=True,
+        account=larger_account, snapshot=low_price_snapshot, signal=signal, execute=True,
     )
     assert unlisted_strategy_decision.status == DecisionStatus.SAFE_MODE
     assert unlisted_strategy_decision.reason == "strategy_not_in_paper_approval_allowlist"
@@ -2408,7 +2426,7 @@ def self_test() -> Dict[str, Any]:
         audit_path=str(Path(tempfile.gettempdir()) / "rocket-trader-core-approved-test.jsonl"),
     )
     approved_test_decision = approved_test_core.evaluate_and_maybe_execute(
-        account=larger_account, snapshot=snapshot, signal=signal, execute=True,
+        account=larger_account, snapshot=low_price_snapshot, signal=signal, execute=True,
     )
     assert approved_test_decision.quantity > 0.0
     assert len(approved_test_adapter.submitted) == 1

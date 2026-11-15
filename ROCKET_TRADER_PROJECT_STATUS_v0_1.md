@@ -1270,3 +1270,10 @@ The raw 2020 price divergences remain unresolved. No vendor is designated as tru
 ## 2026-11-15 — PR #236 merged: Core execution defaults fail closed
 
 PR #236 (`ac8b42de9026ffbd32a6daa51d39fc846bee5395`) changes RocketTraderCore to default execute=False and requires explicit Paper approval, an approval reference and a strategy-ID allowlist before any order submission. Unlisted strategies remain blocked. All offline risk, capital, crypto/Paper safety and regression workflows passed; the read-only Paper audit's live API job was skipped on the PR event. No Paper order or Live action occurred.
+
+
+## 2026-11-15 — PR #238: whole-share equity sizing (under review)
+
+RiskEngine previously returned fractional quantities even though the current equity adapter blocks fractional MARKET_BRACKET orders. The sizing layer now rounds down to whole shares and rejects positions that cannot afford one share. This is an adapter compatibility safeguard; Alpaca's separate USD 1 fractional-order capability is not yet enabled in Rocket Trader.
+
+Capital sizing remains provisional. MXN 1,000 with the current 1% novel notional cap and 0.8 signal confidence produces roughly USD 0.43 notional at MXN/USD 18.55, below the broker USD 1 minimum. At MXN 6,000 the budget is roughly USD 2.6 before whole-share rounding. For a future approved strategy, one SPY share at USD 754.37 would require about MXN 87,500 at a 16% effective position cap (25% × 0.8 confidence × 0.8 adaptive multiplier); MXN 100,000 is a provisional practical target. This is not sufficient for novel SPY positions under the 1% notional cap. No capital setting was changed and no Live funding is recommended now.

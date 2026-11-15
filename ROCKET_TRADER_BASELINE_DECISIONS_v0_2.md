@@ -83,3 +83,8 @@ Broker-side Paper equity/cash are USD and must not be used as the denominator fo
 The Core defaults to no Paper order submission (execute=False). Even if a caller requests execution, the Core blocks it unless Paper execution has been explicitly approved with a non-empty approval reference and an explicit allowlist of strategy IDs. A strategy not in that allowlist is blocked. NOVEL_RISK is not an execution authorization. The current project has no approved strategies and no Paper execution approval; therefore the production configuration must leave this gate disabled. Test-only approvals use a local counting adapter and do not contact Alpaca.
 
 The numeric RiskConfig defaults (position/exposure/loss/stop/trade-count limits) remain prototype values, not an approved risk policy. Passing their validation is not evidence that they are economically or statistically calibrated.
+
+
+## Equity share-quantity constraint
+
+The current equity adapter supports only whole-share MARKET_BRACKET orders and intentionally blocks fractional bracket quantities until broker compatibility and full fractional activity/fee reconciliation are validated. RiskEngine now rounds the affordable quantity down to whole shares before producing a decision. If the MXN risk budget can afford USD 1 but cannot afford one share of the selected symbol, the decision is rejected with quantity zero; it never emits a fractional quantity that the adapter will reject. This is an execution constraint of the current Rocket Trader adapter, not a general Alpaca account minimum. Alpaca's separate fractional-order API is available for eligible US equities from USD 1, but the current bracket adapter has not approved that path.
