@@ -7,6 +7,8 @@ on:
       - "Dockerfile.paper-observer"
       - "docker-compose.paper-observer.yml"
       - "rocket_trader_stream_runtime.py"
+      - "rocket_trader_paper_account_reconciliation_test.py"
+      - "rocket_trader_paper_account_reconciliation.py"
       - "rocket_trader_news.py"
       - "rocket_trader_official_news.py"
       - "rocket_trader_alpaca_news_observer.py"
@@ -41,6 +43,8 @@ on:
     branches: [main]
     paths:
       - "Dockerfile.paper-observer"
+      - "rocket_trader_paper_account_reconciliation.py"
+      - "rocket_trader_paper_account_reconciliation_test.py"
       - "docker-compose.paper-observer.yml"
       - "rocket_trader_stream_runtime.py"
       - "rocket_trader_news.py"
@@ -90,6 +94,7 @@ jobs:
             /app/rocket_trader_paper_activity_coverage_audit.py \
             /app/rocket_trader_paper_cash_coverage_migration.py \
             /app/rocket_trader_paper_fee_allocation_audit.py \
+            /app/rocket_trader_paper_account_reconciliation.py \
             /app/rocket_trader_paper_cash_ledger_admin.py \
             /app/rocket_trader_alpaca_activity_stager.py \
             /app/rocket_trader_alpaca_activity_sse_consumer.py \

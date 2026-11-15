@@ -190,3 +190,33 @@ The Paper observer may report its **position comparison component** as healthy w
 `ROCKET_TRADER_CASH_LEDGER_ENABLED` is false by default. When explicitly enabled, the observer requires an existing Paper cash ledger DB and existing Activity SSE inbox, obtains the Paper account ID with a read-only `get_account()` call, and opens the cash ledger with `initialize=False` so missing or damaged state is never replaced. The observer does not auto-create a cash anchor. Use `rocket_trader_paper_cash_ledger_admin.py` as a separate one-shot Paper-only command to create the initial anchor after reviewing the persistent inbox.
 
 The runtime currently does not assert activity-history coverage or fee reconciliation. It therefore remains `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE` until a verified replay/catch-up attestation and independent fee audit are connected. `orders_enabled` remains false and the runtime remains `OBSERVE_ONLY`.
+
+
+## Full Paper account evidence reconciliation
+
+The optional USD cash-ledger integration now has a separate full-account evidence coordinator. It remains **disabled unless** `ROCKET_TRADER_CASH_LEDGER_ENABLED=true` and requires the already-existing cash ledger, Activity SSE inbox, realized-P&L ledger, fill-bridge inbox and an immutable cash anchor on the same verified persistent volume. Runtime does not create a missing cash ledger or anchor.
+
+When enabled, the coordinator runs at startup and every
+`ROCKET_TRADER_ACCOUNT_RECONCILIATION_INTERVAL_SECONDS` (default 900 seconds).
+Before each run, the activity stager is synchronized. The coordinator then:
+
+1. Requires the fill bridge to have no pending, failed or manual-review events.
+2. Ingests the durable Activity SSE inbox into the cash mirror.
+3. Captures broker positions and then the Paper account cash/equity snapshot; the account response establishes the snapshot time boundary.
+4. Replays the bounded Activity SSE history from the active cash anchor through that exact boundary and requires an exact match with the durable inbox and cash-ledger manifest.
+5. Runs the local fee-allocation audit for the same account, anchor and time window. Every fee must map to exactly one fill and match the immutable MXN ledger.
+6. Verifies that the fill ledger did not change while the snapshot and audits were in flight.
+7. Uses the already captured broker snapshot (without a second account/positions fetch) to reconcile position quantities, USD cash and account equity.
+
+The full account result is stored separately from the 60-second position-only check. The healthcheck requires a successful full-account evidence report no older than
+`ROCKET_TRADER_ACCOUNT_RECONCILIATION_MAX_AGE_SECONDS` (default 1800 seconds), in addition to current position and runtime health. Any missing/stale audit, pending fill, new fill during the audit, anchor change, cash/equity mismatch, unsupported activity or unlinked fee leaves account reconciliation unhealthy. No flag is set from a CLI exit code or an arbitrary reference string.
+
+Example optional settings (only after the existing cash ledger and anchor have been reviewed on the real persistent host):
+
+```dotenv
+ROCKET_TRADER_CASH_LEDGER_ENABLED=true
+ROCKET_TRADER_ACCOUNT_RECONCILIATION_INTERVAL_SECONDS=900
+ROCKET_TRADER_ACCOUNT_RECONCILIATION_MAX_AGE_SECONDS=1800
+```
+
+The coordinator performs a bounded, read-only Alpaca Activity SSE replay at the configured cadence. The fee audit is local SQLite work. Neither operation submits, replaces, cancels or modifies orders. This does not approve a strategy or enable execution. Keep the feature disabled until the persistent paths, cash schema migration, anchor and Activity SSE health have been independently verified.

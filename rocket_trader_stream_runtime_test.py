@@ -35,6 +35,56 @@ class StreamRuntimeTests(unittest.TestCase):
             "alpaca.trading.client": client,
         })
 
+    def test_full_account_evidence_is_stored_separately_from_position_checks(self):
+        class FakeCoordinator:
+            def reconcile(self):
+                return {
+                    "status": "RECONCILED",
+                    "account_evidence_status": "RECONCILED",
+                    "account_reconciliation_complete": True,
+                    "account_snapshot_observed_at": datetime.now(timezone.utc).isoformat(),
+                    "orders_enabled": False,
+                }
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder,
+            account_evidence_coordinator=FakeCoordinator(),
+        )
+        report = runtime._reconcile_paper_account()
+        self.assertEqual(report["account_evidence_status"], "RECONCILED")
+        self.assertEqual(
+            self.recorder.latest_account_reconciliation()["account_evidence_status"],
+            "RECONCILED",
+        )
+        self.assertIsNone(self.recorder.latest_position_reconciliation())
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertEqual(health["components"]["account_reconciliation"]["status"], "HEALTHY")
+
+    def test_full_account_evidence_failure_is_persisted_and_unhealthy(self):
+        class FailingCoordinator:
+            def reconcile(self):
+                raise RuntimeError("unlinked fee")
+        config = RuntimeConfig(
+            api_key="key", secret_key="secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        runtime = AlpacaPaperObserverRuntime(
+            config, self.recorder,
+            account_evidence_coordinator=FailingCoordinator(),
+        )
+        report = runtime._reconcile_paper_account()
+        self.assertEqual(report["account_evidence_status"], "INCOMPLETE")
+        self.assertEqual(
+            self.recorder.latest_account_reconciliation()["status"],
+            "ACCOUNT_EVIDENCE_RECONCILIATION_ERROR",
+        )
+        health = self.recorder.health(max_age_seconds=120)
+        self.assertFalse(health["healthy"])
+        self.assertEqual(health["components"]["account_reconciliation"]["status"], "ERROR")
+
     def test_cash_ledger_runtime_option_defaults_off(self):
         class FakeTradingClient:
             def __init__(self, **kwargs):

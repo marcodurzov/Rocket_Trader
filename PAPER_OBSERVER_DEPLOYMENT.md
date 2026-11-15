@@ -324,7 +324,7 @@ docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
 
 The backup path must not already exist. The migration verifies the source database and base append-only triggers, makes and validates a consistent SQLite backup, rechecks that existing cash rows did not change, and creates the coverage tables/triggers in one transaction. It does not contact Alpaca or modify account state. If a partial coverage schema is found, it stops for manual review.
 
-The bounded replay auditor is a read-only primitive. The observer runtime still does **not** automatically assert `activity_coverage_complete`; it remains false until the auditor is wired into the runtime with a controlled replay cadence and independently reviewed operational evidence. Do not treat a local hash chain alone as proof that Alpaca delivered every activity.
+The bounded replay auditor is now wired through a controlled full-account evidence coordinator when the optional cash ledger is enabled. The coordinator binds the replay and fee audit to one broker account snapshot and fails closed if the fill ledger changes during the audit. This wiring is code/CI evidence only; it does not prove that the user's actual persistent host has the required database paths, anchor or inbox health. Do not enable the option until those are verified on the real host.
 
 
 After the schema upgrade, a bounded read-only broker replay can be performed from the same Paper observer container:
@@ -355,4 +355,13 @@ docker compose -f docker-compose.paper-observer.yml run --rm --no-deps \
   --coverage-audit-id YOUR_COVERAGE_AUDIT_ID
 ```
 
-This fee audit is local SQLite work only and does not call Alpaca. It requires the cash ledger, realized-P&L ledger and fill-bridge inbox to be on the same verified persistent volume. It does not enable orders. The observer runtime still does not consume the fee audit automatically; `fee_reconciliation_complete` remains false until a separate reviewed runtime integration uses both the activity-coverage and fee-allocation references for the same broker snapshot.
+This fee audit is local SQLite work only and does not call Alpaca. It requires the cash ledger, realized-P&L ledger and fill-bridge inbox to be on the same verified persistent volume. It does not enable orders. The observer runtime consumes both audit references through the full-account coordinator only when the optional cash ledger is enabled. It binds both to the same account, anchor and snapshot window; the healthcheck requires a fresh successful full-account report. The default remains disabled, and the actual persistent host still requires manual verification and anchor/schema readiness.
+
+
+## 19. Runtime-bound full-account evidence coordinator
+
+When `ROCKET_TRADER_CASH_LEDGER_ENABLED=true`, the Paper Observer builds a coordinator from the existing cash ledger, durable Activity SSE inbox, realized-P&L ledger and fill-bridge inbox. It refuses missing database files or a missing active cash anchor at reconciliation time. The coordinator runs at startup and every 900 seconds by default; position-only reconciliation continues every 60 seconds.
+
+Each full reconciliation captures one broker positions/account snapshot, runs bounded Activity SSE coverage and fee-allocation audits through that snapshot boundary, verifies the fill ledger remained unchanged, then calls the reconciliation gate with the pre-fetched snapshot. This avoids accidentally binding two different broker snapshots to the audit references. The result is stored separately from the position-only report. Healthcheck requires a successful full-account report no older than 1800 seconds by default.
+
+Set `ROCKET_TRADER_ACCOUNT_RECONCILIATION_INTERVAL_SECONDS` and `ROCKET_TRADER_ACCOUNT_RECONCILIATION_MAX_AGE_SECONDS` only after checking the expected API load and the actual Paper persistent volume. The cash ledger option remains false by default. Do not run schema migration or create/rebase an anchor until the real persistent host and all existing database files are identified and backed up. No orders are enabled by this integration.
