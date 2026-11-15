@@ -876,6 +876,103 @@ def build_paper_account_evidence_coordinator(
         ) from exc
 
 
+def _require_existing_sqlite_schema(
+    db_path: str,
+    *,
+    label: str,
+    required_tables: Dict[str, Sequence[str]],
+    required_triggers: Sequence[str] = (),
+) -> None:
+    """Validate a persistent SQLite file without creating or repairing it."""
+    path = Path(db_path).expanduser()
+    if not path.is_file():
+        raise RuntimeConfigurationError(
+            f"Existing {label} database is missing; refusing to create a replacement."
+        )
+    try:
+        uri = path.resolve().as_uri() + "?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=5) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            integrity = conn.execute("PRAGMA integrity_check").fetchone()
+            if not integrity or integrity[0] != "ok":
+                raise RuntimeConfigurationError(
+                    f"Existing {label} database failed SQLite integrity check."
+                )
+            tables = {
+                row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            triggers = {
+                row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='trigger'"
+                ).fetchall()
+            }
+            missing_tables = sorted(set(required_tables) - tables)
+            if missing_tables:
+                raise RuntimeConfigurationError(
+                    f"Existing {label} database is missing required tables: "
+                    + ", ".join(missing_tables)
+                )
+            for table, expected_columns in required_tables.items():
+                columns = {
+                    row[1] for row in conn.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()
+                }
+                missing_columns = sorted(set(expected_columns) - columns)
+                if missing_columns:
+                    raise RuntimeConfigurationError(
+                        f"Existing {label} table {table} is missing columns: "
+                        + ", ".join(missing_columns)
+                    )
+            missing_triggers = sorted(set(required_triggers) - triggers)
+            if missing_triggers:
+                raise RuntimeConfigurationError(
+                    f"Existing {label} database is missing append-only triggers: "
+                    + ", ".join(missing_triggers)
+                )
+    except RuntimeConfigurationError:
+        raise
+    except (OSError, sqlite3.Error) as exc:
+        raise RuntimeConfigurationError(
+            f"Could not validate existing {label} database read-only: {exc}"
+        ) from exc
+
+
+def _require_existing_activity_stager(db_path: str) -> None:
+    _require_existing_sqlite_schema(
+        db_path,
+        label="Paper activity-stager",
+        required_tables={
+            "staged_activities": (
+                "activity_id", "activity_type", "occurred_at", "payload_json",
+                "payload_hash", "classification", "staged_at",
+            ),
+            "activity_stager_meta": ("key", "value"),
+        },
+        required_triggers=(
+            "staged_activities_no_update", "staged_activities_no_delete",
+        ),
+    )
+
+
+def _require_existing_fill_bridge(db_path: str) -> None:
+    _require_existing_sqlite_schema(
+        db_path,
+        label="Paper fill-bridge inbox",
+        required_tables={
+            "paper_fill_ledger_inbox": (
+                "execution_id", "payload_hash", "payload_json", "status",
+                "last_error", "fx_json", "created_at", "updated_at",
+            ),
+            "paper_fill_manual_review": (
+                "review_id", "payload_hash", "payload_json", "reason", "created_at",
+            ),
+        },
+    )
+
+
 def build_fill_ledger_bridge(config: RuntimeConfig):
     enabled = os.getenv("ROCKET_TRADER_LEDGER_ENABLED", "false").strip().lower()
     if enabled not in {"1", "true", "yes", "on"}:
@@ -899,6 +996,24 @@ def build_fill_ledger_bridge(config: RuntimeConfig):
         inbox_path = os.getenv(
             "ROCKET_TRADER_LEDGER_INBOX_DB", str(parent / "rocket_trader_fill_inbox.sqlite3")
         )
+        stager_path = os.getenv(
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB",
+            str(parent / "rocket_trader_activity_stager.sqlite3"),
+        )
+        paths = [Path(ledger_path).expanduser().resolve(),
+                 Path(inbox_path).expanduser().resolve(),
+                 Path(stager_path).expanduser().resolve()]
+        if len(set(paths)) != len(paths):
+            raise RuntimeConfigurationError(
+                "Realized-P&L ledger, fill-bridge inbox and activity-stager DB must be separate files."
+            )
+        # The cash-admin validator checks the existing ledger's schema,
+        # capital policy, initial-capital event and append-only protections.
+        # The stager and fill bridge are separately checked read-only before
+        # their constructors can create or alter any schema.
+        from rocket_trader_cash_activity_admin import _require_existing_state
+        _require_existing_state(ledger_path, stager_path)
+        _require_existing_fill_bridge(inbox_path)
         ledger = RealizedPnLLedger(
             ledger_path,
             initial_capital_mxn=initial_capital,
@@ -1028,6 +1143,7 @@ def build_activity_stager(config: RuntimeConfig):
             "ROCKET_TRADER_ACTIVITY_STAGER_DB",
             str(parent / "rocket_trader_activity_stager.sqlite3"),
         )
+        _require_existing_activity_stager(path)
         return AlpacaPaperActivityStager(
             db_path=path,
             api_key=config.api_key,
