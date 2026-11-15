@@ -1750,3 +1750,12 @@ No price series, thresholds or strategies were changed. The raw close parity gat
 - The Paper Observer Dockerfile previously ran as root. PR #241 switches the image to fixed UID/GID 10001 and gives that identity ownership of /app/data. Container CI verifies non-root execution and writable data directory.
 - A server deployment plan records that no host exists, the six-service Compose stack is observer-only, GHCR publication is not deployment, and the current Compose builds locally rather than pulling a pinned digest. It defines a conservative untested host estimate, security baseline, persistent SQLite/backup requirements and deployment gates.
 - No VPS was provisioned, no volume was created/migrated, and no deployment or broker action occurred.
+
+
+### 2026-11-15 continuation — PR #242: full postmarket close eligibility (under review)
+
+The v0.2 audit separated the 15:59:50–16:00:05 window but still did not reproduce the daily bar for 9/48 rows. The current Alpaca FAQ states daily bars aggregate trades across the New York day and that condition T (Extended Hours Trade) does not update daily bars, while other conditions may update them. Therefore the last eligible daily-close trade can occur later than 16:00:05. The v0.2 window was too narrow to adjudicate the daily close.
+
+PR #242 searches postmarket trades from 16:00 through 20:00 ET in descending timestamp order and stops at the first trade eligible under the tape-aware SIP rules. It also corrects condition B: Average Price Trade on tapes A/B is excluded, while Bunched Trade on tape C is eligible. The official closing-auction candidates remain isolated in the 16:00 window. This should determine whether Alpaca daily closes reflect later eligible postmarket prints, while Yahoo reflects the official closing auction.
+
+The result remains diagnostic only. It will not change the canonical price series or relax the source-parity gate without review.
