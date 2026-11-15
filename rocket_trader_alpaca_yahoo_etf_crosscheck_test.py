@@ -19,6 +19,7 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     evaluate_adjustment_diagnostic_gates,
     fetch_tiingo_history,
     fetch_alpaca_corporate_actions,
+    deduplicate_alpaca_corporate_action_events,
     tiingo_audit_status,
     require_zero_budget_feed,
     historical_request_end,
@@ -110,17 +111,43 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
         self.assertTrue(result["diagnostic_gates"]["maximum_single_daily_return_difference"])
         self.assertFalse(result["diagnostic_pass"])
 
-    def test_adjustment_factor_audit_flags_duplicate_and_missing_dividend_events(self):
+    def test_deduplicate_preserves_all_ids_and_only_ignores_process_lifecycle_fields(self):
+        rows = [
+            {
+                "id": "v1", "action_type": "cash_dividend", "symbol": "QQQ",
+                "cusip": "46090E103", "record_date": "2022-09-20",
+                "ex_date": "2022-09-19", "rate": "0.518560",
+                "process_date": "2022-09-23", "payable_date": "2022-09-23",
+            },
+            {
+                "id": "v2", "action_type": "cash_dividend", "symbol": "QQQ",
+                "cusip": "46090E103", "record_date": "2022-09-20",
+                "ex_date": "2022-09-19", "rate": "0.51856",
+                "process_date": "2022-10-31", "payable_date": "2022-10-31",
+            },
+        ]
+        normalized = deduplicate_alpaca_corporate_action_events(rows)
+        self.assertEqual(len(normalized), 1)
+        self.assertEqual(normalized[0]["source_record_ids"], ["v1", "v2"])
+        self.assertEqual(normalized[0]["duplicate_record_count"], 2)
+        self.assertEqual(normalized[0]["process_date"], "2022-09-23")
+
+    def test_adjustment_factor_audit_deduplicates_same_economic_dividend_records(self):
         raw = self.yahoo.copy()
         factors = pd.Series([1.0] * 8, index=self.dates)
+        ex_date = str(self.dates[4].date())
         actions = [
             {
                 "id": "duplicate-1", "action_type": "cash_dividend", "symbol": "QQQ",
-                "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+                "cusip": "46090E103", "record_date": "2022-09-20",
+                "ex_date": ex_date, "rate": "0.5185600", "special": False,
+                "process_date": "2022-09-23", "payable_date": "2022-09-23",
             },
             {
                 "id": "duplicate-2", "action_type": "cash_dividend", "symbol": "QQQ",
-                "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+                "cusip": "46090E103", "record_date": "2022-09-20",
+                "ex_date": ex_date, "rate": "0.51856", "special": False,
+                "process_date": "2022-10-31", "payable_date": "2022-10-31",
             },
             {
                 "id": "missing-yahoo", "action_type": "cash_dividend", "symbol": "QQQ",
@@ -133,19 +160,54 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             yahoo_dividends=pd.Series([0.0] * 8, index=self.dates),
             alpaca_corporate_actions=actions,
         )
+        self.assertEqual(result["corporate_action_raw_record_count"], 3)
+        self.assertEqual(result["corporate_action_economic_event_count"], 2)
+        self.assertEqual(result["corporate_action_duplicate_records_collapsed"], 1)
         self.assertEqual(result["corporate_action_review_flag_count"], 2)
         reasons = {item["reason"] for item in result["corporate_action_review_flags"]}
-        self.assertEqual(
-            reasons,
-            {
-                "MULTIPLE_ALPACA_CASH_DIVIDEND_RECORDS",
-                "YAHOO_ALPACA_CASH_DIVIDEND_MISMATCH",
-            },
+        self.assertEqual(reasons, {"YAHOO_ALPACA_CASH_DIVIDEND_MISMATCH"})
+        qqq_ex_date = next(
+            row for row in result["largest_adjustment_factor_step_changes"]
+            if row["session"] == ex_date
         )
+        self.assertEqual(qqq_ex_date["alpaca_cash_dividend_event_count"], 1)
+        self.assertEqual(qqq_ex_date["alpaca_cash_dividend_event_ids"], ["duplicate-1", "duplicate-2"])
+        self.assertEqual(qqq_ex_date["alpaca_cash_dividend_total_status"], "SINGLE_EVENT")
         gates = evaluate_adjustment_diagnostic_gates(result)
         self.assertFalse(gates["corporate_actions_resolved"])
         self.assertTrue(gates["maximum_raw_normalized_close_difference"])
         self.assertTrue(gates["maximum_raw_single_daily_return_difference"])
+
+    def test_distinct_same_date_cash_dividends_remain_unresolved(self):
+        actions = [
+            {
+                "id": "event-a", "action_type": "cash_dividend", "symbol": "QQQ",
+                "cusip": "46090E103", "record_date": "2022-09-20",
+                "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+            },
+            {
+                "id": "event-b", "action_type": "cash_dividend", "symbol": "QQQ",
+                "cusip": "46090E103", "record_date": "2022-09-20",
+                "ex_date": str(self.dates[4].date()), "rate": "0.10000",
+            },
+        ]
+        normalized = deduplicate_alpaca_corporate_action_events(actions)
+        self.assertEqual(len(normalized), 2)
+        raw = self.yahoo.copy()
+        factors = pd.Series([1.0] * 8, index=self.dates)
+        result = compare_adjustment_factors(
+            "QQQ", raw, raw * factors, raw, raw * factors,
+            min_common_sessions=5,
+            yahoo_dividends=pd.Series([0.0] * 8, index=self.dates),
+            alpaca_corporate_actions=actions,
+        )
+        self.assertTrue(
+            any(
+                item["reason"] == "MULTIPLE_ALPACA_CASH_DIVIDEND_RECORDS"
+                for item in result["corporate_action_review_flags"]
+            )
+        )
+
 
     def test_dividend_date_mismatch_is_reported_as_candidate_not_missing(self):
         raw = self.yahoo.copy()
