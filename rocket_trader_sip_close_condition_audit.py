@@ -75,10 +75,12 @@ def classify_close_discrepancy(
     yahoo_close: Optional[float],
     trades: Iterable[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Compare daily close with eligible SIP trades and official-close conditions."""
-    normalized = []
+    """Compare daily close with pre/post-close SIP trades and auction candidates."""
+    raw_count = 0
+    deduplicated: Dict[Any, Dict[str, Any]] = {}
     for raw in trades:
-        normalized.append({
+        raw_count += 1
+        item = {
             "timestamp": _timestamp(raw["timestamp"]),
             "price": float(raw["price"]),
             "size": float(raw.get("size") or 0),
@@ -86,23 +88,57 @@ def classify_close_discrepancy(
             "conditions": [str(x).strip() for x in (raw.get("conditions") or [])],
             "trade_id": raw.get("trade_id"),
             "tape": raw.get("tape"),
-        })
-    normalized.sort(key=lambda item: item["timestamp"])
+        }
+        # SIP may expose the same trade ID more than once with identical
+        # economic fields and slightly different timestamps. Collapse only
+        # exact duplicate representations; preserve corrected/changed records.
+        key = (
+            item["trade_id"],
+            item["price"],
+            item["size"],
+            item["exchange"],
+            tuple(item["conditions"]),
+            item["tape"],
+        ) if item["trade_id"] is not None else (
+            item["timestamp"], item["price"], item["size"], item["exchange"],
+            tuple(item["conditions"]), item["tape"],
+        )
+        existing = deduplicated.get(key)
+        if existing is None or item["timestamp"] > existing["timestamp"]:
+            deduplicated[key] = item
 
+    normalized = sorted(deduplicated.values(), key=lambda item: item["timestamp"])
     eligible = [item for item in normalized if daily_close_eligible(item["conditions"])]
+    pre_close = [
+        item for item in eligible
+        if item["timestamp"].astimezone(NY).time() < time(16, 0, 0)
+    ]
+    post_close = [
+        item for item in eligible
+        if item["timestamp"].astimezone(NY).time() >= time(16, 0, 0)
+    ]
     official = [
         item for item in normalized
-        if set(item["conditions"]) & OFFICIAL_CLOSE_CONDITIONS
+        if (
+            set(item["conditions"]) & OFFICIAL_CLOSE_CONDITIONS
+            and item["timestamp"].astimezone(NY).time() >= time(16, 0, 0)
+        )
     ]
-    last_eligible = eligible[-1] if eligible else None
+    last_pre_close = pre_close[-1] if pre_close else None
+    last_post_close = post_close[-1] if post_close else None
     yahoo_matches = [
         item for item in official
         if yahoo_close is not None and abs(item["price"] - float(yahoo_close)) <= PRICE_TOLERANCE_USD
     ]
-    daily_matches = (
-        last_eligible is not None
+    daily_matches_pre = (
+        last_pre_close is not None
         and alpaca_daily_close is not None
-        and abs(last_eligible["price"] - float(alpaca_daily_close)) <= PRICE_TOLERANCE_USD
+        and abs(last_pre_close["price"] - float(alpaca_daily_close)) <= PRICE_TOLERANCE_USD
+    )
+    daily_matches_post = (
+        last_post_close is not None
+        and alpaca_daily_close is not None
+        and abs(last_post_close["price"] - float(alpaca_daily_close)) <= PRICE_TOLERANCE_USD
     )
     closes_agree = (
         alpaca_daily_close is not None
@@ -114,14 +150,14 @@ def classify_close_discrepancy(
         status = "CLOSES_AGREE"
     elif not normalized:
         status = "NO_TRADES_RETURNED"
-    elif not daily_matches:
-        status = "ALPACA_DAILY_CLOSE_NOT_REPRODUCED_FROM_ELIGIBLE_TRADES"
-    elif yahoo_matches and any("M" in item["conditions"] for item in yahoo_matches):
-        status = "SIP_OFFICIAL_CLOSE_CONDITION_EXPLAINS_GAP"
-    elif yahoo_matches:
-        status = "YAHOO_CLOSE_MATCHES_A_CLOSE_CONDITION_TRADE_BUT_NOT_ALPACA_CLOSE"
+    elif daily_matches_pre and yahoo_matches:
+        status = "PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED"
+    elif daily_matches_pre:
+        status = "ALPACA_DAILY_CLOSE_MATCHES_PRE_CLOSE_TRADE_ONLY"
+    elif daily_matches_post:
+        status = "ALPACA_DAILY_CLOSE_MATCHES_POST_CLOSE_TRADE"
     else:
-        status = "UNRESOLVED_CLOSE_DEFINITION_OR_TRADE_COVERAGE"
+        status = "ALPACA_DAILY_CLOSE_NOT_REPRODUCED_FROM_WINDOW_TRADES"
 
     def public_trade(item: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if item is None:
@@ -147,13 +183,17 @@ def classify_close_discrepancy(
             round(float(alpaca_daily_close) - float(yahoo_close), 8)
             if alpaca_daily_close is not None and yahoo_close is not None else None
         ),
-        "last_eligible_trade": public_trade(last_eligible),
-        "last_eligible_trade_matches_alpaca_daily_close": bool(daily_matches),
+        "last_eligible_trade_before_1600": public_trade(last_pre_close),
+        "last_eligible_trade_after_1600": public_trade(last_post_close),
+        "alpaca_daily_close_matches_pre_close_trade": bool(daily_matches_pre),
+        "alpaca_daily_close_matches_post_close_trade": bool(daily_matches_post),
         "official_close_condition_trades": [public_trade(item) for item in official[-20:]],
         "official_close_trades_matching_yahoo": [public_trade(item) for item in yahoo_matches],
-        "trade_count_in_window": len(normalized),
+        "trade_record_count_in_window": raw_count,
+        "unique_trade_count_in_window": len(normalized),
+        "duplicate_trade_records_collapsed": raw_count - len(normalized),
         "status": status,
-        "status_is_source_adjudication_not_a_profitability_or_data_quality_pass": True,
+        "status_is_diagnostic_only_not_a_data_quality_or_profitability_pass": True,
     }
 
 
@@ -342,9 +382,14 @@ def run_audit(
         "results": results,
         "errors": errors,
         "status_counts": statuses,
-        "all_close_gaps_explained": bool(results) and not errors and all(
-            row["status"] in {"CLOSES_AGREE", "SIP_OFFICIAL_CLOSE_CONDITION_EXPLAINS_GAP"}
-            for row in results
+        "all_close_gaps_have_observed_preclose_or_official_close_pattern": (
+            bool(results) and not errors and all(
+                row["status"] in {
+                    "CLOSES_AGREE",
+                    "PRE_CLOSE_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED",
+                }
+                for row in results
+            )
         ),
     }
 
@@ -374,7 +419,7 @@ def main() -> int:
         "mode": result.get("mode"),
         "result_count": len(result.get("results") or []),
         "status_counts": result.get("status_counts"),
-        "all_close_gaps_explained": result.get("all_close_gaps_explained"),
+        "all_close_gaps_have_observed_preclose_or_official_close_pattern": result.get("all_close_gaps_have_observed_preclose_or_official_close_pattern"),
         "errors": result.get("errors"),
         "output": str(output),
         "orders_enabled": False,

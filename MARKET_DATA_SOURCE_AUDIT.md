@@ -315,3 +315,10 @@ The seven ETF raw-price divergence findings remain open. The overall data-qualit
 Raw daily close differences in the March 2020 stress window are not automatically evidence of corrupted data. Alpaca's published SIP aggregation rules determine which trade conditions update the daily close. Its FAQ says condition M (Market Center Official Close) does not update the daily bar close, while condition 6 (Market Center Closing Trade) does; extended-hours condition T does not update daily bars. A 2020 Alpaca forum thread documents similar differences between Alpaca and Yahoo/Nasdaq daily closes. Therefore a provider-definition difference is plausible and must be checked trade by trade.
 
 PR #239 adds a read-only forensic workflow for the six suspect sessions. It retrieves Alpaca SIP trades around 16:00 ET, compares the last daily-close-eligible trade to the Alpaca daily bar, and checks whether Yahoo's close matches a market-center official-close trade. An explanation is not a pass for historical research: the strategy's close definition must be selected and used consistently in backtests and live signals. Until then the 10-year data gate remains false.
+
+
+## 2026-11-15 — Trade-condition audit v0.1 limitation and v0.2 correction
+
+The initial v0.1 artifact returned 48 observations (25 close matches, 14 Yahoo/condition-6 close matches differing from Alpaca daily close, 9 daily closes not reproduced by the selected last eligible trade). The classifier included post-16:00 trades in the same sequence as pre-close trades and counted duplicate SIP representations of identical trade IDs. It was not valid to treat the nine rows as evidence of bad daily bars.
+
+PR #240 separates the pre-16:00 and post-16:00 trade candidates and deduplicates only identical trade-ID/price/size/exchange/condition/tape representations. It preserves changed/corrected trade records. The resulting pattern remains diagnostic and does not relax the source-parity gate.
