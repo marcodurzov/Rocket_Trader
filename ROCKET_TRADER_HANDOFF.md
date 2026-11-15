@@ -1696,3 +1696,11 @@ Sources for manual review:
 - QQQ issuer product/distribution page: https://www.invesco.com/us/en/financial-products/etfs/invesco-qqq-trust-series-1.html
 
 PR #237's deduplication is a normalization fix only. It does not make the overall ETF data gate pass. The post-merge SIP/Yahoo audit must confirm the 2022 duplicate flag is gone while the 2020 QQQ and SPY historical action gaps remain visible until primary evidence resolves them.
+
+
+### 2026-11-15 continuation — PR #236 merged: default-deny Paper order routing
+
+- PR #236 merged to main at `ac8b42de9026ffbd32a6daa51d39fc846bee5395`.
+- RocketTraderCore now defaults to execute=False. An explicit execution request is blocked unless Paper execution approval is enabled with a traceable non-empty approval reference and an explicit strategy-ID allowlist. Unlisted strategies are blocked; NOVEL_RISK is not execution permission.
+- Offline checks passed: Core Risk Safety, Crypto Paper Execution Safety, Paper Execution Safety, Engine and Capital Regression, Persistent Drawdown Guard, Capital Policy Tests and Earned Growth Milestone Guard. Read-only Paper Activity Audit static checks passed; the real Paper API audit job was skipped on the PR event.
+- No strategy is approved, production Paper approval remains false, no Paper order was sent and Live remains disabled.
