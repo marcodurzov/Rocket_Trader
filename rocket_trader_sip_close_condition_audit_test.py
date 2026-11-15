@@ -6,6 +6,7 @@ import unittest
 from rocket_trader_sip_close_condition_audit import (
     classify_close_discrepancy,
     daily_close_eligible,
+    select_last_eligible_postmarket_trade,
 )
 
 
@@ -36,6 +37,42 @@ class SipCloseConditionAuditTests(unittest.TestCase):
         self.assertEqual(result["unique_trade_count_in_window"], 2)
         self.assertEqual(result["duplicate_trade_records_collapsed"], 1)
 
+    def test_daily_close_can_match_last_eligible_trade_later_in_postmarket(self):
+        trades = [
+            {
+                "timestamp": "2020-03-16T20:00:00.100000Z",
+                "price": 202.49, "size": 500000, "conditions": ["6"],
+                "trade_id": 11, "exchange": "P", "tape": "B",
+            }
+        ]
+        postmarket = {
+            "timestamp": "2020-03-17T00:30:00.000000Z",
+            "price": 207.11, "size": 100, "conditions": ["@"],
+            "trade_id": 12, "exchange": "P", "tape": "B",
+        }
+        result = classify_close_discrepancy(
+            symbol="DIA", session="2020-03-16",
+            alpaca_daily_close=207.11, yahoo_close=202.49,
+            trades=trades, postmarket_last_eligible_trade=postmarket,
+        )
+        self.assertEqual(result["status"], "POSTMARKET_VS_OFFICIAL_CLOSE_PATTERN_OBSERVED")
+        self.assertTrue(result["alpaca_daily_close_matches_postmarket_last_eligible_trade"])
+
+    def test_select_last_eligible_postmarket_trade_skips_extended_hours_condition(self):
+        rows = [
+            {"t": "2020-03-17T00:30:00Z", "p": 207.11, "s": 100, "c": ["@", "T"], "i": 1, "x": "P", "z": "B"},
+            {"t": "2020-03-17T00:29:00Z", "p": 207.10, "s": 100, "c": ["@"], "i": 2, "x": "P", "z": "B"},
+        ]
+        selected = select_last_eligible_postmarket_trade(rows)
+        self.assertEqual(selected["trade_id"], 2)
+        self.assertEqual(selected["price"], 207.10)
+
+    def test_condition_b_is_tape_specific(self):
+        self.assertFalse(daily_close_eligible(["B"], tape="A"))
+        self.assertFalse(daily_close_eligible(["B"], tape="B"))
+        self.assertTrue(daily_close_eligible(["B"], tape="C"))
+        self.assertFalse(daily_close_eligible(["B"], tape=None))
+
     def test_market_center_official_close_is_not_daily_close_eligible(self):
         self.assertFalse(daily_close_eligible(["M"]))
         self.assertTrue(daily_close_eligible(["6"]))
@@ -44,7 +81,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
     def test_any_excluded_condition_uses_strictest_rule(self):
         self.assertFalse(daily_close_eligible(["@", "I"]))
         self.assertFalse(daily_close_eligible(["@", "T"]))
-        self.assertTrue(daily_close_eligible(["@", "F"]))
+        self.assertTrue(daily_close_eligible(["@", "F"], tape="B"))
 
     def test_official_market_center_close_explains_vendor_difference(self):
         trades = [
@@ -124,7 +161,7 @@ class SipCloseConditionAuditTests(unittest.TestCase):
             trades=trades,
         )
         self.assertEqual(result["status"], "CLOSES_AGREE")
-        self.assertTrue(result["alpaca_daily_close_matches_post_close_trade"])
+        self.assertTrue(result["alpaca_daily_close_matches_postmarket_last_eligible_trade"])
 
     def test_daily_bar_not_reproduced_from_eligible_trades_stays_unresolved(self):
         trades = [
