@@ -1251,7 +1251,7 @@ Post-merge read-only 10-year SIP/Yahoo audit `43726989269` completed; 33 offline
 
 Post-merge offline regression: Paper Reconciliation Gate `43726989131` passed 63 tests; Observer Runtime `43726989123` passed 260 tests across 17 suites; Activity Stager `43726989119` passed 19 tests. No live Paper account query, broker mutation, deployment, orders or Live action occurred. No strategy approval; progress remains 58%.
 
-## 2026-11-15 — PR #235: Core Paper execution authorization gate (under review)
+## 2026-11-15 — PR #236: Core Paper execution authorization gate (under review)
 
 The legacy Core had execute=True as the default and could route positive-size NOVEL_RISK decisions to its Paper adapter. That contradicted the current project state (no Paper approval and no approved strategy). The Core now defaults to execute=False and requires an explicit Paper approval reference plus a strategy-ID allowlist before any order can be submitted. An unlisted strategy is blocked even when the global approval flag is set. Test-only validation uses a local counting adapter and no broker.
 
