@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from zoneinfo import ZoneInfo
@@ -368,19 +368,22 @@ def _fetch_last_postmarket_eligible_trade(
 def _fetch_alpaca_daily_closes(
     client: StockHistoricalDataClient,
     symbols: Iterable[str],
+    *,
+    start_date: date,
+    end_date: date,
 ) -> Dict[str, Dict[str, float]]:
-    request = StockBarsRequest(
-        symbol_or_symbols=list(symbols),
-        timeframe=TimeFrame.Day,
-        start=datetime(2020, 3, 11, tzinfo=timezone.utc),
-        end=datetime(2020, 3, 20, tzinfo=timezone.utc),
-        adjustment=Adjustment.RAW,
-        feed=DataFeed.SIP,
-        limit=10000,
-    )
-    bars = client.get_stock_bars(request)
     output: Dict[str, Dict[str, float]] = {}
     for symbol in symbols:
+        request = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TimeFrame.Day,
+            start=datetime.combine(start_date, time.min, tzinfo=timezone.utc),
+            end=datetime.combine(end_date, time.min, tzinfo=timezone.utc),
+            adjustment=Adjustment.RAW,
+            feed=DataFeed.SIP,
+            limit=10000,
+        )
+        bars = client.get_stock_bars(request)
         output[symbol] = {}
         for bar in bars[symbol]:
             local_session = bar.timestamp.astimezone(NY).date().isoformat()
@@ -388,12 +391,17 @@ def _fetch_alpaca_daily_closes(
     return output
 
 
-def _fetch_yahoo_raw_closes(symbols: Iterable[str]) -> Dict[str, Dict[str, float]]:
+def _fetch_yahoo_raw_closes(
+    symbols: Iterable[str],
+    *,
+    start_date: date,
+    end_date: date,
+) -> Dict[str, Dict[str, float]]:
     output: Dict[str, Dict[str, float]] = {}
     for symbol in symbols:
         history = yf.Ticker(symbol).history(
-            start="2020-03-11",
-            end="2020-03-20",
+            start=start_date.isoformat(),
+            end=end_date.isoformat(),
             auto_adjust=False,
             actions=False,
             repair=False,
@@ -432,10 +440,23 @@ def run_audit(
     if len({(x["symbol"], x["session"]) for x in normalized_targets}) != len(normalized_targets):
         raise CloseAuditError("Duplicate symbol/session targets are not allowed")
 
+    api_key = os.getenv("ALPACA_API_KEY") or os.getenv("APCA_API_KEY_ID")
+    secret_key = os.getenv("ALPACA_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
+    if not api_key or not secret_key:
+        raise CloseAuditError("ALPACA_API_KEY and ALPACA_SECRET_KEY are required")
+
     symbols = tuple(sorted({item["symbol"] for item in normalized_targets}))
+    first_session = min(date.fromisoformat(item["session"]) for item in normalized_targets)
+    last_session = max(date.fromisoformat(item["session"]) for item in normalized_targets)
+    history_start = first_session - timedelta(days=3)
+    history_end = last_session + timedelta(days=2)
     client = StockHistoricalDataClient(api_key, secret_key)
-    alpaca_daily = _fetch_alpaca_daily_closes(client, symbols)
-    yahoo_daily = _fetch_yahoo_raw_closes(symbols)
+    alpaca_daily = _fetch_alpaca_daily_closes(
+        client, symbols, start_date=history_start, end_date=history_end,
+    )
+    yahoo_daily = _fetch_yahoo_raw_closes(
+        symbols, start_date=history_start, end_date=history_end,
+    )
 
     http = requests.Session()
     http.headers.update({
