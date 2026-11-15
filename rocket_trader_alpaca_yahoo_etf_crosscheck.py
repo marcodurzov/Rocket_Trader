@@ -15,6 +15,7 @@ import sys
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -526,6 +527,74 @@ def fetch_alpaca_corporate_actions(
     return events
 
 
+def _canonical_action_decimal(value: Any) -> Optional[str]:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return format(Decimal(str(value)).normalize(), "f")
+    except (InvalidOperation, ValueError):
+        return str(value).strip()
+
+
+def deduplicate_alpaca_corporate_action_events(
+    events: Iterable[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Collapse repeated cash-dividend records for the same economic event.
+
+    Alpaca can return the same dividend with different process/payable dates.
+    Those are lifecycle/version records, not separate cash distributions, when
+    the issuer identity, ex-date, record date, rates and classification match.
+    Keep every source ID for audit. Distinct economic records remain separate.
+    """
+    grouped: Dict[Any, List[Dict[str, Any]]] = {}
+    first_seen: Dict[Any, int] = {}
+    for index, raw_event in enumerate(events or []):
+        event = dict(raw_event)
+        if event.get("action_type") != "cash_dividend":
+            key = ("non_cash_event", index)
+        else:
+            key = (
+                "cash_dividend",
+                str(event.get("symbol") or "").strip().upper(),
+                str(event.get("ex_date") or "").strip(),
+                str(event.get("record_date") or "").strip(),
+                str(event.get("cusip") or "").strip().upper() or None,
+                str(event.get("isin") or "").strip().upper() or None,
+                _canonical_action_decimal(event.get("rate")),
+                _canonical_action_decimal(event.get("long_term_rate")),
+                _canonical_action_decimal(event.get("short_term_rate")),
+                bool(event.get("special", False)),
+                str(event.get("sub_type") or "").strip() or None,
+                str(event.get("currency") or "").strip().upper() or None,
+            )
+        grouped.setdefault(key, []).append(event)
+        first_seen.setdefault(key, index)
+
+    normalized: List[tuple[int, Dict[str, Any]]] = []
+    for key, records in grouped.items():
+        records = sorted(
+            records,
+            key=lambda item: (
+                str(item.get("process_date") or ""),
+                str(item.get("payable_date") or ""),
+                str(item.get("id") or ""),
+            ),
+        )
+        representative = dict(records[0])
+        source_ids = []
+        for record in records:
+            source_id = record.get("id")
+            if source_id and source_id not in source_ids:
+                source_ids.append(source_id)
+        if representative.get("action_type") == "cash_dividend":
+            representative["source_record_ids"] = source_ids
+            representative["duplicate_record_count"] = len(records)
+        normalized.append((first_seen[key], representative))
+
+    normalized.sort(key=lambda item: item[0])
+    return [event for _, event in normalized]
+
+
 def compare_adjustment_factors(
     symbol: str,
     yahoo_raw_close: Any,
@@ -580,6 +649,12 @@ def compare_adjustment_factors(
 
     dividend_events = action_series(yahoo_dividends)
     split_events = action_series(yahoo_splits)
+    alpaca_actions = (
+        deduplicate_alpaca_corporate_action_events(alpaca_corporate_actions)
+        if alpaca_corporate_actions is not None else None
+    )
+    alpaca_action_raw_count = len(alpaca_actions or [])
+    alpaca_action_economic_count = len(alpaca_actions or [])
 
     raw_returns = pd.concat([
         common["yahoo_raw"].pct_change().rename("yahoo"),
@@ -595,8 +670,8 @@ def compare_adjustment_factors(
     # factor steps. Duplicate API records are unresolved until their identity
     # is independently established; they are never summed.
     alpaca_cash_by_date: Dict[str, List[Dict[str, Any]]] = {}
-    if alpaca_corporate_actions is not None:
-        for event in alpaca_corporate_actions:
+    if alpaca_actions is not None:
+        for event in alpaca_actions:
             if event.get("action_type") != "cash_dividend":
                 continue
             ex_date = str(event.get("ex_date") or "")
@@ -615,7 +690,7 @@ def compare_adjustment_factors(
             corporate_action_review_flags.append({
                 "session": session_key,
                 "reason": "MULTIPLE_ALPACA_CASH_DIVIDEND_RECORDS",
-                "event_ids": [event.get("id") for event in alpaca_events],
+                "event_ids": [source_id for event in alpaca_events for source_id in (event.get("source_record_ids") or [event.get("id")])],
             })
         elif len(alpaca_events) == 1:
             try:
@@ -656,7 +731,7 @@ def compare_adjustment_factors(
                             round(alpaca_cash, 8) if np.isfinite(alpaca_cash) else None
                         ),
                         "nearby_yahoo_dividend_dates": new_alignment_dates,
-                        "event_ids": [alpaca_events[0].get("id")],
+                        "event_ids": alpaca_events[0].get("source_record_ids") or [alpaca_events[0].get("id")],
                     })
         elif yahoo_cash > DIVIDEND_MATCH_ABSOLUTE_TOLERANCE:
             nearby_alpaca_candidates = []
@@ -772,6 +847,8 @@ def compare_adjustment_factors(
             "alpaca_corporate_actions_on_session": [
                 {
                     "id": event.get("id"),
+                    "source_record_ids": event.get("source_record_ids") or ([event.get("id")] if event.get("id") else []),
+                    "duplicate_record_count": event.get("duplicate_record_count", 1),
                     "cusip": event.get("cusip"),
                     "isin": event.get("isin"),
                     "record_date": event.get("record_date"),
@@ -867,6 +944,11 @@ def compare_adjustment_factors(
             float(raw_return_diff_bps.abs().max()), 4
         ),
         "corporate_action_data_available": alpaca_corporate_actions is not None,
+        "corporate_action_raw_record_count": alpaca_action_raw_count,
+        "corporate_action_economic_event_count": alpaca_action_economic_count,
+        "corporate_action_duplicate_records_collapsed": (
+            alpaca_action_raw_count - alpaca_action_economic_count
+        ),
         "corporate_action_review_flag_count": len(corporate_action_review_flags),
         "corporate_action_review_flags": corporate_action_review_flags,
         "largest_adjustment_factor_step_changes": top_steps,
