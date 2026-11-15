@@ -23,6 +23,17 @@ import pandas as pd
 
 DEFAULT_SYMBOLS = ("DIA", "EEM", "EFA", "GLD", "IWM", "QQQ", "SPY", "TLT")
 
+# Conservative source-integrity alert limits. These are data-quality gates,
+# not estimates of trading costs or strategy performance.
+MAX_CUMULATIVE_RETURN_DIFF_BPS = 50.0
+MAX_NORMALIZED_CLOSE_DIFF_PCT = 0.5
+MAX_SINGLE_RETURN_DIFF_BPS = 100.0
+MAX_RAW_NORMALIZED_CLOSE_DIFF_PCT = 0.5
+MAX_RAW_SINGLE_RETURN_DIFF_BPS = 100.0
+MAX_ADJUSTMENT_FACTOR_DIVERGENCE_PCT = 0.5
+DIVIDEND_MATCH_ABSOLUTE_TOLERANCE = 0.01
+DIVIDEND_MATCH_RELATIVE_TOLERANCE = 0.01
+
 
 class CrosscheckError(RuntimeError):
     """A source returned missing, invalid, or incomparable price history."""
@@ -66,6 +77,9 @@ def compare_close_series(
     min_source_coverage: float = 0.95,
     min_return_correlation: float = 0.995,
     max_p95_abs_return_diff_bps: float = 20.0,
+    max_cumulative_return_diff_bps: float = MAX_CUMULATIVE_RETURN_DIFF_BPS,
+    max_normalized_close_diff_pct: float = MAX_NORMALIZED_CLOSE_DIFF_PCT,
+    max_single_return_diff_bps: float = MAX_SINGLE_RETURN_DIFF_BPS,
 ) -> Dict[str, Any]:
     """Compare adjusted closes and daily returns without fitting any strategy."""
     yahoo = _close_series(yahoo_close, "Yahoo")
@@ -155,6 +169,16 @@ def compare_close_series(
         "minimum_daily_return_correlation": corr >= min_return_correlation,
         "maximum_p95_abs_return_difference": float(abs_diff_bps.quantile(0.95))
         <= max_p95_abs_return_diff_bps,
+        "maximum_absolute_cumulative_return_difference": (
+            abs(alpaca_total - yahoo_total) * 10000.0
+            <= max_cumulative_return_diff_bps
+        ),
+        "maximum_normalized_close_difference": (
+            float(normalized_close_diff_pct.max()) <= max_normalized_close_diff_pct
+        ),
+        "maximum_single_daily_return_difference": (
+            float(abs_diff_bps.max()) <= max_single_return_diff_bps
+        ),
     }
     return {
         "symbol": symbol,
@@ -567,6 +591,57 @@ def compare_adjustment_factors(
         / (common["yahoo_raw"] / common["yahoo_raw"].iloc[0]) - 1.0
     ) * 100.0
 
+    # Compare every cash-dividend ex-date, not only the ten largest adjustment
+    # factor steps. Duplicate API records are unresolved until their identity
+    # is independently established; they are never summed.
+    alpaca_cash_by_date: Dict[str, List[Dict[str, Any]]] = {}
+    if alpaca_corporate_actions is not None:
+        for event in alpaca_corporate_actions:
+            if event.get("action_type") != "cash_dividend":
+                continue
+            ex_date = str(event.get("ex_date") or "")
+            if ex_date in {str(session) for session in common.index}:
+                alpaca_cash_by_date.setdefault(ex_date, []).append(event)
+
+    corporate_action_review_flags = []
+    for session in common.index:
+        session_key = str(session)
+        yahoo_cash = float(dividend_events.loc[session])
+        alpaca_events = alpaca_cash_by_date.get(session_key, [])
+        if len(alpaca_events) > 1:
+            corporate_action_review_flags.append({
+                "session": session_key,
+                "reason": "MULTIPLE_ALPACA_CASH_DIVIDEND_RECORDS",
+                "event_ids": [event.get("id") for event in alpaca_events],
+            })
+        elif len(alpaca_events) == 1:
+            try:
+                alpaca_cash = float(alpaca_events[0].get("rate"))
+            except (TypeError, ValueError):
+                alpaca_cash = float("nan")
+            tolerance = max(
+                DIVIDEND_MATCH_ABSOLUTE_TOLERANCE,
+                abs(alpaca_cash) * DIVIDEND_MATCH_RELATIVE_TOLERANCE
+                if np.isfinite(alpaca_cash) else 0.0,
+            )
+            if not np.isfinite(alpaca_cash) or abs(yahoo_cash - alpaca_cash) > tolerance:
+                corporate_action_review_flags.append({
+                    "session": session_key,
+                    "reason": "YAHOO_ALPACA_CASH_DIVIDEND_MISMATCH",
+                    "yahoo_cash_dividend": round(yahoo_cash, 8),
+                    "alpaca_cash_dividend": (
+                        round(alpaca_cash, 8) if np.isfinite(alpaca_cash) else None
+                    ),
+                    "event_ids": [alpaca_events[0].get("id")],
+                })
+        elif yahoo_cash > DIVIDEND_MATCH_ABSOLUTE_TOLERANCE:
+            corporate_action_review_flags.append({
+                "session": session_key,
+                "reason": "ALPACA_CASH_DIVIDEND_EVENT_MISSING",
+                "yahoo_cash_dividend": round(yahoo_cash, 8),
+                "event_ids": [],
+            })
+
     top_steps = []
     for session, _ in factor_step_change_bps.abs().sort_values(ascending=False).head(10).items():
         if pd.isna(factor_step_change_bps.loc[session]):
@@ -732,11 +807,43 @@ def compare_adjustment_factors(
         "p95_abs_raw_daily_return_difference_bps": round(
             float(raw_return_diff_bps.abs().quantile(0.95)), 4
         ),
+        "max_abs_raw_daily_return_difference_bps": round(
+            float(raw_return_diff_bps.abs().max()), 4
+        ),
+        "corporate_action_data_available": alpaca_corporate_actions is not None,
+        "corporate_action_review_flag_count": len(corporate_action_review_flags),
+        "corporate_action_review_flags": corporate_action_review_flags,
         "largest_adjustment_factor_step_changes": top_steps,
         "largest_raw_return_divergences": top_raw,
     }
 
 
+
+
+def evaluate_adjustment_diagnostic_gates(
+    diagnostics: Dict[str, Any],
+) -> Dict[str, bool]:
+    """Fail closed on unresolved actions or material raw/adjustment mismatches."""
+    return {
+        "corporate_action_data_available": (
+            diagnostics.get("corporate_action_data_available") is True
+        ),
+        "corporate_actions_resolved": (
+            diagnostics.get("corporate_action_review_flag_count") == 0
+        ),
+        "maximum_raw_normalized_close_difference": (
+            diagnostics.get("max_abs_raw_normalized_close_difference_pct", float("inf"))
+            <= MAX_RAW_NORMALIZED_CLOSE_DIFF_PCT
+        ),
+        "maximum_raw_single_daily_return_difference": (
+            diagnostics.get("max_abs_raw_daily_return_difference_bps", float("inf"))
+            <= MAX_RAW_SINGLE_RETURN_DIFF_BPS
+        ),
+        "maximum_adjustment_factor_divergence": (
+            diagnostics.get("max_abs_relative_adjustment_factor_divergence_pct", float("inf"))
+            <= MAX_ADJUSTMENT_FACTOR_DIVERGENCE_PCT
+        ),
+    }
 
 
 # Alpaca requires >=15 minutes of history delay; one extra minute is the safety margin.
@@ -931,6 +1038,12 @@ def run_audit(
                     if str(event.get("symbol") or "").upper() == symbol
                 ] if corporate_action_events is not None else None,
             )
+            result["adjustment_diagnostic_gates"] = evaluate_adjustment_diagnostic_gates(
+                result["adjustment_factor_diagnostics"]
+            )
+            result["adjustment_diagnostic_pass"] = all(
+                result["adjustment_diagnostic_gates"].values()
+            )
             results.append(result)
             if token:
                 try:
@@ -956,7 +1069,10 @@ def run_audit(
     )
     base_diagnostics_pass = (
         bool(results) and not errors and corporate_actions_error is None
-        and all(x["diagnostic_pass"] for x in results)
+        and all(
+            x["diagnostic_pass"] and x.get("adjustment_diagnostic_pass") is True
+            for x in results
+        )
     )
     return {
         "ok": bool(results) and not errors and corporate_actions_error is None and (
@@ -988,6 +1104,13 @@ def run_audit(
         "tiingo_symbols_compared": len(tiingo_results),
         "tiingo_all_diagnostic_gates_pass": tiingo_status["all_diagnostic_gates_pass"],
         "symbols_diagnostic_pass": sum(bool(x["diagnostic_pass"]) for x in results),
+        "symbols_adjustment_diagnostic_pass": sum(
+            bool(x.get("adjustment_diagnostic_pass")) for x in results
+        ),
+        "symbols_review_required": [
+            x["symbol"] for x in results
+            if not x["diagnostic_pass"] or not x.get("adjustment_diagnostic_pass")
+        ],
         "symbols_compared": len(results),
         "all_diagnostic_gates_pass": bool(base_diagnostics_pass) and corporate_actions_error is None and (
             not tiingo_status["requested"]

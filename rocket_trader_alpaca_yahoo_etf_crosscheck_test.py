@@ -16,6 +16,7 @@ from rocket_trader_alpaca_yahoo_etf_crosscheck import (
     fetch_yahoo_history,
     fetch_yahoo_adjustment_fields,
     compare_adjustment_factors,
+    evaluate_adjustment_diagnostic_gates,
     fetch_tiingo_history,
     fetch_alpaca_corporate_actions,
     tiingo_audit_status,
@@ -90,6 +91,73 @@ class AlpacaYahooCrosscheckTests(unittest.TestCase):
             "alpaca_vs_yahoo_normalized_close_difference_pct",
             result["largest_normalized_close_divergences"][0],
         )
+
+    def test_cumulative_and_normalized_price_drift_fail_even_with_high_correlation(self):
+        drift = pd.Series(
+            [1.0, 1.0028, 1.0057, 1.0085, 1.0114, 1.0142, 1.0171, 1.02],
+            index=self.dates,
+        )
+        alpaca = self.yahoo * drift
+        result = compare_close_series(
+            "QQQ", self.yahoo, alpaca,
+            min_common_sessions=5,
+            min_source_coverage=1.0,
+            min_return_correlation=0.99,
+        )
+        self.assertGreater(result["daily_return_correlation"], 0.99)
+        self.assertFalse(result["diagnostic_gates"]["maximum_absolute_cumulative_return_difference"])
+        self.assertFalse(result["diagnostic_gates"]["maximum_normalized_close_difference"])
+        self.assertTrue(result["diagnostic_gates"]["maximum_single_daily_return_difference"])
+        self.assertFalse(result["diagnostic_pass"])
+
+    def test_adjustment_factor_audit_flags_duplicate_and_missing_dividend_events(self):
+        raw = self.yahoo.copy()
+        factors = pd.Series([1.0] * 8, index=self.dates)
+        actions = [
+            {
+                "id": "duplicate-1", "action_type": "cash_dividend", "symbol": "QQQ",
+                "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+            },
+            {
+                "id": "duplicate-2", "action_type": "cash_dividend", "symbol": "QQQ",
+                "ex_date": str(self.dates[4].date()), "rate": "0.51856",
+            },
+            {
+                "id": "missing-yahoo", "action_type": "cash_dividend", "symbol": "QQQ",
+                "ex_date": str(self.dates[5].date()), "rate": "0.38824",
+            },
+        ]
+        result = compare_adjustment_factors(
+            "QQQ", raw, raw * factors, raw, raw * factors,
+            min_common_sessions=5,
+            yahoo_dividends=pd.Series([0.0] * 8, index=self.dates),
+            alpaca_corporate_actions=actions,
+        )
+        self.assertEqual(result["corporate_action_review_flag_count"], 2)
+        reasons = {item["reason"] for item in result["corporate_action_review_flags"]}
+        self.assertEqual(
+            reasons,
+            {
+                "MULTIPLE_ALPACA_CASH_DIVIDEND_RECORDS",
+                "YAHOO_ALPACA_CASH_DIVIDEND_MISMATCH",
+            },
+        )
+        gates = evaluate_adjustment_diagnostic_gates(result)
+        self.assertFalse(gates["corporate_actions_resolved"])
+        self.assertTrue(gates["maximum_raw_normalized_close_difference"])
+        self.assertTrue(gates["maximum_raw_single_daily_return_difference"])
+
+    def test_adjustment_integrity_gates_fail_on_material_raw_price_divergence(self):
+        gates = evaluate_adjustment_diagnostic_gates({
+            "corporate_action_data_available": True,
+            "corporate_action_review_flag_count": 0,
+            "max_abs_raw_normalized_close_difference_pct": 2.0,
+            "max_abs_raw_daily_return_difference_bps": 250.0,
+            "max_abs_relative_adjustment_factor_divergence_pct": 0.1,
+        })
+        self.assertFalse(gates["maximum_raw_normalized_close_difference"])
+        self.assertFalse(gates["maximum_raw_single_daily_return_difference"])
+        self.assertTrue(gates["maximum_adjustment_factor_divergence"])
 
     def test_source_coverage_is_measured_separately(self):
         alpaca = self.yahoo.iloc[1:-1]
