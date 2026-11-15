@@ -604,6 +604,8 @@ def compare_adjustment_factors(
                 alpaca_cash_by_date.setdefault(ex_date, []).append(event)
 
     corporate_action_review_flags = []
+    # A single dividend with two vendor date conventions must yield one review
+    # item, not one duplicate flag from each side of the same date mismatch.
     dividend_date_alignment_pairs = set()
     for session in common.index:
         session_key = str(session)
