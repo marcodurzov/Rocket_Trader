@@ -1,9 +1,9 @@
 # Rocket Trader — Master Handoff & Working Rules
 
-**Last updated:** 2026-11-15 (PR #229 merged; persistent-state startup gate and market-data-only override documented)
+**Last updated:** 2026-11-15 (PR #231 merged; ETF source-integrity gates corrected and new 10-year SIP audit reviewed)
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Latest verified main HEAD before this Handoff refresh:** `f4587c163dbd97b40c87eb7e28d41a721ac99875` (PR #229; startup gate and Compose overrides documented)
+**Latest verified main HEAD before this Handoff refresh:** `15c269eee60bf76cbe252a69fea2674e8e227a08` (PR #231; ETF adjusted-history and corporate-action divergence gates integrated)
 **Current progress estimate:** **58%** toward a complete, validated, operational system. This is an engineering/evidence maturity estimate, not a profitability estimate.
 
 ## 1. How to resume in a new conversation
@@ -1629,3 +1629,24 @@ The read-only Paper audit still needs a manual `workflow_dispatch` run on GitHub
 - Updated image published (not deployed): `ghcr.io/marcodurzov/rocket_trader:f4587c163dbd97b40c87eb7e28d41a721ac99875`, digest `sha256:33d6f8c4924267b4940bc2fef050ac9b88d8497720ad137b6e32511508405673`.
 - The manual read-only Paper activity audit remains unrun; PR checks skip it. The repository integration available here can inspect workflow runs but cannot start a manual `workflow_dispatch`. No persistent host/database was accessed, no migration/deployment occurred, and no order/Live action occurred.
 - Progress remains **58%**; no strategy passed adjusted OOS acceptance and profitability remains unproven.
+
+
+### 2026-11-15 continuation — PR #231: strict ETF adjusted-history and corporate-action gates
+
+- PR #231 merged to main at `15c269eee60bf76cbe252a69fea2674e8e227a08`.
+- Triggering finding: scheduled 10-year SIP/Yahoo cross-check run `43724308433` reported all eight symbols passing, although QQQ had +203.1583 bps cumulative adjusted-return drift, duplicate Alpaca dividend records for 2022-09-19 and an Alpaca dividend missing from Yahoo's dividend series on 2020-09-21. SPY had -176.3187 bps cumulative drift, 2.4246% maximum normalized adjusted-close divergence and 268.8339 bps maximum single-day adjusted-return difference. The old pass/fail logic checked history overlap, correlation and p95 daily return difference but omitted cumulative drift, maximum normalized close divergence, single-day outliers, raw-price parity and unresolved corporate actions.
+- PR #231 adds conservative review gates: absolute cumulative return drift <=50 bps, normalized adjusted-close divergence <=0.5%, maximum single-session adjusted-return difference <=100 bps, raw normalized-close divergence <=0.5%, raw single-session return divergence <=100 bps, adjustment-factor divergence <=0.5%, and complete/resolved dividend event matching. Duplicate same-ex-date cash-dividend records are not summed; they remain unresolved until independently identified.
+- PR CI `43725813380` passed all 31 offline ETF cross-check tests. Post-merge cross-check `43725907128` completed successfully as a read-only 10-year SIP data audit, and runtime/accounting regression `43725907133` passed 258 tests across 17 suites.
+- Post-merge audit artifact: `14166835027`, SHA256 ZIP digest `58dcb9ce2fa94068894d19bfca5654d31f8d3a5cb8faded14d58803425e8b7eb`. The report returned `ok=true` (data retrieval/execution succeeded) but `all_diagnostic_gates_pass=false`; those fields are intentionally distinct.
+- New audit: all 8 ETFs had 2,514 aligned sessions from 2016-11-14 through 2026-11-13; 410 corporate-action records were retrieved with no endpoint error. Only TLT passed all adjusted-history and adjustment-integrity gates. DIA, EEM, EFA, GLD, IWM, QQQ and SPY require review. QQQ retains two corporate-action flags (2020 Yahoo/Alpaca dividend mismatch; 2022 duplicate Alpaca records). SPY retains a missing Alpaca corporate-action record for the Yahoo 2018-06-15 dividend. DIA/EEM/EFA/GLD/IWM/SPY show material raw-price/source divergence, especially during 2020 stress sessions. This does not prove which vendor is wrong; it means parity is not yet established.
+- Tiingo was `NOT_REQUESTED`; no third independent provider was compared. The historical SIP read request succeeded for this run, but this does not establish real-time SIP access or execution quality.
+- Candidate promotion remains false, Paper approval false, orders disabled and zero orders submitted. The 5 bps/side ETF cost assumption remains unvalidated. No strategy is approved and profitability remains unproven.
+- No persistent host/database was accessed, no Paper account activity audit was run, no service was deployed, no broker account mutation/order occurred and Live was not used. Progress remains **58%**.
+
+### Current next gates after PR #231
+
+1. Do not use the previous eight-symbol pass report as evidence of source parity; it is superseded by the strict audit.
+2. Obtain a third independent adjusted-history source for the seven flagged ETFs (Tiingo or another documented provider), with point-in-time/corporate-action methodology recorded. No provider token or paid subscription is authorized; preserve the zero-budget policy unless the user explicitly changes it.
+3. Resolve the QQQ 2020/2022 dividend events and SPY 2018 dividend event against primary issuer/exchange records or an independently licensed provider. Investigate the 2020 raw-price divergences for DIA/EEM/EFA/GLD/IWM/SPY. Do not splice providers to fill gaps.
+4. Re-run source parity and historical strategy research only after data provenance and corporate-action handling are defensible. No threshold relaxation solely to turn a report green.
+5. Separately, the manual read-only Paper activity/full-account audit and persistent-host/database discovery remain blocked. No host or database path is known; no migration/deployment is safe until identified and backed up.

@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-11-15  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
-**Code baseline reviewed:** a8095a767f02377b19b1950a08fd73e154388235 (PR #229 changed Compose configuration and documentation only)
+**Code baseline reviewed:** 15c269eee60bf76cbe252a69fea2674e8e227a08 (PR #231 added strict ETF source-integrity gates)
 
 ## Executive verdict
 
@@ -187,3 +187,12 @@ The deployment runbook now requires the existing FX-aware MXN ledger, fill-bridg
 Post-merge workflows all passed: Reconciliation `43696040849`, GHCR publication `43696040783`, Container `43696040771`, Observer Runtime `43696040769`, Activity Stager `43696040754`, Durable Activity SSE `43696040739`. The image was published (not deployed) at digest `sha256:33d6f8c4924267b4940bc2fef050ac9b88d8497720ad137b6e32511508405673`.
 
 The manual read-only Paper API audit has not run. The actual persistent host and database volume remain unidentified. No strategy passed adjusted OOS acceptance; no orders or Live actions are approved.
+
+
+## 2026-11-15 update — ETF historical data integrity (PR #231)
+
+The Alpaca SIP vs Yahoo 10-year audit now gates cumulative return drift, maximum normalized adjusted-close difference, single-session return outliers, raw-price parity, adjustment-factor divergence and unresolved corporate-action records. Duplicate Alpaca same-ex-date dividend records are review-required and never summed.
+
+Post-merge audit `43725907128` retrieved 2,514 common sessions per ETF and 410 corporate-action records. The retrieval completed, but the data-quality gate correctly failed: only TLT passed; DIA, EEM, EFA, GLD, IWM, QQQ and SPY remain review-required. Material raw-price differences appear in multiple ETFs during 2020 stress sessions. QQQ has a dividend mismatch plus duplicate event records; SPY has a missing Alpaca corporate-action record relative to Yahoo. This does not prove which source is correct; an independent third source/primary corporate-action evidence is required. Tiingo was not requested.
+
+Offline PR cross-check passed 31 tests; post-merge runtime/accounting passed 258 tests across 17 suites. This remains data-audit evidence, not strategy validation, cost validation, Paper approval or profitability. Candidate promotion false; orders disabled; Live blocked. No persistent host/database access, deployment or live Paper audit occurred. Progress remains 58%.
