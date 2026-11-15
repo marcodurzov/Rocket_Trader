@@ -1168,3 +1168,8 @@ PR #217 (`74481f69194659556842cc3a6de45329bfe86fe2`) removes stale statements th
 Validation: PR workflow Durable Activity SSE and Paper Reconciliation Gate passed. Post-merge main runs `43694984477` and `43694984460` passed offline tests and Compose validation. These workflows do not perform a live Paper account audit or deploy the image.
 
 No host or persistent DB was accessed, no migration/deployment/account mutation/order occurred, and Live remains disabled. Progress remains 58%.
+
+
+### Snapshot boundary qualification (PR #212)
+
+The full-account coordinator uses two separate read-only Alpaca calls: positions first, then account cash/equity. It captures a local UTC timestamp immediately after the account response and uses that as the upper boundary for the bounded Activity SSE replay. Alpaca does not provide an atomic combined snapshot through these calls. The coordinator fails closed on detected fill-ledger changes and reconciliation mismatches, but this remains a bounded paired observation rather than an atomic broker snapshot. A persistent host must maintain a synchronized UTC clock.
