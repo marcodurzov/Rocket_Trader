@@ -7,7 +7,9 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from rocket_trader_realized_pnl_ledger import LedgerFX
+from rocket_trader_realized_pnl_ledger import LedgerFX, RealizedPnLLedger
+from rocket_trader_paper_fill_ledger_bridge import PaperFillLedgerBridge
+from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
 from rocket_trader_alpaca_cash_ledger import AlpacaPaperUSDCashLedger
 from rocket_trader_alpaca_activity_sse_consumer import DurableActivitySSEInbox
 
@@ -337,17 +339,29 @@ class StreamRuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, {"ROCKET_TRADER_LEDGER_ENABLED": "false"}, clear=False):
             self.assertIsNone(build_fill_ledger_bridge(config))
 
-    def test_enabled_ledger_bridge_builds_with_durable_paths(self):
+    def test_enabled_ledger_bridge_builds_only_from_existing_valid_state(self):
         config = RuntimeConfig(
             api_key="paper-key", secret_key="paper-secret", db_path=self.db,
             equity_symbols=("SPY",), crypto_symbols=(),
         )
         ledger_path = os.path.join(self.tmp.name, "ledger.sqlite3")
         inbox_path = os.path.join(self.tmp.name, "fill-inbox.sqlite3")
+        stager_path = os.path.join(self.tmp.name, "activity-stager.sqlite3")
+        initial_ledger = RealizedPnLLedger(ledger_path)
+        AlpacaPaperActivityStager(
+            db_path=stager_path, fetch_page=lambda _cursor, _size: [],
+        )
+        PaperFillLedgerBridge(
+            db_path=inbox_path,
+            ledger=initial_ledger,
+            fx_resolver=lambda when: LedgerFX(Decimal("18"), when, "OFFLINE_TEST_FX"),
+            fee_resolver=lambda _payload: {"fee_usd": "0", "fee_asset_qty": "0", "fee_source": "OFFLINE_TEST"},
+        )
         env = {
             "ROCKET_TRADER_LEDGER_ENABLED": "true",
             "ROCKET_TRADER_LEDGER_DB": ledger_path,
             "ROCKET_TRADER_LEDGER_INBOX_DB": inbox_path,
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB": stager_path,
             "ROCKET_TRADER_INITIAL_CAPITAL_MXN": "1000.00",
             "ROCKET_TRADER_MILESTONE_MXN": "100000.00",
         }
@@ -355,8 +369,75 @@ class StreamRuntimeTests(unittest.TestCase):
             bridge = build_fill_ledger_bridge(config)
         self.assertIsNotNone(bridge)
         self.assertEqual(bridge.status()["pending_or_failed"], 0)
-        self.assertTrue(os.path.exists(ledger_path))
-        self.assertTrue(os.path.exists(inbox_path))
+        self.assertTrue(os.path.isfile(ledger_path))
+        self.assertTrue(os.path.isfile(inbox_path))
+        self.assertTrue(os.path.isfile(stager_path))
+
+    def test_enabled_ledger_bridge_refuses_missing_state_without_creating_replacements(self):
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        ledger_path = os.path.join(self.tmp.name, "missing-ledger.sqlite3")
+        inbox_path = os.path.join(self.tmp.name, "missing-fill-inbox.sqlite3")
+        stager_path = os.path.join(self.tmp.name, "missing-stager.sqlite3")
+        env = {
+            "ROCKET_TRADER_LEDGER_ENABLED": "true",
+            "ROCKET_TRADER_LEDGER_DB": ledger_path,
+            "ROCKET_TRADER_LEDGER_INBOX_DB": inbox_path,
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB": stager_path,
+            "ROCKET_TRADER_INITIAL_CAPITAL_MXN": "1000.00",
+            "ROCKET_TRADER_MILESTONE_MXN": "100000.00",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaisesRegex(RuntimeConfigurationError, "Existing realized-P&L ledger database is missing"):
+                build_fill_ledger_bridge(config)
+        self.assertFalse(os.path.exists(ledger_path))
+        self.assertFalse(os.path.exists(inbox_path))
+        self.assertFalse(os.path.exists(stager_path))
+
+    def test_enabled_ledger_bridge_refuses_missing_fill_inbox_without_repair(self):
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        ledger_path = os.path.join(self.tmp.name, "valid-ledger.sqlite3")
+        inbox_path = os.path.join(self.tmp.name, "missing-fill-inbox.sqlite3")
+        stager_path = os.path.join(self.tmp.name, "valid-stager.sqlite3")
+        RealizedPnLLedger(ledger_path)
+        AlpacaPaperActivityStager(
+            db_path=stager_path, fetch_page=lambda _cursor, _size: [],
+        )
+        env = {
+            "ROCKET_TRADER_LEDGER_ENABLED": "true",
+            "ROCKET_TRADER_LEDGER_DB": ledger_path,
+            "ROCKET_TRADER_LEDGER_INBOX_DB": inbox_path,
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB": stager_path,
+            "ROCKET_TRADER_INITIAL_CAPITAL_MXN": "1000.00",
+            "ROCKET_TRADER_MILESTONE_MXN": "100000.00",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaisesRegex(RuntimeConfigurationError, "Existing Paper fill-bridge inbox database is missing"):
+                build_fill_ledger_bridge(config)
+        self.assertFalse(os.path.exists(inbox_path))
+
+    def test_activity_stager_builder_refuses_missing_database_without_creating_it(self):
+        config = RuntimeConfig(
+            api_key="paper-key", secret_key="paper-secret", db_path=self.db,
+            equity_symbols=("SPY",), crypto_symbols=(),
+        )
+        stager_path = os.path.join(self.tmp.name, "missing-stager.sqlite3")
+        env = {
+            "ROCKET_TRADER_ACTIVITY_STAGER_ENABLED": "true",
+            "ROCKET_TRADER_ACTIVITY_STAGER_DB": stager_path,
+            "ALPACA_PAPER": "true",
+            "ALPACA_LIVE_ENABLED": "false",
+            "ROCKET_TRADER_EXECUTION_MODE": "PAPER",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaisesRegex(RuntimeConfigurationError, "Existing Paper activity-stager database is missing"):
+                build_activity_stager(config)
+        self.assertFalse(os.path.exists(stager_path))
 
     def test_account_activity_stager_sync_sets_healthy_heartbeat(self):
         class FakeStager:
