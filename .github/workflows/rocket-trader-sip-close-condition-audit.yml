@@ -16,8 +16,6 @@ on:
       - "rocket_trader_close_audit_targets_2020_2021_v0_1.json"
       - ".github/workflows/rocket-trader-sip-close-condition-audit.yml"
   workflow_dispatch:
-  schedule:
-    - cron: "30 7 * * 0"
 
 permissions:
   contents: read
@@ -40,7 +38,7 @@ jobs:
           python -m py_compile rocket_trader_sip_close_condition_audit.py rocket_trader_sip_close_condition_audit_test.py
           python -m unittest -v rocket_trader_sip_close_condition_audit_test.py
       - name: Run historical SIP trade-condition audit
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'push'
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -49,7 +47,7 @@ jobs:
             --targets-file rocket_trader_close_audit_targets_2020_2021_v0_1.json \
             --output artifacts/sip_close_condition_audit.json
       - name: Upload immutable trade-condition evidence
-        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'push')
+        if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
         uses: actions/upload-artifact@v4
         with:
           name: rocket-trader-sip-close-condition-audit
