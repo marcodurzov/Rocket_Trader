@@ -375,6 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         print("MODE: OFFLINE REGRESSION — NO CREDENTIALS — NO NETWORK")
 
     modules = [
+        "rocket_trader_env",
         "rocket_trader_core",
         "rocket_trader_engine",
         "rocket_trader_bridge",
