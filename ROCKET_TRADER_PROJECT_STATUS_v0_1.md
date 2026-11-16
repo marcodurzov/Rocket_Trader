@@ -1367,3 +1367,8 @@ Latest PR-head workflow runs (all completed successfully):
 - Runtime Freshness Tests: `43788363806`
 
 The Paper activity-audit job in run `43788363816` was skipped by its event condition. These are PR checks, not a completed post-merge workflow audit or a read-only broker-account reconciliation. The shortened Handoff is now approximately 129 lines; the original long-form snapshot is preserved in `HISTORY.md`.
+
+
+## Hosting price correction — 2026-11-15
+
+A current OVHcloud listing advertises VPS-1 from USD 4.54/month (2 vCores, 4 GB RAM, 40 GB NVMe, daily backup, unlimited traffic) and VPS-2 from USD 8.50/month (4 vCores, 8 GB RAM, 75 GB NVMe, daily backup, unlimited traffic). VPS-1's 40 GB disk is below the current 60 GB deployment estimate; VPS-2 is the safer low-cost paid option. Choose a standard datacenter VPS, not Local Zone, because OVH states Local Zone VPS is not compatible with Docker. Hetzner CX23's USD 6.49 reference is currently marked unavailable on its product page. Prices/availability/taxes must be checked at checkout.
