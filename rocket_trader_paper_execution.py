@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from rocket_trader_core import ExecutionMode, ExecutionOrder, Side
+from rocket_trader_env import env_bool
 
 
 class PaperExecutionError(RuntimeError):
@@ -73,7 +74,11 @@ class AlpacaPaperExecutionAdapter:
         db_path: Optional[str] = None,
         client: Any = None,
     ) -> None:
-        if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() == "true":
+        try:
+            live_enabled = env_bool("ALPACA_LIVE_ENABLED", default=False)
+        except ValueError as exc:
+            raise PaperExecutionError("ALPACA_LIVE_ENABLED must be a valid boolean.") from exc
+        if live_enabled:
             raise PaperExecutionError("LIVE mode is prohibited by this adapter.")
         configured_mode = os.getenv("ROCKET_TRADER_EXECUTION_MODE", "PAPER").strip().upper()
         if configured_mode != "PAPER":
