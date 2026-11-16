@@ -3,7 +3,7 @@
 **Updated:** 2026-11-15 (audit-remediation PR #245 merged; hosting and crypto-cost reviews added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Last confirmed main SHA:** `3d032e6fd5da9babfdab1cb958871e1b66987ec3` (PR #245 squash merge; re-verify before every change)  
+**PR #245 squash-merge SHA:** `3d032e6fd5da9babfdab1cb958871e1b66987ec3` (re-verify live `main` SHA before every change)  
 **Engineering/evidence maturity:** 58% as last recorded; this is not a probability of profitability.
 
 ## 1. Resume protocol
