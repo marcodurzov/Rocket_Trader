@@ -4,6 +4,20 @@
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Code baseline reviewed:** 15c269eee60bf76cbe252a69fea2674e8e227a08 (PR #231 added strict ETF source-integrity gates)
 
+## Current-state correction — 2026-11-15 (supersedes earlier status statements below)
+
+The current operational entry point is `ROCKET_TRADER_HANDOFF.md`; the detailed chronology is in `HISTORY.md`. The base SHA used for audit-remediation PR #245 was `f94d0612d60e108c64301d3284c0ba23cc496efc`; PR #245 was squash-merged as `3d032e6fd5da9babfdab1cb958871e1b66987ec3`.
+
+Current verified state:
+- Adaptive no longer owns a duplicate capital-policy implementation; Core's persistent `ProfitAllocator` is the sole source of truth.
+- The Integration Gate now supports offline PR/main regression and manual read-only Paper verification. PR #245's latest head passed nine CI workflow jobs, including Integration Gate, Engine/Capital Regression, Paper Execution Safety, Observer Runtime, container/non-root and freshness tests. The Paper activity audit job was skipped; no broker account audit was performed.
+- The observer container includes the shared strict boolean environment parser; `.gitignore` is present; the unrelated DropNode browser module is removed from the current tree; the verbose handoff is archived in `HISTORY.md`.
+- The separate 55-target SIP close-condition diagnostic has a target manifest and no longer has a weekly schedule, but its evidence artifact remains unreviewed.
+- No persistent host, existing database volume or server deployment is identified. No Paper strategy is approved, no observer orders were submitted, and LIVE remains blocked.
+- Historical ETF data-quality gate remains failed overall; only TLT passed. Crypto fee schedule has been documented separately, but the crypto research code-to-cost-model reconciliation and empirical all-in costs remain open.
+
+Earlier sections in this document are historical evidence and may describe states superseded by later updates. Do not interpret old statements as current status without checking the Handoff and Project Status.
+
 ## Executive verdict
 
 Rocket Trader now has a CI-validated, Docker-packaged, read-only Paper observer with durable fill accounting, bounded Activity SSE coverage, fee-to-fill allocation, and an opt-in full-account reconciliation coordinator. It is **not yet deployed to a persistent host**, has not completed a live Paper forward-observation period, and is **not an autonomous order-execution system**. No strategy is approved. No orders have been submitted by this work. LIVE remains blocked.
