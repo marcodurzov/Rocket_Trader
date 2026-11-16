@@ -110,7 +110,10 @@ The audit-remediation branch `fix/audit-hardening-2026-11-15` is being used for:
 - Standardizing boolean environment parsing for Paper/Live safety flags.
 - Adding a root `.gitignore` for secrets, SQLite state and local Python artifacts.
 - Removing the unrelated DropNode `navegador.py` module.
+- Renaming the extensionless traditional-research guide to `.md`.
 - Archiving this former long-form handoff in `HISTORY.md`.
+
+The separate PR #244 close-condition audit branch had its identical weekly schedule removed; it now runs only on relevant PR/push changes or manual dispatch. This avoids repeating a fixed historical sample every Sunday. Its 55-target diagnostic still requires its own artifact review.
 
 PR #245 is open against `main` with base SHA `f94d0612d60e108c64301d3284c0ba23cc496efc` and head SHA `6001aed4b668408486d7f27c9e302434a49b733c`. No PR-triggered workflow run was returned when checked. The updated workflow trigger exists only on the PR branch until merged; run its offline Integration Gate manually on that branch before merge. These changes are not merged or validated until checks and post-merge state are confirmed.
 
