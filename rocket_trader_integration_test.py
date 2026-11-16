@@ -22,9 +22,12 @@ LIVE está explícitamente deshabilitado.
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import os
 import sys
+
+from rocket_trader_env import env_bool
 from datetime import datetime, timedelta, timezone
 
 
@@ -134,31 +137,19 @@ def verify_environment() -> bool:
 
             return False
 
-    paper = os.getenv(
-        "ALPACA_PAPER",
-        "true",
-    ).lower()
-
-    live = os.getenv(
-        "ALPACA_LIVE_ENABLED",
-        "false",
-    ).lower()
-
-    if paper != "true":
-
-        print(
-            "FAIL: ALPACA_PAPER debe ser true"
-        )
-
+    try:
+        paper = env_bool("ALPACA_PAPER", default=True)
+        live = env_bool("ALPACA_LIVE_ENABLED", default=False)
+    except ValueError as exc:
+        print(f"FAIL: configuración booleana inválida: {exc}")
         return False
 
-    if live == "true":
+    if not paper:
+        print("FAIL: ALPACA_PAPER debe ser true")
+        return False
 
-        print(
-            "FAIL: ALPACA_LIVE_ENABLED "
-            "debe permanecer false"
-        )
-
+    if live:
+        print("FAIL: ALPACA_LIVE_ENABLED debe permanecer false")
         return False
 
     print("[ENV] secrets: OK")
@@ -370,11 +361,21 @@ def verify_alpaca() -> bool:
     return True
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Rocket Trader integration gate")
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Run module self-tests only; do not read credentials or contact Alpaca.",
+    )
+    args = parser.parse_args(argv)
 
     print_header()
+    if args.offline:
+        print("MODE: OFFLINE REGRESSION — NO CREDENTIALS — NO NETWORK")
 
     modules = [
+        "rocket_trader_env",
         "rocket_trader_core",
         "rocket_trader_engine",
         "rocket_trader_bridge",
@@ -382,49 +383,30 @@ def main() -> int:
     ]
 
     for module_name in modules:
-
-        if not run_module_self_test(
-            module_name
-        ):
-
+        if not run_module_self_test(module_name):
             print(SEPARATOR)
-            print(
-                "ROCKET TRADER "
-                "INTEGRATION GATE: FAIL"
-            )
+            print("ROCKET TRADER INTEGRATION GATE: FAIL")
             print(SEPARATOR)
-
             return 2
 
-    if not verify_environment():
+    if not args.offline:
+        if not verify_environment():
+            print(SEPARATOR)
+            print("ROCKET TRADER INTEGRATION GATE: FAIL")
+            print(SEPARATOR)
+            return 2
 
-        print(SEPARATOR)
-        print(
-            "ROCKET TRADER "
-            "INTEGRATION GATE: FAIL"
-        )
-        print(SEPARATOR)
-
-        return 2
-
-    if not verify_alpaca():
-
-        print(SEPARATOR)
-        print(
-            "ROCKET TRADER "
-            "INTEGRATION GATE: FAIL"
-        )
-        print(SEPARATOR)
-
-        return 2
+        if not verify_alpaca():
+            print(SEPARATOR)
+            print("ROCKET TRADER INTEGRATION GATE: FAIL")
+            print(SEPARATOR)
+            return 2
+    else:
+        print("[ALPACA] skipped by explicit offline mode")
 
     print(SEPARATOR)
-    print(
-        "ROCKET TRADER "
-        "INTEGRATION GATE: PASS"
-    )
+    print("ROCKET TRADER INTEGRATION GATE: PASS")
     print(SEPARATOR)
-
     return 0
 
 

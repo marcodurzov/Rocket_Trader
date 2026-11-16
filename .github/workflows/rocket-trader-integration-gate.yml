@@ -1,17 +1,27 @@
 name: Rocket Trader - Integration Gate
 
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      run_mode:
+        description: Select offline regression or read-only Alpaca Paper verification
+        type: choice
+        options:
+          - offline
+          - paper_read_only
+        default: offline
+        required: true
+
+permissions:
+  contents: read
 
 jobs:
   integration-gate:
     runs-on: ubuntu-latest
-
-    env:
-      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-      ALPACA_PAPER: "true"
-      ALPACA_LIVE_ENABLED: "false"
 
     steps:
       - name: Checkout
@@ -28,6 +38,17 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-alpaca.txt
 
-      - name: Run integration gate
+      - name: Run offline integration gate on pull requests and main pushes
+        if: github.event_name != 'workflow_dispatch' || inputs.run_mode == 'offline'
+        run: |
+          python rocket_trader_integration_test.py --offline
+
+      - name: Run read-only Alpaca Paper integration gate on manual dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.run_mode == 'paper_read_only'
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_PAPER: "true"
+          ALPACA_LIVE_ENABLED: "false"
         run: |
           python rocket_trader_integration_test.py

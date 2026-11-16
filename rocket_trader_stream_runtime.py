@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence, Tuple
 
 from rocket_trader_execution_cost_telemetry import ExecutionCostTelemetry
+from rocket_trader_env import env_bool
 
 
 class RuntimeConfigurationError(RuntimeError):
@@ -1048,17 +1049,19 @@ def build_position_reconciliation_gate(config: RuntimeConfig, fill_ledger_bridge
             secret_key=config.secret_key,
             paper=True,
         )
-        enabled = os.getenv("ROCKET_TRADER_CASH_LEDGER_ENABLED", "false").strip().lower()
-        if enabled not in {"1", "true", "yes", "on", "0", "false", "no", "off", ""}:
-            raise RuntimeConfigurationError(
-                "ROCKET_TRADER_CASH_LEDGER_ENABLED must be boolean."
-            )
+        try:
+            enabled = env_bool("ROCKET_TRADER_CASH_LEDGER_ENABLED", default=False)
+            paper_enabled = env_bool("ALPACA_PAPER", default=False)
+            live_enabled = env_bool("ALPACA_LIVE_ENABLED", default=False)
+        except ValueError as exc:
+            raise RuntimeConfigurationError("Invalid boolean runtime configuration.") from exc
+
         cash_ledger = None
         inbox_path = None
-        if enabled in {"1", "true", "yes", "on"}:
-            if os.getenv("ALPACA_PAPER", "false").strip().lower() != "true":
+        if enabled:
+            if not paper_enabled:
                 raise RuntimeConfigurationError("ALPACA_PAPER=true is required for Paper cash reconciliation.")
-            if os.getenv("ALPACA_LIVE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+            if live_enabled:
                 raise RuntimeConfigurationError("Cash reconciliation is Paper-only; ALPACA_LIVE_ENABLED must be false.")
             execution_mode = os.getenv("ROCKET_TRADER_EXECUTION_MODE", "PAPER").strip().upper()
             if execution_mode != "PAPER":

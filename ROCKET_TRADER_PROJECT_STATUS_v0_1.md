@@ -1309,3 +1309,34 @@ The v0.2 close audit's 15-second window still did not reproduce 9/48 Alpaca dail
 ## 2026-11-15 — PR #244: expand trade-condition evidence to 55 material outliers (under review)
 
 The first full-session audit covered 48 rows across six March 2020 sessions and found 25 close matches, 19 postmarket-vs-official-close patterns and 4 preclose-vs-official-close patterns. It did not cover every material outlier in the 10-year cross-check. PR #244 targets 55 symbol/session pairs selected from the top-10 divergences where absolute return difference exceeds 10 bps or raw close difference exceeds 0.5%, using a per-symbol target list. This is a diagnostic expansion only; source parity and strategy promotion remain gated.
+
+
+## 2026-11-15 — Audit remediation PR #245 (open; not merged)
+
+PR #245: https://github.com/marcodurzov/Rocket_Trader/pull/245
+
+Base SHA: `f94d0612d60e108c64301d3284c0ba23cc496efc`; branch head at PR creation: `6001aed4b668408486d7f27c9e302434a49b733c`.
+
+The PR removes the duplicate in-memory capital policy from Adaptive and exercises Core's persistent `ProfitAllocator` in the Adaptive self-test, including milestone persistence after restart and payout suspension below the operating floor. It adds strict shared environment boolean parsing for Paper/Live flags, introduces an explicit credential-free offline Integration Gate mode, configures PR/main triggers and read-only workflow permissions for that gate, adds a root `.gitignore`, removes the unrelated DropNode `navegador.py`, archives the former long-form Handoff in `HISTORY.md`, shortens the operational Handoff to 120 lines, corrects the stale drawdown-guard statement in the baseline and removes ChatGPT-specific README wording.
+
+No Alpaca API request, order, broker account change, host deployment, volume migration or credential access occurred. The initial-capital feasibility question is intentionally deferred. The PR is not merged; no PR-triggered workflow run was visible at the time of this update, so validation must be completed before merge. Do not count these changes as integrated or increase the project progress estimate yet.
+
+
+## 2026-11-15 — Additional audit cleanup on remediation branch
+
+- The extensionless file `Rocket Trader Traditional Research v0.9.2` was renamed to `Rocket Trader Traditional Research v0.9.2.md` on the audit-remediation branch.
+- The separate close-condition audit branch for PR #244 had its weekly schedule removed. Its fixed 55-target historical diagnostic now runs on relevant pull requests/pushes and manual dispatch only; no identical weekly re-run is scheduled. The audit artifact itself remains to be reviewed.
+- The repository branch search returned 253 branches. Safe deletion cannot be completed with the current GitHub connector actions because no branch-delete action is exposed and open/merged PR state could not be reliably enumerated. Do not force-delete branches based on naming or age alone.
+- The connector reports the repository code-search index as unavailable and exposes file fetch but not recursive repository-tree listing. Therefore this work is a targeted verified audit, not a defensible claim that every file/workflow has been enumerated. Full workflow consolidation and checking every workflow's permissions remain open until a complete tree/archive is available.
+
+
+## 2026-11-15 — Hosting options reviewed (research only)
+
+Added `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md`. Zero-budget candidate: OCI Always Free Ampere A1 with 2 OCPU / up to 12 GB RAM and up to 200 GB Always Free block storage, subject to home-region availability and Oracle's documented idle-instance reclamation criteria. Low-cost persistent fallback: small VPS around USD 6–10/month; the current Hetzner CX23 reference is USD 6.49/month before VAT/IPv4 and may be unavailable at checkout. Google Cloud e2-micro's 1 GB RAM / 1 GB monthly egress is not suitable for the six-service stack.
+
+No provider account, server, public IP, SSH key, database volume or deployment was created. The existing-host/database discovery gate remains mandatory before full Compose startup.
+
+
+## 2026-11-15 — Crypto cost schedule review (model reconciliation pending)
+
+Added `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md` after checking Alpaca's current public crypto fee schedule. Tier 1 fees are 15 bps maker / 25 bps taker per executed side; 40 bps/side is not the published commission schedule. It may be retained only as an explicitly decomposed conservative all-in friction assumption (fees + spread + slippage/impact), not described as broker commission. The actual Paper account tier, crypto research code path, fee-to-fill reconciliation and empirical spread/slippage remain unverified. No cost approval or strategy promotion resulted.

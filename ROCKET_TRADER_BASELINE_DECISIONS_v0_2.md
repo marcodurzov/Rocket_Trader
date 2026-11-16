@@ -48,7 +48,7 @@ The project has not yet established defensible numeric values for maximum risk p
 
 
 ### Risk configuration audit note
-The Core currently has prototype defaults (not production-calibrated): 25% maximum position, 80% maximum aggregate exposure, 2% maximum loss per trade, 5% daily loss lock, 2% stop, 4% take-profit, 1.5% trailing-stop parameter, 10 trades/day, 3 consecutive losses and 1% novel-risk budget. These values are code defaults only; they are not an evidence-based approved risk policy. The current Core does not yet implement a persistent peak-to-trough drawdown lock or a complete restart-safe trailing-stop/partial-fill manager. These remain blockers before Paper execution can be enabled.
+The Core currently has prototype defaults (not production-calibrated): 25% maximum position, 80% maximum aggregate exposure, 2% maximum loss per trade, 5% daily loss lock, 2% stop, 4% take-profit, 1.5% trailing-stop parameter, 10 trades/day, 3 consecutive losses and 1% novel-risk budget. These values are code defaults only; they are not an evidence-based approved risk policy. Core now wires a persistent peak-to-trough drawdown guard into the decision path and includes restart-persistence regression coverage. The guard's numeric thresholds remain prototype values and are not an approved risk policy. A complete restart-safe trailing-stop/partial-fill manager remains a blocker before Paper execution can be enabled.
 
 The reference registry contains six strategy/investor references, not a real-time or point-in-time database of successful traders' verified trades. The default `BenchmarkEngine` repository is empty. A sourced trader-intelligence ingestion and validation system remains to be built; no benchmark events may be fabricated.
 
