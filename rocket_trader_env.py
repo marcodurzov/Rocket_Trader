@@ -31,3 +31,30 @@ def env_bool(name: str, default: Optional[bool] = None) -> bool:
     if value in _FALSE_VALUES:
         return False
     raise ValueError(f"{name} contains an unsupported boolean value")
+
+
+def self_test() -> dict:
+    """Exercise accepted boolean spellings and fail-closed rejection."""
+    name = "ROCKET_TRADER_ENV_BOOL_SELF_TEST"
+    original = os.environ.get(name)
+    existed = name in os.environ
+    try:
+        for value in ("1", "true", "YES", "On"):
+            os.environ[name] = value
+            assert env_bool(name) is True
+        for value in ("0", "false", "NO", "Off", ""):
+            os.environ[name] = value
+            assert env_bool(name) is False
+        os.environ[name] = "sometimes"
+        try:
+            env_bool(name)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unknown boolean value was not rejected")
+    finally:
+        if existed:
+            os.environ[name] = original or ""
+        else:
+            os.environ.pop(name, None)
+    return {"ok": True, "boolean_parser": "strict_fail_closed"}
