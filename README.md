@@ -31,6 +31,9 @@ All strategies must be evaluated out of sample, net of realistic costs, against 
 - Human-reviewed news assessment: `NEWS_EVENT_ASSESSMENT.md`.
 - Execution cost telemetry limits: `PAPER_EXECUTION_COST_TELEMETRY.md`.
 - Same-date reference benchmark harness: `REFERENCE_BENCHMARK_HARNESS.md`.
+- Zero-budget and low-cost host comparison: `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md`.
+- Crypto maker/taker fees and all-in cost methodology: `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md`.
+- Archived long-form handoff and chronology: `HISTORY.md`.
 
 ## Current status
 See `ROCKET_TRADER_PROJECT_STATUS_v0_1.md` for merged work, research results, latest CI evidence and remaining blockers.
