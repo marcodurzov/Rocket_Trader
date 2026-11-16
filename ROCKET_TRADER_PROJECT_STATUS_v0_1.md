@@ -1309,3 +1309,14 @@ The v0.2 close audit's 15-second window still did not reproduce 9/48 Alpaca dail
 ## 2026-11-15 — PR #244: expand trade-condition evidence to 55 material outliers (under review)
 
 The first full-session audit covered 48 rows across six March 2020 sessions and found 25 close matches, 19 postmarket-vs-official-close patterns and 4 preclose-vs-official-close patterns. It did not cover every material outlier in the 10-year cross-check. PR #244 targets 55 symbol/session pairs selected from the top-10 divergences where absolute return difference exceeds 10 bps or raw close difference exceeds 0.5%, using a per-symbol target list. This is a diagnostic expansion only; source parity and strategy promotion remain gated.
+
+
+## 2026-11-15 — Audit remediation PR #245 (open; not merged)
+
+PR #245: https://github.com/marcodurzov/Rocket_Trader/pull/245
+
+Base SHA: `f94d0612d60e108c64301d3284c0ba23cc496efc`; branch head at PR creation: `6001aed4b668408486d7f27c9e302434a49b733c`.
+
+The PR removes the duplicate in-memory capital policy from Adaptive and exercises Core's persistent `ProfitAllocator` in the Adaptive self-test, including milestone persistence after restart and payout suspension below the operating floor. It adds strict shared environment boolean parsing for Paper/Live flags, introduces an explicit credential-free offline Integration Gate mode, configures PR/main triggers and read-only workflow permissions for that gate, adds a root `.gitignore`, removes the unrelated DropNode `navegador.py`, archives the former long-form Handoff in `HISTORY.md`, shortens the operational Handoff to 120 lines, corrects the stale drawdown-guard statement in the baseline and removes ChatGPT-specific README wording.
+
+No Alpaca API request, order, broker account change, host deployment, volume migration or credential access occurred. The initial-capital feasibility question is intentionally deferred. The PR is not merged; no PR-triggered workflow run was visible at the time of this update, so validation must be completed before merge. Do not count these changes as integrated or increase the project progress estimate yet.
