@@ -1328,3 +1328,10 @@ No Alpaca API request, order, broker account change, host deployment, volume mig
 - The separate close-condition audit branch for PR #244 had its weekly schedule removed. Its fixed 55-target historical diagnostic now runs on relevant pull requests/pushes and manual dispatch only; no identical weekly re-run is scheduled. The audit artifact itself remains to be reviewed.
 - The repository branch search returned 253 branches. Safe deletion cannot be completed with the current GitHub connector actions because no branch-delete action is exposed and open/merged PR state could not be reliably enumerated. Do not force-delete branches based on naming or age alone.
 - The connector reports the repository code-search index as unavailable and exposes file fetch but not recursive repository-tree listing. Therefore this work is a targeted verified audit, not a defensible claim that every file/workflow has been enumerated. Full workflow consolidation and checking every workflow's permissions remain open until a complete tree/archive is available.
+
+
+## 2026-11-15 — Hosting options reviewed (research only)
+
+Added `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md`. Zero-budget candidate: OCI Always Free Ampere A1 with 2 OCPU / up to 12 GB RAM and up to 200 GB Always Free block storage, subject to home-region availability and Oracle's documented idle-instance reclamation criteria. Low-cost persistent fallback: small VPS around USD 6–10/month; the current Hetzner CX23 reference is USD 6.49/month before VAT/IPv4 and may be unavailable at checkout. Google Cloud e2-micro's 1 GB RAM / 1 GB monthly egress is not suitable for the six-service stack.
+
+No provider account, server, public IP, SSH key, database volume or deployment was created. The existing-host/database discovery gate remains mandatory before full Compose startup.
