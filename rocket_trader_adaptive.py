@@ -30,9 +30,7 @@ La ejecución seguirá siendo responsabilidad de RocketTraderCore.
 
 from __future__ import annotations
 
-import enum
-import math
-from dataclasses import dataclass
+import enumfrom dataclasses import dataclass
 from typing import Optional
 
 
@@ -62,176 +60,7 @@ class NewsImpact(str, enum.Enum):
 # ============================================================================
 
 
-@dataclass(frozen=True)
-class CapitalAllocation:
-    operating_capital: float
-    profit: float
-    threshold: float
-
-    reserve_pct: float
-    reinvestment_pct: float
-    personal_pct: float
-
-    reserve_amount: float
-    reinvestment_amount: float
-    personal_amount: float
-
-    threshold_reached: bool
-
-
-@dataclass(frozen=True)
-class CapitalPolicyConfig:
-    threshold_mxn: float = 100_000.0
-
-    # Antes de llegar a 100,000 MXN
-    # 100% de las utilidades netas realizadas se conserva en el capital operativo.
-    below_threshold_reinvestment_pct: float = 1.00
-    below_threshold_personal_pct: float = 0.00
-    below_threshold_reserve_pct: float = 0.00
-
-    # Desde 100,000 MXN
-    above_threshold_reinvestment_pct: float = 0.50
-    above_threshold_personal_pct: float = 0.40
-    above_threshold_reserve_pct: float = 0.10
-
-    def validate(self) -> None:
-        if self.threshold_mxn <= 0:
-            raise ValueError("threshold_mxn debe ser > 0")
-
-        values = (
-            self.below_threshold_reinvestment_pct,
-            self.below_threshold_personal_pct,
-            self.below_threshold_reserve_pct,
-            self.above_threshold_reinvestment_pct,
-            self.above_threshold_personal_pct,
-            self.above_threshold_reserve_pct,
-        )
-
-        if any(value < 0 or value > 1 for value in values):
-            raise ValueError("Los porcentajes deben estar entre 0 y 1")
-
-        if not math.isclose(
-            self.below_threshold_reinvestment_pct
-            + self.below_threshold_personal_pct
-            + self.below_threshold_reserve_pct,
-            1.0,
-            abs_tol=1e-9,
-        ):
-            raise ValueError(
-                "La distribución debajo de 100,000 MXN debe sumar 100%"
-            )
-
-        if not math.isclose(
-            self.above_threshold_reinvestment_pct
-            + self.above_threshold_personal_pct
-            + self.above_threshold_reserve_pct,
-            1.0,
-            abs_tol=1e-9,
-        ):
-            raise ValueError(
-                "La distribución desde 100,000 MXN debe sumar 100%"
-            )
-
-
-class CapitalPolicy:
-    """
-    Regla automática de crecimiento del capital.
-
-    < 100,000 MXN:
-        100% reinversión
-        0% personal
-        0% reserva separada
-
-    >= 100,000 MXN:
-        50% reinversión
-        40% personal
-        10% reserva
-    """
-
-    def __init__(
-        self,
-        config: Optional[CapitalPolicyConfig] = None,
-    ) -> None:
-
-        self.config = config or CapitalPolicyConfig()
-        self.config.validate()
-        self._threshold_reached = False
-
-    def allocation(
-        self,
-        operating_capital: float,
-        profit: float,
-    ) -> CapitalAllocation:
-
-        if operating_capital < 0:
-            raise ValueError(
-                "operating_capital no puede ser negativo"
-            )
-
-        if profit < 0:
-            raise ValueError(
-                "profit no puede ser negativo"
-            )
-
-        if operating_capital >= self.config.threshold_mxn:
-            self._threshold_reached = True
-        threshold_reached = self._threshold_reached
-
-        if threshold_reached:
-
-            reserve_pct = (
-                self.config.above_threshold_reserve_pct
-            )
-
-            reinvestment_pct = (
-                self.config.above_threshold_reinvestment_pct
-            )
-
-            personal_pct = (
-                self.config.above_threshold_personal_pct
-            )
-
-        else:
-
-            reserve_pct = (
-                self.config.below_threshold_reserve_pct
-            )
-
-            reinvestment_pct = (
-                self.config.below_threshold_reinvestment_pct
-            )
-
-            personal_pct = (
-                self.config.below_threshold_personal_pct
-            )
-
-        reserve = round(
-            profit * reserve_pct,
-            2,
-        )
-
-        reinvestment = round(
-            profit * reinvestment_pct,
-            2,
-        )
-
-        personal = round(
-            profit - reserve - reinvestment,
-            2,
-        )
-
-        return CapitalAllocation(
-            operating_capital=operating_capital,
-            profit=profit,
-            threshold=self.config.threshold_mxn,
-            reserve_pct=reserve_pct,
-            reinvestment_pct=reinvestment_pct,
-            personal_pct=personal_pct,
-            reserve_amount=reserve,
-            reinvestment_amount=reinvestment,
-            personal_amount=personal,
-            threshold_reached=threshold_reached,
-        )
+# Capital allocation is owned exclusively by ProfitAllocator in rocket_trader_core.
 
 
 # ============================================================================
@@ -586,45 +415,56 @@ class AdaptiveRiskEngine:
 def self_test() -> dict:
 
     # ----------------------------------------------------------------------
-    # CAPITAL POLICY
+    # CANONICAL PERSISTENT CAPITAL POLICY (CORE)
     # ----------------------------------------------------------------------
 
-    policy = CapitalPolicy()
+    # Adaptive must not implement a second, in-memory capital policy.
+    # Exercise the Core allocator here so the Integration Gate validates the
+    # same durable milestone implementation used by the system.
+    from tempfile import TemporaryDirectory
+    from rocket_trader_core import ProfitAllocator
 
-    below = policy.allocation(
-        operating_capital=50_000,
-        profit=10_000,
-    )
+    with TemporaryDirectory() as temp_dir:
+        milestone_path = f"{temp_dir}/capital-milestone.json"
+        policy = ProfitAllocator(milestone_path=milestone_path)
 
-    assert below.reinvestment_pct == 0.70
-    assert below.personal_pct == 0.20
-    assert below.reserve_pct == 0.10
+        below = policy.plan(
+            distributable_profit=10_000,
+            operating_capital=50_000,
+        )
+        assert below.reinvestment_pct == 1.0
+        assert below.personal_pct == 0.0
+        assert below.reserve_pct == 0.0
+        assert below.reinvestment_amount == 10_000
+        assert below.personal_amount == 0
+        assert below.reserve_amount == 0
 
-    assert below.reinvestment_amount == 7_000
-    assert below.personal_amount == 2_000
-    assert below.reserve_amount == 1_000
+        above = policy.plan(
+            distributable_profit=10_000,
+            operating_capital=120_000,
+        )
+        assert above.threshold_reached is True
+        assert above.reinvestment_pct == 0.50
+        assert above.personal_pct == 0.40
+        assert above.reserve_pct == 0.10
+        assert above.reinvestment_amount == 5_000
+        assert above.personal_amount == 4_000
+        assert above.reserve_amount == 1_000
 
-    above = policy.allocation(
-        operating_capital=100_000,
-        profit=10_000,
-    )
-
-    after_drawdown = policy.allocation(
-        operating_capital=70_000,
-        profit=10_000,
-    )
-    assert after_drawdown.threshold_reached is True
-    assert after_drawdown.reinvestment_pct == 0.50
-    assert after_drawdown.personal_pct == 0.40
-    assert after_drawdown.reserve_pct == 0.10
-
-    assert above.reinvestment_pct == 0.50
-    assert above.personal_pct == 0.40
-    assert above.reserve_pct == 0.10
-
-    assert above.reinvestment_amount == 5_000
-    assert above.personal_amount == 4_000
-    assert above.reserve_amount == 1_000
+        # Reconstruct the allocator to prove the milestone survives restart.
+        restarted_policy = ProfitAllocator(milestone_path=milestone_path)
+        after_drawdown = restarted_policy.plan(
+            distributable_profit=10_000,
+            operating_capital=70_000,
+        )
+        assert after_drawdown.threshold_reached is True
+        assert after_drawdown.target_reinvestment_pct == 0.50
+        assert after_drawdown.target_personal_pct == 0.40
+        assert after_drawdown.target_reserve_pct == 0.10
+        assert after_drawdown.payouts_suspended is True
+        assert after_drawdown.reinvestment_pct == 1.0
+        assert after_drawdown.personal_pct == 0.0
+        assert after_drawdown.reserve_pct == 0.0
 
     # ----------------------------------------------------------------------
     # NEWS
@@ -695,10 +535,7 @@ def self_test() -> dict:
 
     return {
         "ok": True,
-        "capital_policy": (
-            "70/20/10 below 100,000 MXN; "
-            "50/40/10 at or above"
-        ),
+        "capital_policy": "delegated_to_core_persistent_profit_allocator",
         "news_engine": "heuristic_paper_only",
         "adaptive_risk": "passed",
     }
