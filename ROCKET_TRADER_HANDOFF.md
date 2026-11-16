@@ -1,9 +1,9 @@
 # Rocket Trader — Operational Handoff
 
-**Updated:** 2026-11-15  
+**Updated:** 2026-11-15 (audit-remediation PR #245 opened)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Last externally reported main SHA:** `18c65d1409ebc3c8abf03a8b0d1cbf267d938cb6` (re-verify before every change)  
+**Last confirmed PR base SHA:** `f94d0612d60e108c64301d3284c0ba23cc496efc` (PR #245 base; re-verify before every change)  
 **Engineering/evidence maturity:** 58% as last recorded; this is not a probability of profitability.
 
 ## 1. Resume protocol
@@ -112,7 +112,7 @@ The audit-remediation branch `fix/audit-hardening-2026-11-15` is being used for:
 - Removing the unrelated DropNode `navegador.py` module.
 - Archiving this former long-form handoff in `HISTORY.md`.
 
-These changes are not merged or validated until the PR's checks and post-merge state are confirmed. Do not claim otherwise.
+PR #245 is open against `main` with base SHA `f94d0612d60e108c64301d3284c0ba23cc496efc` and head SHA `6001aed4b668408486d7f27c9e302434a49b733c`. No PR-triggered workflow run was returned when checked. The updated workflow trigger exists only on the PR branch until merged; run its offline Integration Gate manually on that branch before merge. These changes are not merged or validated until checks and post-merge state are confirmed.
 
 ## 8. Progress reporting
 
