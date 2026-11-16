@@ -27,15 +27,21 @@ Official documentation:
 4. Free Tier accounts must remain active; Oracle's documentation says free accounts remain available while used within the previous 60 days.
 5. This is suitable for development and a supervised observe-only soak, not a contractual uptime guarantee.
 
-### Low-cost paid fallback: small VPS
+### Low-cost paid fallback: OVHcloud VPS
 
-A small persistent VPS is the more dependable choice if the observer must remain available continuously. A current Hetzner price-adjustment reference lists the CX23 at approximately USD 6.49/month before VAT and IPv4 charges, with 2 vCPU, 4 GB RAM and 40 GB NVMe in the EU price table. Availability can vary; the provider's current cost-optimized page may show the plan unavailable.
+The current OVHcloud VPS listing advertises:
+- **VPS-1: from USD 4.54/month**, 2 vCores, 4 GB RAM, 40 GB NVMe, daily backup and unlimited traffic.
+- **VPS-2: from USD 8.50/month**, 4 vCores, 8 GB RAM, 75 GB NVMe, daily backup and unlimited traffic.
 
-Official references:
+Official listing: https://www.ovhcloud.com/es/vps/
+
+For Rocket Trader, VPS-1 is the cheapest entry but its 40 GB disk is below the current 60 GB resource estimate in the deployment plan. Do not select it for the full six-service stack until data retention and disk growth are measured. **VPS-2 is the safer low-cost paid choice** because its 75 GB disk and 8 GB RAM exceed the current estimate. These are advertised starting prices; confirm checkout price, taxes, region and availability.
+
+Choose a standard datacenter VPS, not an OVHcloud Local Zone: OVH's page currently states that Local Zone VPS instances are not compatible with Docker. The selected region should be near the Alpaca endpoints if available, but this observer is not a high-frequency latency-sensitive system.
+
+Hetzner's CX23 price reference is USD 6.49/month before VAT/IPv4, but its current cost-optimized product page marks CX23 unavailable. Treat it as unavailable unless checkout proves otherwise:
 - https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
 - https://www.hetzner.com/cloud/cost-optimized/
-
-Treat USD 6.49 as a reference, not a guaranteed checkout total. Confirm availability, region, IPv4 and tax before creating anything.
 
 ### Not recommended for this stack
 
