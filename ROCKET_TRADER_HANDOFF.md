@@ -15,7 +15,8 @@ Before acting, inspect the live default-branch SHA, open PRs, CI, recent workflo
 3. `ROCKET_TRADER_INVESTMENT_RESEARCH_FRAMEWORK_v0_1.md` — research acceptance rules.
 4. `PAPER_OBSERVER_DEPLOYMENT.md`, `PAPER_REGIME_OBSERVER.md`, `PAPER_EXECUTION_COST_TELEMETRY.md`, `NEWS_EVENT_ASSESSMENT.md`, `REFERENCE_BENCHMARK_HARNESS.md`.
 5. `ROCKET_TRADER_SERVER_DEPLOYMENT_PLAN_v0_1.md` — host requirements and deployment gates.
-6. `HISTORY.md` — full archived handoff, experiments, failed approaches and chronology.
+6. `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md` — current zero-budget/low-cost provider review.
+7. `HISTORY.md` — full archived handoff, experiments, failed approaches and chronology.
 
 Do not ask the user to repeat decisions already recorded here or in the baseline.
 
@@ -98,7 +99,7 @@ Work in this order; do not skip safety/data gates to reach order execution.
 
 ## 6. Server/deployment boundary
 
-The six-service Compose stack is observer/reconciliation infrastructure, not an autonomous trading runtime. It needs Docker Engine/Compose, persistent SQLite storage, Paper credentials entered privately, health monitoring and verified backups. The current runbook deliberately refuses to create replacement ledgers when expected state is missing.
+The six-service Compose stack is observer/reconciliation infrastructure, not an autonomous trading runtime. It needs Docker Engine/Compose, persistent SQLite storage, Paper credentials entered privately, health monitoring and verified backups. The current runbook deliberately refuses to create replacement ledgers when expected state is missing. Current zero-budget candidate: OCI Always Free Ampere A1 (2 OCPU / 12 GB total allowance), subject to home-region capacity and documented idle-instance reclamation; see `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md`. For reliable continuous uptime, budget roughly USD 6–10/month for a small VPS; compare current checkout totals before provisioning.
 
 Do not infer a cloud provider from GHCR publication. No host, persistent volume, migration or deployment is considered complete until it is verified on the actual machine. Deployment does not prove profitability or authorize orders.
 
@@ -110,6 +111,7 @@ The audit-remediation branch `fix/audit-hardening-2026-11-15` is being used for:
 - Standardizing boolean environment parsing for Paper/Live safety flags.
 - Adding a root `.gitignore` for secrets, SQLite state and local Python artifacts.
 - Removing the unrelated DropNode `navegador.py` module.
+- Adding `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md` with current OCI/Hetzner/Google Cloud comparison and deployment prerequisites.
 - Renaming the extensionless traditional-research guide to `.md`.
 - Archiving this former long-form handoff in `HISTORY.md`.
 
