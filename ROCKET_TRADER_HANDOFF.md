@@ -1,9 +1,9 @@
 # Rocket Trader — Operational Handoff
 
-**Updated:** 2026-11-15 (audit-remediation PR #245 open; hosting and crypto-cost reviews added)  
+**Updated:** 2026-11-15 (audit-remediation PR #245 merged; hosting and crypto-cost reviews added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**Last confirmed PR base SHA:** `f94d0612d60e108c64301d3284c0ba23cc496efc` (PR #245 base; re-verify before every change)  
+**Last confirmed main SHA:** `3d032e6fd5da9babfdab1cb958871e1b66987ec3` (PR #245 squash merge; re-verify before every change)  
 **Engineering/evidence maturity:** 58% as last recorded; this is not a probability of profitability.
 
 ## 1. Resume protocol
@@ -104,9 +104,11 @@ The six-service Compose stack is observer/reconciliation infrastructure, not an 
 
 Do not infer a cloud provider from GHCR publication. No host, persistent volume, migration or deployment is considered complete until it is verified on the actual machine. Deployment does not prove profitability or authorize orders.
 
-## 7. Current audit-remediation work
+## 7. Current audit-remediation state
 
-The audit-remediation branch `fix/audit-hardening-2026-11-15` is being used for:
+PR #245 was squash-merged into `main` as `3d032e6fd5da9babfdab1cb958871e1b66987ec3`. Its latest PR head passed nine workflow jobs: Engine and Capital Regression, Paper Execution Safety, static checks, Paper Observer Runtime Tests, Integration Gate (offline), Docker Container Build/non-root checks, Durable Activity SSE tests, Capital Policy Tests and Runtime Freshness Tests. The Paper Activity Audit job was skipped by its event condition; no broker account audit was run. No order, account mutation, credential access, host deployment or volume migration occurred.
+
+The merged changes include:
 - Removing Adaptive's duplicate in-memory capital policy and exercising Core's persistent allocator in its self-test.
 - Adding an offline Integration Gate for PR/main CI while retaining the credentialed read-only Alpaca check for manual dispatch.
 - Standardizing boolean environment parsing for Paper/Live safety flags.
@@ -117,9 +119,9 @@ The audit-remediation branch `fix/audit-hardening-2026-11-15` is being used for:
 - Renaming the extensionless traditional-research guide to `.md`.
 - Archiving this former long-form handoff in `HISTORY.md`.
 
-The separate PR #244 close-condition audit branch had its identical weekly schedule removed; it now runs only on relevant PR/push changes or manual dispatch. This avoids repeating a fixed historical sample every Sunday. Its 55-target diagnostic still requires its own artifact review.
+The separate PR #244 close-condition audit branch had its identical weekly schedule removed; it now runs only on relevant PR/push changes or manual dispatch. This avoids repeating a fixed historical sample every Sunday. Its 55-target diagnostic still requires its own artifact review. The target file contains 55 rows across seven symbols; no PR #244 audit artifact/run has been verified yet.
 
-PR #245 is open against `main` with base SHA `f94d0612d60e108c64301d3284c0ba23cc496efc` and head SHA `6001aed4b668408486d7f27c9e302434a49b733c`. No PR-triggered workflow run was returned when checked. The updated workflow trigger exists only on the PR branch until merged; run its offline Integration Gate manually on that branch before merge. These changes are not merged or validated until checks and post-merge state are confirmed.
+The first PR #245 CI attempt caught a malformed import, an outdated `CapitalPolicy` test import and a stale positive-news assertion. All three were corrected; the latest nine workflow jobs passed. The post-merge commit's full push-triggered workflow status has not yet been verified. Do not infer a successful post-merge run from the PR checks.
 
 ## 8. Progress reporting
 
