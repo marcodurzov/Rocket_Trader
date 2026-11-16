@@ -1340,3 +1340,14 @@ No provider account, server, public IP, SSH key, database volume or deployment w
 ## 2026-11-15 — Crypto cost schedule review (model reconciliation pending)
 
 Added `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md` after checking Alpaca's current public crypto fee schedule. Tier 1 fees are 15 bps maker / 25 bps taker per executed side; 40 bps/side is not the published commission schedule. It may be retained only as an explicitly decomposed conservative all-in friction assumption (fees + spread + slippage/impact), not described as broker commission. The actual Paper account tier, crypto research code path, fee-to-fill reconciliation and empirical spread/slippage remain unverified. No cost approval or strategy promotion resulted.
+
+
+## 2026-11-15 — Audit remediation PR #245 merged
+
+PR #245 was squash-merged to `main` as commit `3d032e6fd5da9babfdab1cb958871e1b66987ec3`. Its latest PR head passed nine workflow jobs: Engine and Capital Regression, Paper Execution Safety, static checks, Paper Observer Runtime Tests, Integration Gate (offline), Docker Container Build/non-root checks, Durable Activity SSE tests, Capital Policy Tests and Runtime Freshness Tests. The read-only Paper Activity Audit job was skipped by its event condition; no actual broker account audit was run. No order was submitted, no broker account was modified, no credentials were read or exposed, and no host/volume deployment occurred.
+
+The first CI attempt caught a malformed import; the next run caught a stale test import and outdated positive-news self-test. Both issues were corrected. The latest PR run passed. The post-merge push-triggered workflow status remains to be checked separately.
+
+The deleted `navegador.py` file contained only a reference to the `PROXY_URL` environment variable and no hardcoded proxy credentials in its current contents. Deletion removes it from the current tree, not from historical Git commits. If real proxy credentials were ever committed elsewhere, rotate them separately.
+
+The separate PR #244 branch has its fixed weekly schedule removed. Its target manifest contains 55 symbol/session rows across seven ETFs, but the historical trade-condition audit artifact has not yet been run/reviewed.
