@@ -6,9 +6,7 @@ Rocket Trader — Adaptive Risk & Capital Policy v0.1
 
 Capa independiente para:
 
-- Capitalización 100/0/0 antes del primer hito de 100,000 MXN.
-- Regla de distribución 50/40/10 después de alcanzar el hito.
-- El motor Core es la fuente de verdad persistente del hito.
+- Evaluación adaptativa de riesgo.
 - Clasificación básica de régimen de mercado.
 - Evaluación inicial de noticias.
 - Sizing dinámico condicionado por convicción.
@@ -30,7 +28,8 @@ La ejecución seguirá siendo responsabilidad de RocketTraderCore.
 
 from __future__ import annotations
 
-import enumfrom dataclasses import dataclass
+import enum
+from dataclasses import dataclass
 from typing import Optional
 
 
