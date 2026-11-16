@@ -477,7 +477,12 @@ def self_test() -> dict:
         ),
     )
 
-    assert news.impact == NewsImpact.POSITIVE
+    # Unvalidated heuristic news must remain neutral and cannot raise risk.
+    assert news.impact == NewsImpact.UNKNOWN
+    assert news.score == 0.0
+    assert news.confidence == 0.0
+    assert news.urgency == 0.0
+    assert news.matched_terms == ()
 
     # ----------------------------------------------------------------------
     # REGIME
