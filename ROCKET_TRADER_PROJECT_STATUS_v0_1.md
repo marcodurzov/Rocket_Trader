@@ -1351,3 +1351,19 @@ The first CI attempt caught a malformed import; the next run caught a stale test
 The deleted `navegador.py` file contained only a reference to the `PROXY_URL` environment variable and no hardcoded proxy credentials in its current contents. Deletion removes it from the current tree, not from historical Git commits. If real proxy credentials were ever committed elsewhere, rotate them separately.
 
 The separate PR #244 branch has its fixed weekly schedule removed. Its target manifest contains 55 symbol/session rows across seven ETFs, but the historical trade-condition audit artifact has not yet been run/reviewed.
+
+
+## CI run references for merged PR #245
+
+Latest PR-head workflow runs (all completed successfully):
+- Engine and Capital Regression: `43788363837`
+- Paper Execution Safety: `43788363780`
+- Static checks: `43788363816`
+- Paper Observer Runtime Tests: `43788363845`
+- Integration Gate (offline): `43788363810`
+- Paper Observer Container / non-root checks: `43788363823`
+- Durable Paper Activity SSE Consumer Tests: `43788363936`
+- Capital Policy Tests: `43788363777`
+- Runtime Freshness Tests: `43788363806`
+
+The Paper activity-audit job in run `43788363816` was skipped by its event condition. These are PR checks, not a completed post-merge workflow audit or a read-only broker-account reconciliation. The shortened Handoff is now approximately 129 lines; the original long-form snapshot is preserved in `HISTORY.md`.
