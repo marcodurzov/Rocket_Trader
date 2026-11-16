@@ -1,6 +1,6 @@
 # Rocket Trader — Operational Handoff
 
-**Updated:** 2026-11-15 (audit-remediation PR #245 opened)  
+**Updated:** 2026-11-15 (audit-remediation PR #245 open; hosting and crypto-cost reviews added)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Last confirmed PR base SHA:** `f94d0612d60e108c64301d3284c0ba23cc496efc` (PR #245 base; re-verify before every change)  
@@ -16,7 +16,8 @@ Before acting, inspect the live default-branch SHA, open PRs, CI, recent workflo
 4. `PAPER_OBSERVER_DEPLOYMENT.md`, `PAPER_REGIME_OBSERVER.md`, `PAPER_EXECUTION_COST_TELEMETRY.md`, `NEWS_EVENT_ASSESSMENT.md`, `REFERENCE_BENCHMARK_HARNESS.md`.
 5. `ROCKET_TRADER_SERVER_DEPLOYMENT_PLAN_v0_1.md` — host requirements and deployment gates.
 6. `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md` — current zero-budget/low-cost provider review.
-7. `HISTORY.md` — full archived handoff, experiments, failed approaches and chronology.
+7. `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md` — Alpaca fee schedule and all-in crypto cost methodology.
+8. `HISTORY.md` — full archived handoff, experiments, failed approaches and chronology.
 
 Do not ask the user to repeat decisions already recorded here or in the baseline.
 
@@ -88,7 +89,7 @@ Work in this order; do not skip safety/data gates to reach order execution.
 
 1. Finish review of the outstanding SIP close-condition audit (55 material outlier sessions). Inspect its artifact and determine whether the daily-bar close definition is consistently explained. Do not select a vendor or relax parity thresholds without evidence.
 2. Resolve historical price/corporate-action source integrity for the seven review-required ETFs using primary issuer/exchange evidence or an independently licensed source. Tiingo cross-provider validation is prohibited without a specific written exception; a paid plan alone is insufficient.
-3. Audit the actual crypto fee model against the current Alpaca maker/taker tier, then separately model spread, slippage and fee timing. Keep all assumptions explicit; do not call them measured costs.
+3. Reconcile the crypto research code against `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md`. Alpaca Tier 1 public fees are 15 bps maker / 25 bps taker per side; a 40 bps/side assumption is not a literal fee schedule and must be justified as all-in friction if retained. Separately model spread, slippage, impact and delayed fees. Keep assumptions explicit; do not call them measured costs.
 4. Run the read-only Paper account/activity audit with existing Paper credentials through the manual workflow. Never share credentials in chat.
 5. Identify the actual existing host, Docker Compose project, named volume and SQLite databases before any deployment or migration. Preserve `rocket_trader_data`; never run `docker compose down -v`.
 6. Select a persistent host only after the user understands cost, uptime, region, ARM/x86 compatibility and account requirements. Deploy observer-only, validate backups/restarts, then complete at least a 72-hour soak before expanding.
@@ -112,6 +113,7 @@ The audit-remediation branch `fix/audit-hardening-2026-11-15` is being used for:
 - Adding a root `.gitignore` for secrets, SQLite state and local Python artifacts.
 - Removing the unrelated DropNode `navegador.py` module.
 - Adding `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md` with current OCI/Hetzner/Google Cloud comparison and deployment prerequisites.
+- Adding `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md` to separate published Alpaca fees from spread/slippage/impact assumptions.
 - Renaming the extensionless traditional-research guide to `.md`.
 - Archiving this former long-form handoff in `HISTORY.md`.
 
