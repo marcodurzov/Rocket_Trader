@@ -1335,3 +1335,8 @@ No Alpaca API request, order, broker account change, host deployment, volume mig
 Added `ROCKET_TRADER_HOSTING_OPTIONS_v0_1.md`. Zero-budget candidate: OCI Always Free Ampere A1 with 2 OCPU / up to 12 GB RAM and up to 200 GB Always Free block storage, subject to home-region availability and Oracle's documented idle-instance reclamation criteria. Low-cost persistent fallback: small VPS around USD 6–10/month; the current Hetzner CX23 reference is USD 6.49/month before VAT/IPv4 and may be unavailable at checkout. Google Cloud e2-micro's 1 GB RAM / 1 GB monthly egress is not suitable for the six-service stack.
 
 No provider account, server, public IP, SSH key, database volume or deployment was created. The existing-host/database discovery gate remains mandatory before full Compose startup.
+
+
+## 2026-11-15 — Crypto cost schedule review (model reconciliation pending)
+
+Added `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md` after checking Alpaca's current public crypto fee schedule. Tier 1 fees are 15 bps maker / 25 bps taker per executed side; 40 bps/side is not the published commission schedule. It may be retained only as an explicitly decomposed conservative all-in friction assumption (fees + spread + slippage/impact), not described as broker commission. The actual Paper account tier, crypto research code path, fee-to-fill reconciliation and empirical spread/slippage remain unverified. No cost approval or strategy promotion resulted.
