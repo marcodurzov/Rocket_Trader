@@ -1,10 +1,10 @@
 # Rocket Trader — Operational Handoff
 
-**Updated:** 2026-11-15 (audit-remediation PR #245 merged; hosting and crypto-cost reviews added)  
+**Updated:** 2026-11-22 (Claude takeover session: first real Paper audits, close-definition resolution, T05 research negative, forward shadow recorder live)  
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
-**PR #245 squash-merge SHA:** `3d032e6fd5da9babfdab1cb958871e1b66987ec3` (re-verify live `main` SHA before every change)  
-**Engineering/evidence maturity:** 58% as last recorded; this is not a probability of profitability.
+**Last checkpoint SHA:** `5a8c1a2` (PR #249) — re-verify live `main` SHA before every change  
+**Progress (recalibrated rubric, section 8):** 34% toward a complete, validated, operating system. Not a probability of profitability.
 
 ## 1. Resume protocol
 
@@ -83,20 +83,17 @@ Markets: US-listed equities/ETFs and crypto spot, with separate market/execution
 - The observer image has been built/published, but no persistent host deployment is evidenced. GitHub Actions is not a 24/7 runtime.
 - No Paper strategy is approved; no observer orders have been submitted. LIVE remains blocked.
 
-## 5. Immediate work queue
+## 5. Immediate work queue (refreshed 2026-11-22)
 
-Work in this order; do not skip safety/data gates to reach order execution.
+Done this session (see journal): SIP close-condition review (resolved as close-definition difference); crypto cost-model reconciliation (already decomposed correctly); first real read-only Paper audits (6/6 fills matched); T05 allocation research (negative, replicated); forward shadow recorder (live, monthly).
 
-1. Finish review of the outstanding SIP close-condition audit (55 material outlier sessions). Inspect its artifact and determine whether the daily-bar close definition is consistently explained. Do not select a vendor or relax parity thresholds without evidence.
-2. Resolve historical price/corporate-action source integrity for the seven review-required ETFs using primary issuer/exchange evidence or an independently licensed source. Tiingo cross-provider validation is prohibited without a specific written exception; a paid plan alone is insufficient.
-3. Reconcile the crypto research code against `ROCKET_TRADER_CRYPTO_COST_REVIEW_v0_1.md`. Alpaca Tier 1 public fees are 15 bps maker / 25 bps taker per side; a 40 bps/side assumption is not a literal fee schedule and must be justified as all-in friction if retained. Separately model spread, slippage, impact and delayed fees. Keep assumptions explicit; do not call them measured costs.
-4. Run the read-only Paper account/activity audit with existing Paper credentials through the manual workflow. Never share credentials in chat.
-5. Identify the actual existing host, Docker Compose project, named volume and SQLite databases before any deployment or migration. Preserve `rocket_trader_data`; never run `docker compose down -v`.
-6. Select a persistent host only after the user understands cost, uptime, region, ARM/x86 compatibility and account requirements. Deploy observer-only, validate backups/restarts, then complete at least a 72-hour soak before expanding.
-7. Collect representative Paper quote/fill/fee evidence; complete fee allocation, corrections/bust handling, restart recovery and full-account reconciliation.
-8. Validate regime features and connect the selector in recommendation/observe-only mode. Cash/abstain must remain the default.
-9. Register new strategy hypotheses only when pre-registered and not a repeated family/window. Require corrected OOS evidence and realistic net-cost stress.
-10. Independent readiness review precedes any separate Paper-execution authorization. Live remains unauthorized.
+1. **User actions (cannot be done from assistant sessions):** enable `main` branch protection; choose/provision the persistent host; download and keep the private Paper audit artifacts. See the latest assistant reply's "Tareas para Marco".
+2. Classify the 4 JNLC journals and allocate the 6 CFEE crypto fees to their fills (durable fee-allocation path needs the persistent stack, or a new inception-replay audit with historical FX provenance).
+3. Resolve QQQ (2020-09-21, 2022-09-19) and SPY (2018-06-15) dividend records against issuer distribution notices. Portfolio-level research already replicates across both vendors, so this is a provenance item, not a research blocker.
+4. Deploy the observer stack on the chosen host (observer-only), verify backups/restarts, 72-hour soak, then multi-week Paper evidence for cost telemetry and full-account reconciliation.
+5. Review T05 forward shadow records after 12 months (first strict month: 2026-11 record). Do not change T05 rules.
+6. New research only via pre-registration with a new experiment ID. Families already exhausted on the 2016–2026 window: single-asset trend/breakout (T02), mean reversion (T03), daily cross-sectional top-1 momentum, monthly allocation T05. Untested: T04 pairs (needs shorting → simulation only), T06 calendar/event (needs point-in-time data), T07 intraday (needs trade/quote data), T08 ML (only after a simple baseline passes).
+7. Independent readiness review precedes any separate Paper-execution authorization. Live remains unauthorized.
 
 ## 6. Server/deployment boundary
 
@@ -125,7 +122,20 @@ The first PR #245 CI attempt caught a malformed import, an outdated `CapitalPoli
 
 ## 8. Progress reporting
 
-Last recorded estimate: **58% engineering/evidence maturity**. Reassess conservatively after material gates. This number is not expected return, profitability, or probability of success. The most important remaining gates are reliable data provenance, empirical execution costs, full broker/ledger reconciliation, persistent deployment, sustained Paper evidence and a robust OOS strategy edge.
+From 2026-11-22 progress uses this fixed rubric (weight × completion). The earlier 58% measured engineering maturity only and is superseded; do not mix the two scales.
+
+| Component | Weight | Completion | Points | Evidence |
+|---|---|---|---|---|
+| Safety, capital policy, accounting code foundation | 20% | 90% | 18.0 | Default-deny execution, MXN ledger, drawdown guard, fail-closed state, 574+ tests |
+| Data provenance | 10% | 75% | 7.5 | SIP history, close-definition resolved (run 45038550878), 6/8 ETFs cumulative parity; QQQ/SPY dividends open |
+| Real Paper accounting evidence | 10% | 35% | 3.5 | Runs 45050365468/45050961817: 6/6 fills matched; fees unallocated; JNLC unclassified |
+| Persistent deployment | 10% | 20% | 2.0 | Image published, runbook and host options; no host |
+| Empirical execution costs | 10% | 5% | 0.5 | Telemetry code only; no representative fills |
+| Validated strategy edge | 25% | 10% | 2.5 | Research infrastructure + forward recorder; 0 approved candidates |
+| Sustained Paper operation + independent review | 15% | 0% | 0.0 | Not started |
+| **Total** | 100% | | **34%** | |
+
+Raise a component only with recorded evidence. Documentation alone never raises it.
 
 ## 9. Change journal — append every attempt, success or failure
 
@@ -149,3 +159,6 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 - **Second real Paper audit (wider window):** run `45050961817` on `dc9a466`, BTC/USD orders 2026-11-10 → 2026-11-22: `order_count=6`, `matched_order_count=6`, `fill_reconciliation_status=ALL_ORDERS_MATCHED`, `fee_activity_count=3` (all `UNCLASSIFIED` account-wide CFEE candidates), `fee_reconciliation_status=UNRESOLVED`, status `FILLS_MATCHED_FEES_UNRESOLVED`. Activity SSE since 2026-11-10: 16 events (TRD 6 fills, CFEE 6, JNLC 4), 0 corrections/busts/drops. Open questions: classify the 4 JNLC journals; allocate the 6 CFEE to fills via the durable fee-allocation path.
 - **Idea evaluated and deferred:** reconstructing the full accounting chain from account inception in an ephemeral runner. Not supported by current design (cash anchor = current snapshot; historical fills need timestamp-valid USD/MXN FX). It would be a new feature (inception replay + historical FX provenance); not started.
 - **PR #248 merged** as `8f20b3b`. **First recorder dispatch FAILED:** run `45051631543`: `DIA: only 753 daily bars; minimum 900 for 3 requested years` — `fetch_daily_bars()` has a 900-session floor, so a 3-year request can never pass. Fixed by requesting 4 years (~1,004 sessions) plus a regression test (this PR). Nothing was written to `forward-evidence` by the failed run.
+- **PR #249 merged** as `5a8c1a2`. **Recorder re-run SUCCEEDED:** run `45051862454` wrote `forward/t05/2026-10.json` (signal session 2026-10-30, record sha256 prefix `fdaa2f3bae7c2d17`) to the new orphan branch `forward-evidence`. Weights at that signal: dual momentum EEM/IWM/QQQ 1/3 each; SMA210 trend EW holds DIA/EFA/IWM/QQQ/SPY (37.5% cash; EEM, GLD, TLT below trend); vol-target EW 86.6% invested. Because this record was written on 2026-11-22 (mid-November), the strict forward evaluation starts with the 2026-11 record; the 2026-10 record is kept but flagged as written late.
+- **Progress rubric introduced (section 8): 34%.** The prior 58% scale is retired, not "lost progress".
+- **Dividend provenance lookup (partial):** a secondary aggregator lists SPY ex-date 2018-06-15 cash dividend USD 1.42 (paid 2018-08-10). This is not a primary issuer record; SSGA's distribution notice is still required before closing the SPY flag. QQQ 2020-09-21 / 2022-09-19 not yet resolved.
