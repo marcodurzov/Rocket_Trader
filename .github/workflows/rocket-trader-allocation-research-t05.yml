@@ -1,0 +1,96 @@
+name: Rocket Trader - T05 Allocation Research v0.1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_allocation_research_t05_v0_1.py"
+      - "rocket_trader_allocation_research_t05_v0_1_test.py"
+      - "rocket_trader_equity_multiyear_research_v0_4.py"
+      - ".github/workflows/rocket-trader-allocation-research-t05.yml"
+  workflow_dispatch:
+    inputs:
+      years:
+        description: Calendar years of adjusted daily ETF data (pre-registered value is 10)
+        required: false
+        default: "10"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocket-trader-allocation-research-t05
+  cancel-in-progress: false
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - name: Compile and run offline tests
+        run: |
+          python -m py_compile rocket_trader_allocation_research_t05_v0_1.py rocket_trader_allocation_research_t05_v0_1_test.py
+          python -m unittest -v rocket_trader_allocation_research_t05_v0_1_test.py
+
+  research:
+    if: github.event_name == 'workflow_dispatch'
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [ALPACA, YAHOO]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - name: Run pre-registered research (no orders)
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          YEARS_INPUT: ${{ inputs.years || '10' }}
+          SOURCE_INPUT: ${{ matrix.source }}
+        run: |
+          python rocket_trader_allocation_research_t05_v0_1.py --years "$YEARS_INPUT" --source "$SOURCE_INPUT" \
+            --output "research_artifacts/allocation_research_t05_v0_1_${SOURCE_INPUT}.json"
+      - name: Verify research-only report
+        if: always()
+        env:
+          SOURCE_INPUT: ${{ matrix.source }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          d = json.loads(Path(f"research_artifacts/allocation_research_t05_v0_1_{os.environ['SOURCE_INPUT']}.json").read_text())
+          assert d["orders_enabled"] is False and d["orders_submitted"] == 0
+          assert d["candidate_promotion_allowed"] is False and d["paper_approval"] is False
+          if d.get("ok"):
+              mt = d["multiple_testing"]
+              assert mt["method"] == "HOLM_BONFERRONI" and mt["family_size"] == 5
+              assert mt["promotion_allowed"] is False
+          print("ok:", d.get("ok"), "pre-screen passes:", (d.get("multiple_testing") or {}).get("pre_screen_pass_count"))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rocket-trader-allocation-research-t05-v0-1-${{ matrix.source }}
+          path: research_artifacts/
+          if-no-files-found: warn
+          retention-days: 90
