@@ -4,7 +4,7 @@
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Last checkpoint SHA:** `5a8c1a2` (PR #249) — re-verify live `main` SHA before every change  
-**Progress (recalibrated rubric, section 8):** 35% toward a complete, validated, operating system. Not a probability of profitability.
+**Progress (recalibrated rubric, section 8):** 36% toward a complete, validated, operating system. Not a probability of profitability.
 
 ## 1. Resume protocol
 
@@ -87,7 +87,8 @@ Markets: US-listed equities/ETFs and crypto spot, with separate market/execution
 
 Done this session (see journal): SIP close-condition review (resolved as close-definition difference); crypto cost-model reconciliation (already decomposed correctly); first real read-only Paper audits (6/6 fills matched); T05 allocation research (negative, replicated); forward shadow recorder (live, monthly).
 
-1. **User actions (cannot be done from assistant sessions):** enable `main` branch protection; choose/provision the persistent host; download and keep the private Paper audit artifacts. See the latest assistant reply's "Tareas para Marco".
+1. **User actions (cannot be done from assistant sessions):** enable `main` branch protection; identify the 4 JNLC journals; choose/provision the persistent host (then `deploy/rocket_trader_deploy.sh install → init-env → genesis → up`); decide the weekend FX policy (item 1b). See the latest assistant reply's "Tareas para Marco".
+1b. **Open policy decision — weekend/holiday FX:** evidence run `45057338539`: provider `stale=false`, `market_session=weekend`, quote 45 h old; provider (45 min), reconciliation gate (24 h) and strategy-equity (24 h) all reject it, so position reconciliation errors every weekend. Proposed (not implemented, awaiting user): accept the last close only when the provider reports a closed session and `stale=false`, up to 72 h, applied consistently in all three places, with the FX source tagged `CLOSED_MARKET_LAST_CLOSE`; otherwise keep failing closed.
 2. Classify the 4 JNLC journals and allocate the 6 CFEE crypto fees to their fills (durable fee-allocation path needs the persistent stack, or a new inception-replay audit with historical FX provenance).
 3. Resolve QQQ (2020-09-21, 2022-09-19) and SPY (2018-06-15) dividend records against issuer distribution notices. Portfolio-level research already replicates across both vendors, so this is a provenance item, not a research blocker.
 4. Deploy the observer stack on the chosen host (observer-only): run the one-time genesis command (`rocket_trader_paper_genesis_admin.py`, runbook "First deployment"), set `ACTIVITY_SSE_BOOTSTRAP_SINCE` from its attestation, create the cash anchor, verify backups/restarts, 72-hour soak, then multi-week Paper evidence for cost telemetry and full-account reconciliation.
@@ -129,11 +130,11 @@ From 2026-11-22 progress uses this fixed rubric (weight × completion). The earl
 | Safety, capital policy, accounting code foundation | 20% | 90% | 18.0 | Default-deny execution, MXN ledger, drawdown guard, fail-closed state, 574+ tests |
 | Data provenance | 10% | 75% | 7.5 | SIP history, close-definition resolved (run 45038550878), 6/8 ETFs cumulative parity; QQQ/SPY dividends open |
 | Real Paper accounting evidence | 10% | 35% | 3.5 | Runs 45050365468/45050961817: 6/6 fills matched; fees unallocated; JNLC unclassified |
-| Persistent deployment | 10% | 30% | 3.0 | Image published; fresh-volume genesis (PR #251) removes the last software blocker; no host |
+| Persistent deployment | 10% | 45% | 4.5 | Genesis (PR #251) + deploy script, backups and restart rehearsed end-to-end with real Paper credentials (run 45057338539); no persistent host |
 | Empirical execution costs | 10% | 5% | 0.5 | Telemetry code only; no representative fills |
 | Validated strategy edge | 25% | 10% | 2.5 | Research infrastructure + forward recorder; 0 approved candidates |
 | Sustained Paper operation + independent review | 15% | 0% | 0.0 | Not started |
-| **Total** | 100% | | **35%** | |
+| **Total** | 100% | | **36%** | |
 
 Raise a component only with recorded evidence. Documentation alone never raises it.
 
@@ -188,3 +189,4 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 - **Rehearsal attempt 3 (run `45055806741`) — boundary confirmed, two more findings:** `pre_genesis_excluded=13` (all smoke-test history excluded explicitly). Paper observer still unhealthy for three distinct reasons: (1) **bug** — account activity syncs every 900 s but health required every component's heartbeat ≤120 s, so it showed `status=HEALTHY, healthy=false` most of the time; fixed with a per-component liveness window (900 + 300 s) and a regression test; (2) `position_reconciliation.error_type=FXProviderError` on a Sunday — likely the USD/MXN quote is older than the 45-minute limit while FX markets are closed; a diagnostic step was added before changing any accounting policy; (3) **by design** the default configuration never reports healthy until the USD cash ledger anchor and full-account reconciliation are enabled on the persistent host (PR #194 decision). GDELT unhealthy — error text now shown (public data only, IDs masked). Backup/restore passed again (11 files).
 - **Rehearsal gate changed:** it now gates on deployment mechanics (genesis, backup/restore, restart with 6/6 running, second genesis refused) and reports service health without gating, because full health is unattainable on an ephemeral runner by design.
 - **Rehearsal attempt 4 — PASSED (run `45057338539`, PR #253 head):** genesis (real read-only Paper checks) ✓; 6/6 services started; backup (11 files) + restore with runtime preflight ✓; `down` + `up` with 6/6 running ✓; second genesis refused ✓. Health (reported, not gated): account activity now healthy (fix confirmed), `pre_genesis_excluded=13`; regime observer `CASH_ABSTAIN` with `INSUFFICIENT_DATA` right after start (correct). Remaining unhealthy causes, evidenced: **FX** — provider returned `result=success`, `stale=false`, `market_session=weekend`, quote age 45.0 h, rejected by the 45-minute rule (`USD/MXN quote is stale for this fill (162127s)`), so position reconciliation errors every weekend although crypto trades 24/7; **GDELT** — HTTP 429 on all 5 topics from the shared GitHub runner IP (provider rate limit, not a code defect; re-check on the real host); **BLS** — HTTP 403 (official-news still healthy via BEA/Fed). By design the observer also stays unhealthy until the cash ledger anchor/full-account reconciliation is enabled on the persistent host.
+- **PR #253 merged** as `0916977`: deploy script, backups, rehearsal, genesis boundary, per-component heartbeat window. Progress: deployment 30% → 45% → total **36%**. Weekend-FX policy left as an explicit user decision (queue item 1b) rather than changed unilaterally.
