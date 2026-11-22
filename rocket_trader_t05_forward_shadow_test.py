@@ -54,6 +54,12 @@ class ForwardShadowTests(unittest.TestCase):
         self.assertEqual(a["target_weights"], b["target_weights"])
         self.assertEqual(a["sha256_of_record_without_hash"], b["sha256_of_record_without_hash"])
 
+    def test_history_request_clears_fetch_floor(self):
+        # Regression: run 45051631543 failed because 3 years (~753 sessions)
+        # is below fetch_daily_bars()'s 900-session floor.
+        self.assertGreaterEqual(int(fwd.HISTORY_YEARS * 252 * 0.97), 900)
+        self.assertGreaterEqual(fwd.HISTORY_YEARS * 252, t05.MIN_SIGNAL_ROW + 60)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

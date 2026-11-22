@@ -31,7 +31,8 @@ from rocket_trader_equity_multiyear_research_v0_4 import (
 )
 
 RECORD_VERSION = "t05-forward-shadow-v0.1"
-HISTORY_YEARS = 3
+# fetch_daily_bars() enforces a 900-session floor; 4 years (~1,004 sessions) clears it.
+HISTORY_YEARS = 4
 
 
 class ForwardShadowError(RuntimeError):
