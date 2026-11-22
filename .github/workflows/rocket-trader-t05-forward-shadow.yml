@@ -1,0 +1,90 @@
+name: Rocket Trader - T05 Forward Shadow Recorder
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_t05_forward_shadow.py"
+      - "rocket_trader_t05_forward_shadow_test.py"
+      - "rocket_trader_allocation_research_t05_v0_1.py"
+      - ".github/workflows/rocket-trader-t05-forward-shadow.yml"
+  schedule:
+    # Days 1-5 of each month, 14:23 UTC (before the US open). Re-runs are
+    # harmless: an existing monthly record is never overwritten.
+    - cron: "23 14 1-5 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocket-trader-t05-forward-shadow
+  cancel-in-progress: false
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - run: |
+          python -m py_compile rocket_trader_t05_forward_shadow.py rocket_trader_t05_forward_shadow_test.py
+          python -m unittest -v rocket_trader_t05_forward_shadow_test.py
+
+  record:
+    if: github.event_name != 'pull_request'
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code (main)
+        uses: actions/checkout@v4
+        with:
+          path: code
+      - name: Checkout or create forward-evidence branch
+        run: |
+          git clone --no-checkout "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" evidence
+          cd evidence
+          git config user.name "rocket-trader-evidence-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin forward-evidence >/dev/null; then
+            git checkout forward-evidence
+          else
+            git checkout --orphan forward-evidence
+            git rm -rf --quiet . || true
+            printf '# Forward evidence (append-only)\n\nMonthly records written by workflows. Never edit or rewrite history.\n' > README.md
+            git add README.md
+            git commit -m "Initialize append-only forward evidence branch"
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r code/requirements.txt -r code/requirements-alpaca.txt -r code/requirements-yahoo.txt
+      - name: Record completed month (no orders)
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          PYTHONPATH: ${{ github.workspace }}/code
+        run: python code/rocket_trader_t05_forward_shadow.py --root evidence
+      - name: Commit new record only
+        run: |
+          cd evidence
+          git add -A forward
+          if git diff --cached --quiet; then
+            echo "No new monthly record."
+          else
+            git diff --cached --name-status
+            git commit -m "Record T05 forward shadow month (main ${GITHUB_SHA::8})"
+          fi
+          git push origin forward-evidence
