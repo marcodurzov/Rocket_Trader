@@ -137,7 +137,8 @@ def _refuse_fee(_fill: Dict[str, Any]):
     raise GenesisError("Genesis processes no fills; fees must never be requested.")
 
 
-def create_state(paths: Dict[str, Path], *, initial_capital_mxn: str, milestone_mxn: str) -> None:
+def create_state(paths: Dict[str, Path], *, initial_capital_mxn: str, milestone_mxn: str,
+                 genesis_at: datetime) -> None:
     from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
     from rocket_trader_paper_fill_ledger_bridge import PaperFillLedgerBridge
     from rocket_trader_realized_pnl_ledger import RealizedPnLLedger
@@ -147,7 +148,9 @@ def create_state(paths: Dict[str, Path], *, initial_capital_mxn: str, milestone_
     PaperFillLedgerBridge(db_path=str(paths["fill_inbox"]), ledger=ledger,
                           fx_resolver=_refuse_fx, fee_resolver=_refuse_fee)
     # The override guarantees genesis makes no activity network request.
-    AlpacaPaperActivityStager(db_path=str(paths["activity_stager"]), fetch_page=lambda _c, _s: [])
+    stager = AlpacaPaperActivityStager(db_path=str(paths["activity_stager"]), fetch_page=lambda _c, _s: [])
+    # Activities before genesis (simulator smoke tests) are kept but excluded.
+    stager.set_genesis_boundary(genesis_at)
 
 
 def _sha256(path: Path) -> str:
@@ -178,7 +181,7 @@ def run_genesis(
     require_absent(paths, attestation_path)
     initial = os.getenv("ROCKET_TRADER_INITIAL_CAPITAL_MXN", "1000.00")
     milestone = os.getenv("ROCKET_TRADER_MILESTONE_MXN", "100000.00")
-    create_state(paths, initial_capital_mxn=initial, milestone_mxn=milestone)
+    create_state(paths, initial_capital_mxn=initial, milestone_mxn=milestone, genesis_at=now)
     attestation = {
         "genesis_at_utc": now.isoformat().replace("+00:00", "Z"),
         "activity_sse_bootstrap_since": now.isoformat().replace("+00:00", "Z"),

@@ -92,6 +92,7 @@ jobs:
             python /app/rocket_trader_stream_runtime.py --healthcheck 2>/dev/null | python3 deploy/sanitize_health.py || true
           for svc in rocket-trader-alpaca-activity-sse rocket-trader-regime-observer rocket-trader-alpaca-news rocket-trader-gdelt-news rocket-trader-official-news; do
             echo "== $svc: $(docker inspect --format '{{.State.Health.Status}} restarts={{.RestartCount}}' "$svc" 2>/dev/null || echo missing)"
+            docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{end}}' "$svc" 2>/dev/null | tail -c 4000 | python3 deploy/sanitize_health.py | sed 's/^/   /' | head -40 || true
           done
       - name: Backup and restore test
         id: backup

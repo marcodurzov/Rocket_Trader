@@ -16,7 +16,7 @@ import os
 import sqlite3
 import threading
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlencode
@@ -32,6 +32,52 @@ class ActivityIngestionError(RuntimeError):
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+PRE_GENESIS_EXCLUDED = "PRE_GENESIS_EXCLUDED"
+GENESIS_META_KEY = "genesis_at"
+
+
+def _parse_utc(value: Any) -> Optional[datetime]:
+    """Parse an activity time. Date-only values map to the END of that UTC day.
+
+    A date-only row (e.g. JNLC ``"2026-11-09"``) is therefore treated as
+    pre-genesis only when the whole calendar day ended before genesis — on the
+    genesis day itself it stays in normal (fail-closed) reconciliation.
+    """
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if len(text) == 10 and text[4] == "-" and text[7] == "-":
+        try:
+            day = datetime.fromisoformat(text).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+        return day + timedelta(days=1)
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _before(occurred_at: Any, genesis_at: datetime) -> bool:
+    parsed = _parse_utc(occurred_at)
+    return parsed is not None and parsed < genesis_at
+
+
+def _genesis_boundary(conn: sqlite3.Connection) -> Optional[datetime]:
+    row = conn.execute(
+        "SELECT value FROM activity_stager_meta WHERE key=?", (GENESIS_META_KEY,)
+    ).fetchone()
+    if not row:
+        return None
+    parsed = _parse_utc(row[0])
+    if parsed is None:
+        raise ActivityIngestionError("Stored genesis boundary is invalid; refusing to stage.")
+    return parsed
 
 
 def _canonical(raw: Dict[str, Any]) -> str:
@@ -199,6 +245,7 @@ class AlpacaPaperActivityStager:
         with self._lock, self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                genesis_at = _genesis_boundary(conn)
                 for activity in rows:
                     if not isinstance(activity, dict):
                         raise ActivityIngestionError("Activity row must be a JSON object.")
@@ -212,6 +259,12 @@ class AlpacaPaperActivityStager:
                         or activity.get("created_at")
                     )
                     classification = self._classify(activity)
+                    if genesis_at is not None and _before(occurred_at, genesis_at):
+                        # Simulator history before the explicit accounting genesis
+                        # (e.g. smoke tests) is preserved immutably but excluded
+                        # from strategy reconciliation. Rows without a parseable
+                        # timestamp keep their normal (fail-closed) class.
+                        classification = PRE_GENESIS_EXCLUDED
                     raw = _canonical(activity)
                     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
                     existing = conn.execute(
@@ -319,6 +372,24 @@ class AlpacaPaperActivityStager:
             ).fetchall()
         return [json.loads(row["payload_json"]) for row in rows]
 
+    def set_genesis_boundary(self, genesis_at: datetime) -> None:
+        """Record the accounting genesis once, before any activity is staged."""
+        if genesis_at.tzinfo is None or genesis_at.utcoffset() is None:
+            raise ActivityIngestionError("genesis_at must be timezone-aware.")
+        with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                if conn.execute("SELECT 1 FROM staged_activities LIMIT 1").fetchone():
+                    raise ActivityIngestionError("Genesis boundary must be set before staging any activity.")
+                if conn.execute("SELECT 1 FROM activity_stager_meta WHERE key=?", (GENESIS_META_KEY,)).fetchone():
+                    raise ActivityIngestionError("Genesis boundary is already set.")
+                conn.execute("INSERT INTO activity_stager_meta(key,value) VALUES(?,?)",
+                             (GENESIS_META_KEY, genesis_at.astimezone(timezone.utc).isoformat()))
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+
     def report(self) -> Dict[str, Any]:
         with self._connect() as conn:
             rows = conn.execute(
@@ -327,6 +398,9 @@ class AlpacaPaperActivityStager:
             ).fetchall()
             cursor = conn.execute(
                 "SELECT value FROM activity_stager_meta WHERE key='cursor'"
+            ).fetchone()
+            genesis = conn.execute(
+                "SELECT value FROM activity_stager_meta WHERE key=?", (GENESIS_META_KEY,)
             ).fetchone()
         counts: Dict[str, int] = {}
         blocked_types: List[str] = []
@@ -343,6 +417,10 @@ class AlpacaPaperActivityStager:
             "counts": counts,
             "blocked_activity_types": sorted(set(blocked_types)),
             "cursor": cursor["value"] if cursor else None,
+            "genesis_at": genesis["value"] if genesis else None,
+            "pre_genesis_excluded": sum(
+                n for k, n in counts.items() if k.endswith(":" + PRE_GENESIS_EXCLUDED)
+            ),
             "ledger_posting_enabled": False,
             "reason": (
                 "Awaiting verified fee matching, corporate-action handling, "

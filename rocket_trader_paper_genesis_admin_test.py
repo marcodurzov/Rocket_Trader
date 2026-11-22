@@ -72,6 +72,9 @@ class GenesisTests(unittest.TestCase):
         self.assertEqual(result["activity_sse_bootstrap_since"], "2026-11-22T18:00:00Z")
         self.assertEqual(result["orders_submitted"], 0)
         self.assertEqual(client.mutations, 0)
+        from rocket_trader_alpaca_activity_stager import AlpacaPaperActivityStager
+        stager = AlpacaPaperActivityStager(db_path=str(paths["activity_stager"]), fetch_page=lambda c, s: [])
+        self.assertEqual(stager.report()["genesis_at"], "2026-11-22T18:00:00+00:00")
         saved = json.loads((self.dir / genesis.ATTESTATION_NAME).read_text())
         self.assertEqual(saved["genesis_at_utc"], result["genesis_at_utc"])
 
