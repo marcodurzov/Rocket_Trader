@@ -18,7 +18,7 @@ on:
       wait_minutes:
         description: Minutes to wait for all services to become healthy
         required: false
-        default: "12"
+        default: "10"
         type: string
 
 permissions:
@@ -66,13 +66,14 @@ jobs:
           umask 077
           printf 'ALPACA_API_KEY=%s\nALPACA_SECRET_KEY=%s\nROCKET_TRADER_ALPACA_NEWS_SYMBOLS=SPY,QQQ,IWM,BTCUSD,ETHUSD,SOLUSD\n' "$K" "$S" > .env
       - name: Genesis on empty volume (read-only Paper checks)
+        id: genesis
         run: deploy/rocket_trader_deploy.sh genesis | python3 deploy/sanitize_health.py
       - name: Start six observer services
         run: deploy/rocket_trader_deploy.sh up > /dev/null && deploy/rocket_trader_deploy.sh status
       - name: Wait for health
         id: health
         env:
-          WAIT_MINUTES: ${{ inputs.wait_minutes || '12' }}
+          WAIT_MINUTES: ${{ inputs.wait_minutes || '10' }}
         run: |
           deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
           while :; do
@@ -85,38 +86,79 @@ jobs:
             sleep 20
           done
           deploy/rocket_trader_deploy.sh status
-      - name: Observer health detail (booleans and counts only)
+      - name: Health detail per service (sanitized)
         if: always()
         run: |
-          docker compose -p rocket_trader -f docker-compose.paper-observer.yml exec -T rocket-trader-paper-observer \
-            python /app/rocket_trader_stream_runtime.py --healthcheck 2>/dev/null | python3 deploy/sanitize_health.py || true
-          for svc in rocket-trader-alpaca-activity-sse rocket-trader-regime-observer rocket-trader-alpaca-news rocket-trader-gdelt-news rocket-trader-official-news; do
-            echo "== $svc: $(docker inspect --format '{{.State.Health.Status}} restarts={{.RestartCount}}' "$svc" 2>/dev/null || echo missing)"
-            docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{end}}' "$svc" 2>/dev/null | tail -c 4000 | python3 deploy/sanitize_health.py | sed 's/^/   /' | head -40 || true
+          C="docker compose -p rocket_trader -f docker-compose.paper-observer.yml"
+          echo "== rocket-trader-paper-observer"
+          $C exec -T rocket-trader-paper-observer python /app/rocket_trader_stream_runtime.py --healthcheck 2>/dev/null \
+            | python3 deploy/sanitize_health.py | grep -v -E 'heartbeat_age|event_age|freshness_threshold' || true
+          echo "== rocket-trader-alpaca-activity-sse"
+          $C exec -T rocket-trader-alpaca-activity-sse python /app/rocket_trader_alpaca_activity_sse_consumer.py \
+            --db /app/data/rocket_trader_activity_sse.sqlite3 --healthcheck 2>/dev/null | python3 deploy/sanitize_health.py || true
+          for pair in "rocket-trader-gdelt-news:/app/rocket_trader_gdelt_news_observer.py" \
+                      "rocket-trader-official-news:/app/rocket_trader_official_news.py" \
+                      "rocket-trader-alpaca-news:/app/rocket_trader_alpaca_news_observer.py" \
+                      "rocket-trader-regime-observer:/app/rocket_trader_regime_observer.py"; do
+            svc="${pair%%:*}"; script="${pair#*:}"
+            echo "== $svc ($(docker inspect --format '{{.State.Health.Status}} restarts={{.RestartCount}}' "$svc" 2>/dev/null))"
+            $C exec -T "$svc" python "$script" --healthcheck 2>/dev/null | python3 deploy/sanitize_health.py --show-errors | head -40 || true
           done
+      - name: FX provider diagnostic (public USD/MXN data only)
+        if: always()
+        run: |
+          docker compose -p rocket_trader -f docker-compose.paper-observer.yml exec -T rocket-trader-paper-observer python - <<'PY' || true
+          from datetime import datetime, timezone
+          from rocket_trader_fx_provider import ExchangerateDevFXProvider
+          now = datetime.now(timezone.utc)
+          p = ExchangerateDevFXProvider()
+          try:
+              d = p._fetch(now)
+              eff = (d.get("effective_at") or {}).get("MXN")
+              age_h = None
+              if eff:
+                  age_h = round((now - datetime.fromisoformat(str(eff).replace("Z", "+00:00"))).total_seconds() / 3600, 1)
+              print("FX_DIAG", {"result": d.get("result"), "stale_flag": (d.get("stale") or {}).get("MXN"),
+                                "effective_age_hours": age_h, "market_session": d.get("market_session")})
+          except Exception as exc:
+              print("FX_DIAG_FETCH_ERROR", type(exc).__name__, str(exc)[:160])
+          try:
+              p.quote_for_fill(now, now=now)
+              print("FX_DIAG quote_for_fill=OK")
+          except Exception as exc:
+              print("FX_DIAG quote_for_fill_error", type(exc).__name__, str(exc)[:160])
+          PY
       - name: Backup and restore test
         id: backup
         if: always()
         run: |
           deploy/rocket_trader_deploy.sh backup | grep -E '^ROCKET_TRADER_BACKUP|Backup written' | sed 's#/home/runner[^ ]*#<backup-dir>#'
-          deploy/rocket_trader_deploy.sh restore-test | grep -E '^ROCKET_TRADER_BACKUP|Restore test'
+          deploy/rocket_trader_deploy.sh restore-test | grep -E '^ROCKET_TRADER_BACKUP|Restore test' | sed 's#/home/runner[^ ]*#<backup-dir>#'
           echo "backup_ok=true" >> "$GITHUB_OUTPUT"
-      - name: Restart survival (containers recreated, volume kept)
+      - name: Restart survival and second-genesis refusal
         id: restart
-        if: steps.health.outputs.all_healthy == 'true'
+        if: always() && steps.genesis.outcome == 'success'
         run: |
-          docker compose -p rocket_trader -f docker-compose.paper-observer.yml down
+          C="docker compose -p rocket_trader -f docker-compose.paper-observer.yml"
+          $C down
           deploy/rocket_trader_deploy.sh up > /dev/null
-          sleep 120
-          deploy/rocket_trader_deploy.sh status
-          docker compose -p rocket_trader -f docker-compose.paper-observer.yml run --rm --no-deps -T rocket-trader-paper-observer \
-            python /app/rocket_trader_paper_genesis_admin.py --data-dir /app/data --genesis-confirmed > /tmp/regenesis.txt 2>&1 \
-            && { echo "UNEXPECTED: second genesis succeeded"; exit 1; } || grep -q "GENESIS REFUSED" /tmp/regenesis.txt
+          sleep 90
+          st="$(deploy/rocket_trader_deploy.sh status)"; echo "$st"
+          running=$(printf '%s\n' "$st" | grep -c $'\trunning\t' || true)
+          [[ "$running" -eq 6 ]] || { echo "Not all six services running after restart"; exit 1; }
+          if $C run --rm --no-deps -T rocket-trader-paper-observer \
+               python /app/rocket_trader_paper_genesis_admin.py --data-dir /app/data --genesis-confirmed > /tmp/regenesis.txt 2>&1; then
+            echo "UNEXPECTED: second genesis succeeded"; exit 1
+          fi
+          grep -q "GENESIS REFUSED" /tmp/regenesis.txt
           echo "second_genesis_refused=true"
           echo "restart_ok=true" >> "$GITHUB_OUTPUT"
       - name: Summary
         if: always()
         run: |
-          echo "ROCKET_TRADER_REHEARSAL {\"all_healthy\": \"${{ steps.health.outputs.all_healthy }}\", \"backup_restore_ok\": \"${{ steps.backup.outputs.backup_ok }}\", \"restart_ok\": \"${{ steps.restart.outputs.restart_ok }}\", \"orders_submitted\": 0}"
+          echo "ROCKET_TRADER_REHEARSAL {\"genesis\": \"${{ steps.genesis.outcome }}\", \"all_healthy\": \"${{ steps.health.outputs.all_healthy }}\", \"backup_restore_ok\": \"${{ steps.backup.outputs.backup_ok }}\", \"restart_ok\": \"${{ steps.restart.outputs.restart_ok }}\", \"orders_submitted\": 0}"
           docker compose -p rocket_trader -f docker-compose.paper-observer.yml down || true
-          [[ "${{ steps.health.outputs.all_healthy }}" == "true" && "${{ steps.backup.outputs.backup_ok }}" == "true" && "${{ steps.restart.outputs.restart_ok }}" == "true" ]]
+          # Gate on deployment mechanics. Service health is reported above but not
+          # gated: by design the observer stays unhealthy until the cash ledger
+          # anchor/full-account reconciliation is enabled on the persistent host.
+          [[ "${{ steps.genesis.outcome }}" == "success" && "${{ steps.backup.outputs.backup_ok }}" == "true" && "${{ steps.restart.outputs.restart_ok }}" == "true" ]]

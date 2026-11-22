@@ -15,6 +15,15 @@ SAFE_STRING_KEYS = re.compile(r"(^|_)(status|error_type|sync_status)$")
 SAFE_STRING_VALUE = re.compile(r"^[A-Za-z][A-Za-z0-9_:.]{0,80}$")
 
 
+ERROR_KEYS = re.compile(r"(^|_)(last_error|error)$")
+LONG_TOKEN = re.compile(r"[A-Za-z0-9-]{12,}")
+SHOW_ERRORS = "--show-errors" in sys.argv
+
+
+def _mask(text: str) -> str:
+    return LONG_TOKEN.sub("<masked>", text)[:160]
+
+
 def flatten(node, prefix=""):
     if isinstance(node, dict):
         for k, v in node.items():
@@ -27,6 +36,10 @@ def flatten(node, prefix=""):
         leaf = prefix.rsplit(".", 1)[-1]
         if SAFE_STRING_KEYS.search(leaf) and SAFE_STRING_VALUE.match(node):
             yield prefix, node
+        elif SHOW_ERRORS and ERROR_KEYS.search(leaf):
+            # Only used for public-data services (news feeds, FX); long tokens
+            # that could be identifiers are masked.
+            yield prefix, _mask(node)
 
 
 def main() -> int:

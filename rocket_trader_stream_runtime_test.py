@@ -174,6 +174,25 @@ class StreamRuntimeTests(unittest.TestCase):
         self.assertTrue(self.recorder.health(120)["healthy"])
         self.recorder.heartbeat("crypto", "ERROR", last_error="disconnected")
         self.assertFalse(self.recorder.health(120)["healthy"])
+    def test_slow_cadence_component_uses_its_own_liveness_window(self):
+        # Regression (2026-11-22 rehearsal): account activity syncs every 900 s,
+        # so a 120 s global window made a healthy component look dead.
+        from rocket_trader_stream_runtime import (
+            ACTIVITY_HEARTBEAT_GRACE_SECONDS, ACTIVITY_SYNC_INTERVAL_SECONDS,
+        )
+        self.recorder.heartbeat("account_activity", "HEALTHY")
+        self.recorder.heartbeat("crypto", "HEALTHY")
+        later = datetime.now(timezone.utc) + timedelta(seconds=600)
+        window = {"account_activity": ACTIVITY_SYNC_INTERVAL_SECONDS + ACTIVITY_HEARTBEAT_GRACE_SECONDS}
+        result = self.recorder.health(120, now=later, component_max_age_seconds=window)
+        self.assertTrue(result["components"]["account_activity"]["healthy"])
+        self.assertFalse(result["components"]["crypto"]["healthy"])  # fast component unchanged
+        much_later = datetime.now(timezone.utc) + timedelta(seconds=1300)
+        result = self.recorder.health(120, now=much_later, component_max_age_seconds=window)
+        self.assertFalse(result["components"]["account_activity"]["healthy"])
+        self.recorder.heartbeat("account_activity", "ERROR", last_error="x")
+        result = self.recorder.health(120, component_max_age_seconds=window)
+        self.assertFalse(result["components"]["account_activity"]["healthy"])
     def test_health_fails_when_never_started(self):
         with self.assertRaises(RuntimeError):
             self.recorder.health()
