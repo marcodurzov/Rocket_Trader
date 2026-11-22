@@ -85,6 +85,7 @@ def reconcile_staged_fill_activities(
             staged = activities.execute(
                 """SELECT activity_id,payload_json,classification
                    FROM staged_activities WHERE activity_type='FILL'
+                     AND classification != 'PRE_GENESIS_EXCLUDED'
                    ORDER BY occurred_at,activity_id"""
             ).fetchall()
             inbox_rows = inbox.execute(

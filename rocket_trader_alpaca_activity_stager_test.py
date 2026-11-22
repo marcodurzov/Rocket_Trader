@@ -5,6 +5,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 
 from rocket_trader_alpaca_activity_stager import (
     ActivityIngestionError, AlpacaPaperActivityStager,
@@ -226,6 +227,62 @@ class ActivityStagerTests(unittest.TestCase):
                 os.environ.pop("ROCKET_TRADER_EXECUTION_MODE", None)
             else:
                 os.environ["ROCKET_TRADER_EXECUTION_MODE"] = old_mode
+
+    # --- accounting genesis boundary (2026-11-22) ---------------------------
+    def _jnlc(self, activity_id, date):
+        return {"id": activity_id, "activity_type": "JNLC", "status": "executed",
+                "date": date, "net_amount": "100000", "currency": "USD"}
+
+    def test_pre_genesis_activity_is_preserved_but_excluded(self):
+        after = dict(fill("fill-after"), transaction_time="2026-11-23T16:00:00Z")
+        stager = self.make([[fill("fill-before"), self._jnlc("j-1", "2026-11-09"), after]])
+        stager.set_genesis_boundary(datetime(2026, 11, 22, 18, 0, tzinfo=timezone.utc))
+        report = stager.sync()
+        self.assertEqual(report["total_staged"], 3)
+        self.assertEqual(report["counts"].get("FILL:PRE_GENESIS_EXCLUDED"), 1)
+        self.assertEqual(report["counts"].get("JNLC:PRE_GENESIS_EXCLUDED"), 1)
+        self.assertEqual(report["counts"].get("FILL:STAGED_PENDING_RECONCILIATION"), 1)
+        self.assertEqual(report["pre_genesis_excluded"], 2)
+        self.assertEqual(stager.cash_movements(), [])
+        self.assertEqual(report["blocked_activity_types"], [])
+
+    def test_post_genesis_cash_journal_still_requires_review(self):
+        stager = self.make([[self._jnlc("j-2", "2026-11-23")]])
+        stager.set_genesis_boundary(datetime(2026, 11, 22, tzinfo=timezone.utc))
+        report = stager.sync()
+        self.assertEqual(report["counts"].get("JNLC:STAGED_PENDING_CAPITAL_RECONCILIATION"), 1)
+        self.assertEqual(len(stager.cash_movements()), 1)
+
+    def test_unparseable_timestamp_is_not_excluded(self):
+        row = dict(fill("fill-x"), transaction_time="not-a-time")
+        stager = self.make([[row]])
+        stager.set_genesis_boundary(datetime(2026, 11, 22, tzinfo=timezone.utc))
+        report = stager.sync()
+        self.assertNotIn("FILL:PRE_GENESIS_EXCLUDED", report["counts"])
+
+    def test_genesis_boundary_cannot_be_set_late_or_twice_or_naive(self):
+        stager = self.make([[fill()]])
+        with self.assertRaises(ActivityIngestionError):
+            stager.set_genesis_boundary(datetime(2026, 11, 22))
+        stager.sync()
+        with self.assertRaises(ActivityIngestionError):
+            stager.set_genesis_boundary(datetime(2026, 11, 22, tzinfo=timezone.utc))
+        other = AlpacaPaperActivityStager(db_path=os.path.join(self.tmp.name, "b.sqlite3"),
+                                          fetch_page=lambda c, s: [])
+        other.set_genesis_boundary(datetime(2026, 11, 22, tzinfo=timezone.utc))
+        with self.assertRaises(ActivityIngestionError):
+            other.set_genesis_boundary(datetime(2026, 11, 23, tzinfo=timezone.utc))
+
+    def test_date_only_row_on_genesis_day_is_not_excluded(self):
+        stager = self.make([[self._jnlc("j-3", "2026-11-22")]])
+        stager.set_genesis_boundary(datetime(2026, 11, 22, 18, 0, tzinfo=timezone.utc))
+        report = stager.sync()
+        self.assertEqual(report["counts"].get("JNLC:STAGED_PENDING_CAPITAL_RECONCILIATION"), 1)
+
+    def test_without_boundary_behaviour_is_unchanged(self):
+        report = self.make([[fill()]]).sync()
+        self.assertEqual(report["pre_genesis_excluded"], 0)
+        self.assertIsNone(report["genesis_at"])
 
 
 if __name__ == "__main__":

@@ -28,6 +28,13 @@ from rocket_trader_execution_cost_telemetry import ExecutionCostTelemetry
 from rocket_trader_env import env_bool
 
 
+
+# Account activity is synced every 15 minutes; its liveness window must cover
+# one full cycle plus grace, or the container flaps unhealthy between syncs
+# (found by the 2026-11-22 deployment rehearsal).
+ACTIVITY_SYNC_INTERVAL_SECONDS = 900
+ACTIVITY_HEARTBEAT_GRACE_SECONDS = 300
+
 class RuntimeConfigurationError(RuntimeError):
     pass
 
@@ -276,6 +283,7 @@ class MarketRuntimeRecorder:
         max_age_seconds: int = 120,
         now: Optional[datetime] = None,
         data_freshness_thresholds: Optional[Dict[str, int]] = None,
+        component_max_age_seconds: Optional[Dict[str, int]] = None,
     ) -> Dict[str, Any]:
         """Report process heartbeat separately from market-data freshness.
 
@@ -292,6 +300,10 @@ class MarketRuntimeRecorder:
         if current.tzinfo is None or current.utcoffset() is None:
             raise RuntimeStorageError("Health reference time must be timezone-aware.")
         thresholds = data_freshness_thresholds or {}
+        # Components that heartbeat on a slower cadence (e.g. account activity
+        # every 15 minutes) get their own liveness window; all others keep
+        # max_age_seconds.
+        liveness = component_max_age_seconds or {}
         components = {}
         for row in rows:
             updated = datetime.fromisoformat(row["updated_at"])
@@ -320,7 +332,11 @@ class MarketRuntimeRecorder:
                 "last_event_at": event_at, "event_age_seconds": event_age,
                 "data_freshness": freshness, "freshness_threshold_seconds": threshold,
                 "last_error": row["last_error"],
-                "healthy": row["status"] == "HEALTHY" and 0 <= age <= max_age_seconds,
+                "heartbeat_max_age_seconds": liveness.get(row["component"], max_age_seconds),
+                "healthy": (
+                    row["status"] == "HEALTHY"
+                    and 0 <= age <= liveness.get(row["component"], max_age_seconds)
+                ),
             }
         return {
             "healthy": all(x["healthy"] for x in components.values()),
@@ -424,7 +440,7 @@ class AlpacaPaperObserverRuntime:
         position_reconciliation_gate: Any = None,
         *,
         ledger_retry_interval_seconds: int = 900,
-        activity_retry_interval_seconds: int = 900,
+        activity_retry_interval_seconds: int = ACTIVITY_SYNC_INTERVAL_SECONDS,
         position_reconciliation_interval_seconds: int = 60,
         account_evidence_coordinator: Any = None,
         account_reconciliation_interval_seconds: int = 900,
@@ -1179,6 +1195,9 @@ def main() -> int:
         result = recorder.health(
             config.health_max_age_seconds,
             data_freshness_thresholds={"crypto": 600},
+            component_max_age_seconds={
+                "account_activity": ACTIVITY_SYNC_INTERVAL_SECONDS + ACTIVITY_HEARTBEAT_GRACE_SECONDS,
+            },
         )
         if activity_stager is not None:
             activity_status = activity_stager.report()
