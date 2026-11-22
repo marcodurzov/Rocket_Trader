@@ -82,11 +82,13 @@ cmd_genesis() {
   require_repo_root
   [[ -n "$(env_value ALPACA_API_KEY)" ]] || die "Run init-env first."
   [[ -z "$(env_value ACTIVITY_SSE_BOOTSTRAP_SINCE)" ]] || die "ACTIVITY_SSE_BOOTSTRAP_SINCE is already set: genesis was done before. Restore backups instead."
+  # Compose interpolation requires ACTIVITY_SSE_BOOTSTRAP_SINCE for every command
+  # (build included), but its real value is produced by genesis. A placeholder is
+  # exported only inside this genesis invocation; .env is not touched until success.
+  export ACTIVITY_SSE_BOOTSTRAP_SINCE=genesis-pending
   compose build "$SERVICE"
-  # Compose interpolation requires ACTIVITY_SSE_BOOTSTRAP_SINCE for every command,
-  # but its real value is produced by genesis. A placeholder is used only for this run.
   local out
-  out="$(ACTIVITY_SSE_BOOTSTRAP_SINCE=genesis-pending compose run --rm --no-deps -T "$SERVICE" \
+  out="$(compose run --rm --no-deps -T "$SERVICE" \
         python /app/rocket_trader_paper_genesis_admin.py --data-dir /app/data --genesis-confirmed)"
   echo "$out"
   local since
