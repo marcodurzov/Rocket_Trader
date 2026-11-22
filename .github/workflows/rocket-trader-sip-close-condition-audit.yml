@@ -55,4 +55,4 @@ jobs:
           name: rocket-trader-sip-close-condition-audit
           path: artifacts/sip_close_condition_audit.json
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 90

@@ -204,6 +204,27 @@ class PaperActivityAuditRunnerTests(unittest.TestCase):
             "fee-account-wide-unclassified",
         )
 
+    def test_public_log_summary_is_aggregate_only(self):
+        from contextlib import redirect_stdout
+        stdout = StringIO()
+        with patch.object(audit, "TradingClient", FakeAuditClient), redirect_stdout(stdout):
+            result = audit.main()
+        self.assertEqual(result, 2)
+        lines = [l for l in stdout.getvalue().splitlines()
+                 if l.startswith("ROCKET_TRADER_PAPER_AUDIT_SUMMARY ")]
+        self.assertEqual(len(lines), 1)
+        summary = json.loads(lines[0].split(" ", 1)[1])
+        self.assertEqual(summary["status"], "FILLS_MATCHED_FEES_UNRESOLVED")
+        self.assertEqual(summary["matched_order_count"], 1)
+        self.assertEqual(summary["orders_submitted"], 0)
+        report = json.loads(Path(self.report).read_text(encoding="utf-8"))
+        self.assertNotIn("orders", summary)
+        self.assertNotIn("fees", summary)
+        for order in report.get("orders", []):
+            for value in order.values():
+                if isinstance(value, str) and len(value) >= 8:
+                    self.assertNotIn(value, lines[0])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
