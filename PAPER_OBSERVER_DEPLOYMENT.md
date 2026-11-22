@@ -51,12 +51,17 @@ The observer now performs a read-only preflight before constructing its realized
 
 Missing, partial, corrupt, overlapping or incompatible files cause startup to fail. The runtime will not create replacement files or repair these schemas. This prevents a lost/mis-mounted Docker volume from silently looking like a new empty account ledger.
 
+**Recommended path (2026-11-22): `deploy/rocket_trader_deploy.sh`.** On a fresh Ubuntu host, from the repository root: `install` → `init-env` (asks for Paper keys, hidden, `.env` chmod 600) → `genesis` → `up` → `status`; then `backup` and `restore-test` daily/after upgrades. The script handles a Compose pitfall the manual commands below hit on a new host: Compose refuses to run *any* command until `ACTIVITY_SSE_BOOTSTRAP_SINCE` is set, but that value is produced by genesis; the script passes a one-run placeholder for genesis and then writes the real timestamp into `.env`. The full sequence is rehearsed by the workflow `rocket-trader-deployment-rehearsal.yml`.
+
 **First deployment / empty volume:** do not create empty SQLite files with `touch` and do not copy a database from another account. Use the one-time genesis command instead (added 2026-11-22):
 
 ```bash
+ACTIVITY_SSE_BOOTSTRAP_SINCE=genesis-pending \
 docker compose -f docker-compose.paper-observer.yml run --rm --no-deps rocket-trader-paper-observer \
   python /app/rocket_trader_paper_genesis_admin.py --data-dir /app/data --genesis-confirmed
 ```
+
+(The placeholder only satisfies Compose interpolation for this one command; genesis does not read it.)
 
 Genesis is Paper-only and read-only towards the broker. It refuses unless the Paper account is ACTIVE, has no open positions, no open orders and no fill in the last 48 hours (so delayed crypto fees have posted), and it refuses if any target database or `-wal`/`-shm` sidecar already exists — it can never overwrite or "reset" state. It creates the MXN ledger (seed MXN 1,000, milestone MXN 100,000), the fill inbox and the activity stager, then writes `/app/data/rocket_trader_genesis_attestation.json`. Earlier simulator activity (smoke tests) stays outside the strategy ledger by design.
 

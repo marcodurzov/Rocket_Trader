@@ -175,3 +175,10 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 ### 2026-11-22 (continued) — Stop weekly reruns of fixed research
 
 - Removed the weekly `schedule` from equity research v0.1–v0.4, crypto research v0.1–v0.3 and traditional research v0.2 (manual dispatch and PR/push tests kept). Rationale: these re-execute already-recorded families on the same data/holdout every Sunday, which the research rules forbid as new evidence and which only adds noise. Kept schedules: ETF cross-check (data audit), SIP close-condition audit, IEX feed probe, T05 forward recorder.
+- **PR #252 merged** as `68c9263` (equity/crypto research offline jobs and integration-gate green).
+
+### 2026-11-22 (continued) — Deployment script, backups and ephemeral rehearsal
+
+- **Second deployment blocker found by reading:** Compose interpolation requires `ACTIVITY_SSE_BOOTSTRAP_SINCE` for every command, including the genesis `run` that produces it — the runbook sequence could not work on a new host. Fixed in `deploy/rocket_trader_deploy.sh` (one-run placeholder, then writes the real value) and in the runbook.
+- **Added (this PR):** `deploy/rocket_trader_deploy.sh` (install/init-env/genesis/up/status/backup/restore-test; never `down -v`, hidden key entry, `.env` 600), `deploy/sqlite_backup.py` (SQLite online-backup API, single-file rollback-journal copies, SHA-256 manifest, restore into scratch dir + runtime preflight validators), `deploy/sanitize_health.py` (public logs show only booleans/ints), and workflow `rocket-trader-deployment-rehearsal.yml` (manual: genesis with real read-only Paper checks → six services → health → backup/restore → restart survival → second genesis must be refused).
+- **Bugs caught by tests before CI:** backup copies inherited WAL mode, so a later change could sit in a `-wal` sidecar invisible to the hash check — copies are now converted to rollback-journal single files; a byte-level "source unchanged" test was wrong because SQLite checkpoints by itself — now compares logical dumps. 5 backup tests pass.

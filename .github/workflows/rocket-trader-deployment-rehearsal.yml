@@ -1,0 +1,121 @@
+name: Rocket Trader - Paper Observer Deployment Rehearsal
+
+# Ephemeral end-to-end rehearsal of the real deployment procedure on a
+# temporary GitHub runner: genesis on an empty volume (real read-only Paper
+# checks), start all six observer services, wait for health, back up and
+# restore-test the volume, then stop. The runner and its volume are destroyed
+# afterwards; this is NOT a persistent deployment. No orders are possible
+# (OBSERVE_ONLY, Paper only, default-deny execution).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "deploy/**"
+      - ".github/workflows/rocket-trader-deployment-rehearsal.yml"
+  workflow_dispatch:
+    inputs:
+      wait_minutes:
+        description: Minutes to wait for all services to become healthy
+        required: false
+        default: "12"
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash  # explicit bash => -eo pipefail, so piped failures are not masked
+
+concurrency:
+  group: rocket-trader-deployment-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  offline-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: pip install -r requirements.txt
+      - name: Lint deploy script and run backup tests
+        run: |
+          bash -n deploy/rocket_trader_deploy.sh
+          shellcheck -S warning deploy/rocket_trader_deploy.sh
+          python -m unittest -v deploy/sqlite_backup_test.py
+
+  rehearsal:
+    if: github.event_name == 'workflow_dispatch'
+    needs: offline-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ROCKET_TRADER_BACKUP_DIR: ${{ github.workspace }}/backups
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write private .env from Paper secrets (never printed)
+        env:
+          K: ${{ secrets.ALPACA_API_KEY }}
+          S: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: |
+          umask 077
+          printf 'ALPACA_API_KEY=%s\nALPACA_SECRET_KEY=%s\nROCKET_TRADER_ALPACA_NEWS_SYMBOLS=SPY,QQQ,IWM,BTCUSD,ETHUSD,SOLUSD\n' "$K" "$S" > .env
+      - name: Genesis on empty volume (read-only Paper checks)
+        run: deploy/rocket_trader_deploy.sh genesis | python3 deploy/sanitize_health.py
+      - name: Start six observer services
+        run: deploy/rocket_trader_deploy.sh up > /dev/null && deploy/rocket_trader_deploy.sh status
+      - name: Wait for health
+        id: health
+        env:
+          WAIT_MINUTES: ${{ inputs.wait_minutes || '12' }}
+        run: |
+          deadline=$(( $(date +%s) + WAIT_MINUTES * 60 ))
+          while :; do
+            st="$(deploy/rocket_trader_deploy.sh status)"
+            total=$(printf '%s\n' "$st" | grep -c . || true)
+            healthy=$(printf '%s\n' "$st" | grep -c $'\thealthy$' || true)
+            echo "$(date -u +%H:%M:%S) healthy ${healthy}/${total}"
+            if [[ "$total" -ge 6 && "$healthy" -eq "$total" ]]; then echo "all_healthy=true" >> "$GITHUB_OUTPUT"; break; fi
+            if [[ $(date +%s) -ge $deadline ]]; then echo "all_healthy=false" >> "$GITHUB_OUTPUT"; break; fi
+            sleep 20
+          done
+          deploy/rocket_trader_deploy.sh status
+      - name: Observer health detail (booleans and counts only)
+        if: always()
+        run: |
+          docker compose -p rocket_trader -f docker-compose.paper-observer.yml exec -T rocket-trader-paper-observer \
+            python /app/rocket_trader_stream_runtime.py --healthcheck 2>/dev/null | python3 deploy/sanitize_health.py || true
+          for svc in rocket-trader-alpaca-activity-sse rocket-trader-regime-observer rocket-trader-alpaca-news rocket-trader-gdelt-news rocket-trader-official-news; do
+            echo "== $svc: $(docker inspect --format '{{.State.Health.Status}} restarts={{.RestartCount}}' "$svc" 2>/dev/null || echo missing)"
+          done
+      - name: Backup and restore test
+        id: backup
+        if: always()
+        run: |
+          deploy/rocket_trader_deploy.sh backup | grep -E '^ROCKET_TRADER_BACKUP|Backup written' | sed 's#/home/runner[^ ]*#<backup-dir>#'
+          deploy/rocket_trader_deploy.sh restore-test | grep -E '^ROCKET_TRADER_BACKUP|Restore test'
+          echo "backup_ok=true" >> "$GITHUB_OUTPUT"
+      - name: Restart survival (containers recreated, volume kept)
+        id: restart
+        if: steps.health.outputs.all_healthy == 'true'
+        run: |
+          docker compose -p rocket_trader -f docker-compose.paper-observer.yml down
+          deploy/rocket_trader_deploy.sh up > /dev/null
+          sleep 120
+          deploy/rocket_trader_deploy.sh status
+          docker compose -p rocket_trader -f docker-compose.paper-observer.yml run --rm --no-deps -T rocket-trader-paper-observer \
+            python /app/rocket_trader_paper_genesis_admin.py --data-dir /app/data --genesis-confirmed > /tmp/regenesis.txt 2>&1 \
+            && { echo "UNEXPECTED: second genesis succeeded"; exit 1; } || grep -q "GENESIS REFUSED" /tmp/regenesis.txt
+          echo "second_genesis_refused=true"
+          echo "restart_ok=true" >> "$GITHUB_OUTPUT"
+      - name: Summary
+        if: always()
+        run: |
+          echo "ROCKET_TRADER_REHEARSAL {\"all_healthy\": \"${{ steps.health.outputs.all_healthy }}\", \"backup_restore_ok\": \"${{ steps.backup.outputs.backup_ok }}\", \"restart_ok\": \"${{ steps.restart.outputs.restart_ok }}\", \"orders_submitted\": 0}"
+          docker compose -p rocket_trader -f docker-compose.paper-observer.yml down || true
+          [[ "${{ steps.health.outputs.all_healthy }}" == "true" && "${{ steps.backup.outputs.backup_ok }}" == "true" && "${{ steps.restart.outputs.restart_ok }}" == "true" ]]
