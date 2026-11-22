@@ -35,6 +35,7 @@ on:
       - "rocket_trader_paper_cash_coverage_migration.py"
       - "rocket_trader_paper_fee_allocation_audit.py"
       - "rocket_trader_paper_cash_ledger_admin.py"
+      - "rocket_trader_paper_genesis_admin.py"
       - "rocket_trader_alpaca_activity_stager.py"
       - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_cash_activity_bridge.py"
@@ -55,6 +56,7 @@ on:
       - "rocket_trader_paper_cash_coverage_migration.py"
       - "rocket_trader_paper_fee_allocation_audit.py"
       - "rocket_trader_paper_cash_ledger_admin.py"
+      - "rocket_trader_paper_genesis_admin.py"
       - "rocket_trader_alpaca_activity_stager.py"
       - "rocket_trader_alpaca_activity_sse_consumer.py"
       - "rocket_trader_alpaca_cash_activity_bridge.py"
@@ -117,6 +119,7 @@ jobs:
             /app/rocket_trader_paper_fee_allocation_audit.py \
             /app/rocket_trader_paper_account_reconciliation.py \
             /app/rocket_trader_paper_cash_ledger_admin.py \
+            /app/rocket_trader_paper_genesis_admin.py \
             /app/rocket_trader_alpaca_activity_stager.py \
             /app/rocket_trader_alpaca_activity_sse_consumer.py \
             /app/rocket_trader_alpaca_cash_activity_bridge.py \

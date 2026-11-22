@@ -51,7 +51,18 @@ The observer now performs a read-only preflight before constructing its realized
 
 Missing, partial, corrupt, overlapping or incompatible files cause startup to fail. The runtime will not create replacement files or repair these schemas. This prevents a lost/mis-mounted Docker volume from silently looking like a new empty account ledger.
 
-**First deployment / empty volume:** do not create empty SQLite files with `touch`, do not copy a database from another account, and do not start the default accounting configuration until the Paper history has been reviewed and the ledgers have been explicitly initialized or reconstructed from broker evidence. There is currently no generic bootstrap command approved for an account that may already have Paper fills; a fresh empty ledger could omit prior trades and fees.
+**First deployment / empty volume:** do not create empty SQLite files with `touch` and do not copy a database from another account. Use the one-time genesis command instead (added 2026-11-22):
+
+```bash
+docker compose -f docker-compose.paper-observer.yml run --rm --no-deps rocket-trader-paper-observer \
+  python /app/rocket_trader_paper_genesis_admin.py --data-dir /app/data --genesis-confirmed
+```
+
+Genesis is Paper-only and read-only towards the broker. It refuses unless the Paper account is ACTIVE, has no open positions, no open orders and no fill in the last 48 hours (so delayed crypto fees have posted), and it refuses if any target database or `-wal`/`-shm` sidecar already exists — it can never overwrite or "reset" state. It creates the MXN ledger (seed MXN 1,000, milestone MXN 100,000), the fill inbox and the activity stager, then writes `/app/data/rocket_trader_genesis_attestation.json`. Earlier simulator activity (smoke tests) stays outside the strategy ledger by design.
+
+After genesis: copy `activity_sse_bootstrap_since` from the attestation into `.env` as `ACTIVITY_SSE_BOOTSTRAP_SINCE`, then create the cash anchor with `rocket_trader_paper_cash_ledger_admin.py --initialize-db` (section below). Keep a copy of the attestation with your backups.
+
+If the account is not flat, close positions in the Paper dashboard yourself, wait 48 hours and retry. Never use genesis to replace a lost or mis-mounted volume: restore the backup instead.
 
 For temporary market-data-only observation on a new host, the accounting components can be disabled explicitly in the private `.env`:
 
