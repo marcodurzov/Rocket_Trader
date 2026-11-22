@@ -127,4 +127,4 @@ jobs:
             paper-activity-evidence.sqlite3
             paper-activity-sse-probe.json
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 90

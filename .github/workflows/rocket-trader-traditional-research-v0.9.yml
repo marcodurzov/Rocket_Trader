@@ -198,7 +198,7 @@ jobs:
             audit_input/
             downloaded_artifact/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 90
 
       - name: Publish audit summary
         if: always()

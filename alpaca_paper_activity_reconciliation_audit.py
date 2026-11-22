@@ -43,7 +43,41 @@ def _text(value: Any) -> str:
     return str(value)
 
 
+LOG_SUMMARY_KEYS = (
+    "status",
+    "fill_reconciliation_status",
+    "fee_reconciliation_status",
+    "fee_evidence_status",
+    "symbol",
+    "order_count",
+    "matched_order_count",
+    "unmatched_order_count",
+    "fee_activity_count",
+    "unclassified_fee_activity_count",
+    "other_symbol_fee_activity_count",
+    "incomplete_fee_activity_count",
+    "out_of_window_fee_activity_count",
+    "window_unverified_fee_activity_count",
+    "fee_window_after",
+    "fee_window_until",
+    "completed_at",
+)
+
+
+def log_summary(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate-only summary that is safe to print in public workflow logs.
+
+    Order IDs, client order IDs, activity IDs and account identifiers are
+    deliberately excluded. The full report stays in the private artifact.
+    """
+    summary = {key: report.get(key) for key in LOG_SUMMARY_KEYS if key in report}
+    summary["mode"] = "PAPER_READ_ONLY"
+    summary["orders_submitted"] = 0
+    return summary
+
+
 def _write_report(report: Dict[str, Any]) -> None:
+    print("ROCKET_TRADER_PAPER_AUDIT_SUMMARY " + json.dumps(log_summary(report), sort_keys=True))
     report_path = os.getenv("ROCKET_TRADER_ACTIVITY_REPORT")
     if report_path:
         Path(report_path).parent.mkdir(parents=True, exist_ok=True)

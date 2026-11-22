@@ -74,3 +74,4 @@ jobs:
           name: rocket-trader-signal-research-v0.6-report
           path: rocket_trader_signal_research_results.json
           if-no-files-found: ignore
+          retention-days: 90

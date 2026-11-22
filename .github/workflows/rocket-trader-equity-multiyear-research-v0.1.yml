@@ -87,4 +87,4 @@ jobs:
           name: rocket-trader-equity-multiyear-research-v0-1
           path: research_artifacts/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 90
