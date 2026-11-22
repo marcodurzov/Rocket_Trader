@@ -28,8 +28,6 @@ on:
         required: false
         default: 'BTC/USD ETH/USD SOL/USD'
         type: string
-  schedule:
-    - cron: '0 16 * * 0'
 
 permissions:
   contents: read

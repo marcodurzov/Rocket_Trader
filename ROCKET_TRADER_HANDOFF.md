@@ -4,7 +4,7 @@
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Last checkpoint SHA:** `5a8c1a2` (PR #249) — re-verify live `main` SHA before every change  
-**Progress (recalibrated rubric, section 8):** 34% toward a complete, validated, operating system. Not a probability of profitability.
+**Progress (recalibrated rubric, section 8):** 35% toward a complete, validated, operating system. Not a probability of profitability.
 
 ## 1. Resume protocol
 
@@ -129,11 +129,11 @@ From 2026-11-22 progress uses this fixed rubric (weight × completion). The earl
 | Safety, capital policy, accounting code foundation | 20% | 90% | 18.0 | Default-deny execution, MXN ledger, drawdown guard, fail-closed state, 574+ tests |
 | Data provenance | 10% | 75% | 7.5 | SIP history, close-definition resolved (run 45038550878), 6/8 ETFs cumulative parity; QQQ/SPY dividends open |
 | Real Paper accounting evidence | 10% | 35% | 3.5 | Runs 45050365468/45050961817: 6/6 fills matched; fees unallocated; JNLC unclassified |
-| Persistent deployment | 10% | 20% | 2.0 | Image published, runbook and host options; no host |
+| Persistent deployment | 10% | 30% | 3.0 | Image published; fresh-volume genesis (PR #251) removes the last software blocker; no host |
 | Empirical execution costs | 10% | 5% | 0.5 | Telemetry code only; no representative fills |
 | Validated strategy edge | 25% | 10% | 2.5 | Research infrastructure + forward recorder; 0 approved candidates |
 | Sustained Paper operation + independent review | 15% | 0% | 0.0 | Not started |
-| **Total** | 100% | | **34%** | |
+| **Total** | 100% | | **35%** | |
 
 Raise a component only with recorded evidence. Documentation alone never raises it.
 
@@ -170,3 +170,8 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 - **Tests:** 9 offline tests (+8 subtests) including the key one — state created by genesis passes the exact runtime preflight validators (`_require_existing_state`, `_require_existing_fill_bridge`, `_require_existing_activity_stager`); refusal cases create nothing; a fake client proves no order method is called. Packaged in the Paper Observer image; added to container, publish and runtime-test workflows; runbook updated (correct Compose service name `rocket-trader-paper-observer`).
 - **Not done:** genesis has not been run on any real host (none exists). It does not reconstruct pre-genesis history; that remains out of scope by design.
 - **First CI attempt FAILED (PR #251, observer-runtime job):** `ModuleNotFoundError: alpaca` — that workflow does not install alpaca-py. Fixed by making the order filters injectable (`alpaca_order_filters` is still the production default); tests now pass with and without alpaca-py installed.
+- **PR #251 merged** as `6cedbae`; post-merge CI green (observer-runtime, container, publish, reconciliation, SSE, stager, integration-gate). The published GHCR image now contains the genesis command. Progress: deployment component 20% → 30% (software path complete; host still missing) → total **35%**.
+
+### 2026-11-22 (continued) — Stop weekly reruns of fixed research
+
+- Removed the weekly `schedule` from equity research v0.1–v0.4, crypto research v0.1–v0.3 and traditional research v0.2 (manual dispatch and PR/push tests kept). Rationale: these re-execute already-recorded families on the same data/holdout every Sunday, which the research rules forbid as new evidence and which only adds noise. Kept schedules: ETF cross-check (data audit), SIP close-condition audit, IEX feed probe, T05 forward recorder.

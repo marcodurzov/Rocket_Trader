@@ -31,8 +31,6 @@ on:
         options:
           - IEX
           - SIP
-  schedule:
-    - cron: '0 17 * * 0'
 
 permissions:
   contents: read

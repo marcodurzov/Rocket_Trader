@@ -15,8 +15,6 @@ on:
         default: "SPY QQQ"
         type: string
 
-  schedule:
-    - cron: "0 15 * * 0"
 
 permissions:
   contents: read
