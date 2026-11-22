@@ -92,23 +92,29 @@ def require_absent(paths: Dict[str, Path], attestation: Path) -> None:
         )
 
 
-def check_broker_flat(client: Any, *, now: datetime, quiet_hours: int) -> Dict[str, Any]:
-    """Read-only broker checks. Raises GenesisError if the account is not flat."""
+def alpaca_order_filters(since: datetime):
+    """Return (open_orders_filter, recently_closed_filter) for alpaca-py."""
     from alpaca.trading.enums import QueryOrderStatus
     from alpaca.trading.requests import GetOrdersRequest
+    return (GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=500),
+            GetOrdersRequest(status=QueryOrderStatus.CLOSED, after=since, limit=500))
 
+
+def check_broker_flat(client: Any, *, now: datetime, quiet_hours: int,
+                      filters_factory: Callable[[datetime], Any] = alpaca_order_filters) -> Dict[str, Any]:
+    """Read-only broker checks. Raises GenesisError if the account is not flat."""
+    since = now - timedelta(hours=quiet_hours)
+    open_filter, closed_filter = filters_factory(since)
     account = client.get_account()
     if _status(getattr(account, "status", "")) != "ACTIVE":
         raise GenesisError("Paper account is not ACTIVE.")
     positions = list(client.get_all_positions() or [])
     if positions:
         raise GenesisError(f"Paper account has {len(positions)} open position(s); genesis requires a flat account.")
-    open_orders = list(client.get_orders(filter=GetOrdersRequest(status=QueryOrderStatus.OPEN, limit=500)) or [])
+    open_orders = list(client.get_orders(filter=open_filter) or [])
     if open_orders:
         raise GenesisError(f"Paper account has {len(open_orders)} open order(s); genesis requires none.")
-    since = now - timedelta(hours=quiet_hours)
-    recent = list(client.get_orders(filter=GetOrdersRequest(
-        status=QueryOrderStatus.CLOSED, after=since, limit=500)) or [])
+    recent = list(client.get_orders(filter=closed_filter) or [])
     recent_fills = [o for o in recent if getattr(o, "filled_at", None) is not None]
     if recent_fills:
         raise GenesisError(
@@ -155,6 +161,7 @@ def run_genesis(
     client_factory: Callable[[], Any],
     now: Optional[datetime] = None,
     quiet_hours: int = DEFAULT_QUIET_HOURS,
+    filters_factory: Callable[[datetime], Any] = alpaca_order_filters,
 ) -> Dict[str, Any]:
     if not confirmed:
         raise GenesisError("Refusing genesis without --genesis-confirmed.")
@@ -165,7 +172,8 @@ def run_genesis(
     paths = _default_paths(data_dir)
     attestation_path = data_dir / ATTESTATION_NAME
     require_absent(paths, attestation_path)
-    broker = check_broker_flat(client_factory(), now=now, quiet_hours=quiet_hours)
+    broker = check_broker_flat(client_factory(), now=now, quiet_hours=quiet_hours,
+                               filters_factory=filters_factory)
     # Re-check right before creation to narrow the race window.
     require_absent(paths, attestation_path)
     initial = os.getenv("ROCKET_TRADER_INITIAL_CAPITAL_MXN", "1000.00")

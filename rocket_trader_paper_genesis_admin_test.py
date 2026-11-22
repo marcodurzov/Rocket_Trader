@@ -31,8 +31,7 @@ class FakeClient:
         return self.positions
 
     def get_orders(self, filter=None):
-        status = getattr(getattr(filter, "status", None), "value", str(getattr(filter, "status", "")))
-        return self.open_orders if "open" in status.lower() else self.closed
+        return self.open_orders if filter == "OPEN" else self.closed
 
     def submit_order(self, *a, **k):  # pragma: no cover - must never be called
         self.mutations += 1
@@ -59,7 +58,8 @@ class GenesisTests(unittest.TestCase):
 
     def run_genesis(self, client, **kw):
         return genesis.run_genesis(data_dir=self.dir, confirmed=kw.pop("confirmed", True),
-                                   client_factory=lambda: client, now=NOW, **kw)
+                                   client_factory=lambda: client, now=NOW,
+                                   filters_factory=lambda since: ("OPEN", ("CLOSED", since)), **kw)
 
     def test_genesis_creates_state_that_passes_runtime_preflight(self):
         client = FakeClient()
