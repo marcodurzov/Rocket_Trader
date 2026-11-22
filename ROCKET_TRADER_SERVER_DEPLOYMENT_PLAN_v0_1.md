@@ -1,6 +1,6 @@
 # Rocket Trader — Server Deployment Plan v0.1
 
-**Status:** Design only. No VPS has been selected, provisioned or deployed.
+**Status:** Procedure rehearsed end-to-end on an ephemeral runner with real Paper credentials (2026-11-22, run `45057338539`: genesis, six services, backup/restore, restart). No VPS has been selected, provisioned or deployed.
 **Operating mode:** Paper / observe-only. Live is disabled.
 **Last reviewed:** 2026-11-15
 
@@ -77,10 +77,14 @@ The non-root image initializes a new volume with UID/GID 10001. An existing volu
 Do not provision/deploy until:
 1. The user chooses a provider, region and monthly cost ceiling.
 2. The exact deployment Compose is updated to pin the GHCR digest.
-3. The persistent database initialization/restore plan is validated from broker evidence.
-4. The volume ownership and restore procedure are tested.
+3. ~~The persistent database initialization/restore plan is validated from broker evidence.~~ Done: `rocket_trader_paper_genesis_admin.py` (flat-account checks, genesis boundary) — PR #251/#253.
+4. ~~The volume ownership and restore procedure are tested.~~ Done in rehearsal: `deploy/rocket_trader_deploy.sh backup` / `restore-test` (runtime preflight on restored copy).
 5. Paper-only secrets and environment settings are verified.
 6. All six services pass healthchecks and a minimum 72-hour observer soak.
 7. Read-only Paper activity, fill and fee reconciliation is complete.
 
 This plan does not authorize server purchase, account funding, Paper order submission or Live trading.
+
+## 7. One-command procedure (added 2026-11-22)
+
+On a fresh Ubuntu 22.04/24.04 host, from a clone of the repository: `deploy/rocket_trader_deploy.sh install`, log out/in, then `init-env`, `genesis`, `up`, `status`. Schedule `backup` daily (cron) and copy backups off-host; run `restore-test` after upgrades. Gate 2 (pinning a GHCR digest) is replaced by deploying a pinned git commit and building locally; record the commit SHA with each deployment.
