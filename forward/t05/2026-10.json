@@ -1,0 +1,84 @@
+{
+  "execution_rule": "weights take effect at the next session open after signal_session",
+  "experiment_id": "T05-ALLOC-MONTHLY-v0.1",
+  "month_end_close": {
+    "DIA": 516.55,
+    "EEM": 61.04,
+    "EFA": 103.37,
+    "GLD": 355.78,
+    "IWM": 279.33,
+    "QQQ": 690.49,
+    "SPY": 755.72,
+    "TLT": 81.5
+  },
+  "orders_enabled": false,
+  "orders_submitted": 0,
+  "record_version": "t05-forward-shadow-v0.1",
+  "recorded_at_utc": "2026-11-22T17:53:31.417904+00:00",
+  "sha256_of_record_without_hash": "fdaa2f3bae7c2d17b9e38c836512109d485f5ddb66fde63a486b5259afd30d41",
+  "signal_month": "2026-10",
+  "signal_session_utc": "2026-10-30T04:00:00+00:00",
+  "source": "ALPACA_SIP",
+  "target_weights": {
+    "dual_momentum_top3_12_1": {
+      "DIA": 0.0,
+      "EEM": 0.3333333333,
+      "EFA": 0.0,
+      "GLD": 0.0,
+      "IWM": 0.3333333333,
+      "QQQ": 0.3333333333,
+      "SPY": 0.0,
+      "TLT": 0.0
+    },
+    "equal_weight_monthly": {
+      "DIA": 0.125,
+      "EEM": 0.125,
+      "EFA": 0.125,
+      "GLD": 0.125,
+      "IWM": 0.125,
+      "QQQ": 0.125,
+      "SPY": 0.125,
+      "TLT": 0.125
+    },
+    "inverse_vol_63d": {
+      "DIA": 0.1630651418,
+      "EEM": 0.0806849642,
+      "EFA": 0.1535924852,
+      "GLD": 0.068940269,
+      "IWM": 0.1237512769,
+      "QQQ": 0.0904841845,
+      "SPY": 0.1626333558,
+      "TLT": 0.1568483227
+    },
+    "sma210_trend_equal_weight": {
+      "DIA": 0.125,
+      "EEM": 0.0,
+      "EFA": 0.125,
+      "GLD": 0.0,
+      "IWM": 0.125,
+      "QQQ": 0.125,
+      "SPY": 0.125,
+      "TLT": 0.0
+    },
+    "sma210_trend_inverse_vol": {
+      "DIA": 0.1630651418,
+      "EEM": 0.0,
+      "EFA": 0.1535924852,
+      "GLD": 0.0,
+      "IWM": 0.1237512769,
+      "QQQ": 0.0904841845,
+      "SPY": 0.1626333558,
+      "TLT": 0.0
+    },
+    "vol_target_equal_weight_10pct": {
+      "DIA": 0.1081945622,
+      "EEM": 0.1081945622,
+      "EFA": 0.1081945622,
+      "GLD": 0.1081945622,
+      "IWM": 0.1081945622,
+      "QQQ": 0.1081945622,
+      "SPY": 0.1081945622,
+      "TLT": 0.1081945622
+    }
+  }
+}
