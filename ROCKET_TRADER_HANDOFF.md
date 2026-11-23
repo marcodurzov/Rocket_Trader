@@ -4,7 +4,7 @@
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Last checkpoint SHA:** `5a8c1a2` (PR #249) — re-verify live `main` SHA before every change  
-**Progress (recalibrated rubric, section 8):** 36% toward a complete, validated, operating system. Not a probability of profitability.
+**Progress (recalibrated rubric, section 8):** 38% toward a complete, validated, operating system. Not a probability of profitability.
 
 ## 1. Resume protocol
 
@@ -93,7 +93,7 @@ Done this session (see journal): SIP close-condition review (resolved as close-d
 3. Resolve QQQ (2020-09-21, 2022-09-19) and SPY (2018-06-15) dividend records against issuer distribution notices. Portfolio-level research already replicates across both vendors, so this is a provenance item, not a research blocker.
 4. Deploy the observer stack on the chosen host (observer-only): run the one-time genesis command (`rocket_trader_paper_genesis_admin.py`, runbook "First deployment"), set `ACTIVITY_SSE_BOOTSTRAP_SINCE` from its attestation, create the cash anchor, verify backups/restarts, 72-hour soak, then multi-week Paper evidence for cost telemetry and full-account reconciliation.
 5. Review T05 forward shadow records after 12 months (first strict month: 2026-11 record). Do not change T05 rules.
-6. New research only via pre-registration with a new experiment ID. Families already exhausted on the 2016–2026 window: single-asset trend/breakout (T02), mean reversion (T03), daily cross-sectional top-1 momentum, monthly allocation T05. Untested: T04 pairs (needs shorting → simulation only), T06 calendar/event (needs point-in-time data), T07 intraday (needs trade/quote data), T08 ML (only after a simple baseline passes).
+6. New research only via pre-registration with a new experiment ID. Families already exhausted on the 2016–2026 window: single-asset trend/breakout (T02), mean reversion (T03), daily cross-sectional top-1 momentum, monthly allocation T05, turn-of-month calendar T06a. Untested: T04 pairs (needs shorting → simulation only), T06 calendar/event (needs point-in-time data), T07 intraday (needs trade/quote data), T08 ML (only after a simple baseline passes).
 7. Independent readiness review precedes any separate Paper-execution authorization. Live remains unauthorized.
 
 ## 6. Server/deployment boundary
@@ -129,14 +129,16 @@ From 2026-11-22 progress uses this fixed rubric (weight × completion). The earl
 |---|---|---|---|---|
 | Safety, capital policy, accounting code foundation | 20% | 90% | 18.0 | Default-deny execution, MXN ledger, drawdown guard, fail-closed state, 574+ tests |
 | Data provenance | 10% | 75% | 7.5 | SIP history, close-definition resolved (run 45038550878), 6/8 ETFs cumulative parity; QQQ/SPY dividends open |
-| Real Paper accounting evidence | 10% | 35% | 3.5 | Runs 45050365468/45050961817: 6/6 fills matched; fees unallocated; JNLC unclassified |
+| Real Paper accounting evidence | 10% | 40% | 4.0 | 6/6 fills matched (run 45050961817); position reconciliation MATCHED against the real Paper account in rehearsal 45187395850; fees unallocated; JNLC unclassified; weekend FX policy open |
 | Persistent deployment | 10% | 45% | 4.5 | Genesis (PR #251) + deploy script, backups and restart rehearsed end-to-end with real Paper credentials (run 45057338539); no persistent host |
-| Empirical execution costs | 10% | 5% | 0.5 | Telemetry code only; no representative fills |
+| Empirical execution costs | 10% | 15% | 1.5 | Quoted spreads measured for 8 ETFs + 3 crypto (run 45190318213); fees known; slippage/fills still need Paper |
 | Validated strategy edge | 25% | 10% | 2.5 | Research infrastructure + forward recorder; 0 approved candidates |
 | Sustained Paper operation + independent review | 15% | 0% | 0.0 | Not started |
-| **Total** | 100% | | **36%** | |
+| **Total** | 100% | | **38%** | |
 
 Raise a component only with recorded evidence. Documentation alone never raises it.
+
+**Share that depends on user actions (2026-11-23):** of the remaining 62 points, about **7 points are unlocked directly** by user tasks (persistent host ≈5.5 — deployment component; weekend-FX decision ≈1; JNLC identification ≈0.5) and about **35 more are gated behind the persistent host** (empirical fill costs ≈8.5, remaining Paper accounting ≈5, sustained operation + review 15, plus forward strategy evidence). Branch protection carries no points but is a safety control (it would have blocked the PR #257 mistake).
 
 ## 9. Change journal — append every attempt, success or failure
 
@@ -198,3 +200,7 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 - **PR #255 merged** as `d77a33e`. **Spread study run 1 (`45187950954`) — crypto VALID, ETF INVALID (measurement defect):** crypto half-spread median/p90 (bps): BTC/USD 1.35/1.81, ETH/USD 1.33/1.83, SOL/USD 4.42/5.76 (336 hourly samples each, 100% valid) — all far below the 10 bps assumption (`ASSUMPTION_COVERS_P90`). ETF valid shares collapsed for the most liquid funds (SPY 2%, TLT 0%, QQQ 11%) because one multi-symbol request was capped at 10,000 quotes and liquid ETFs exceed that in 60 s. Fixed (this PR): one request per symbol, newest first, limit 100; regression test. ETF numbers from run 1 must not be cited.
 - **Weekday rehearsal (run `45187395850`, Monday, main `d77a33e`) — confirms the weekend-FX diagnosis:** FX `market_session=open`, age 0.3 h, `quote_for_fill=OK`; position reconciliation `MATCHED`, `positions_match=true`, status `POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE` (expected until the cash ledger is enabled). Account activity, ledger, crypto, equity and trading components healthy. Genesis, backup/restore, restart and second-genesis refusal all passed again. GDELT still 429 from GitHub IPs; BLS 403 (likely needs an identified contact User-Agent like SEC — candidate small change).
 - **PROCESS VIOLATION (assistant) — PR #257 merged with a failing check:** `offline-tests` failed (`ModuleNotFoundError: alpaca` — the spread workflow's offline job installed only the Yahoo requirements, while the new regression test imports alpaca-py), and the merge command did not gate on check conclusions. Merged as `7c33016`. Corrected immediately in the next PR (install alpaca requirements in the offline job). Rule reinforced: merge commands must abort if any check concluded `failure`; branch protection (user task) would have blocked this mechanically.
+- **PR #258 merged** as `6917a85` (all checks green; merge now gated by a script that refuses any non-green check).
+- **T06 turn-of-month result — NEGATIVE, replicated:** run `45189854623` on `ba17cf5` (Alpaca SIP and Yahoo; window 2016-12-01 → 2026-10-30, holdout from 2024-11-04). **0/9 pre-screen passes on both sources.** Direction is consistent: TOM-minus-other daily mean positive for 8/9 instruments (+1.0 to +12.2 bps/day), holdout difference positive for all 8 equity instruments (+8 to +18 bps), TLT negative. Best Holm p: EEM 0.105 (Alpaca) / 0.112 (Yahoo). TOM-only strategy (19% exposure) cuts max drawdown (basket −9% vs −27%) but has lower Sharpe than buy-and-hold (basket 0.43 vs 0.88). Not an edge under the pre-registered gates; do not re-run with other windows on the same data.
+- **Spread study run 2 (`45190318213`, corrected) — VALID:** 100% valid samples for all 11 symbols. Median/p90 half-spread (bps): SPY 0.13/0.21, QQQ 0.20/0.32, IWM 0.18/0.37, DIA 0.29/0.59, GLD 0.29/0.53, EFA 0.48/0.49, TLT 0.62/0.65, EEM 0.80/0.86; BTC 1.35/1.80, ETH 1.33/1.83, SOL 4.44/5.77. All `ASSUMPTION_COVERS_P90`. Research spread assumptions (2.5 / 10 bps) are conservative; the negative research results are therefore not caused by inflated spread costs — the binding constraint is the absence of a robust signal. Slippage beyond the quote and fills remain unmeasured.
+- **Progress:** Paper accounting 35% → 40% (position reconciliation MATCHED in rehearsal), execution costs 5% → 15% (quoted spreads measured) → total **38%**.
