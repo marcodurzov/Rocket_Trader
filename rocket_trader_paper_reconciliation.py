@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
 
-from rocket_trader_currency import FXQuote
+from rocket_trader_currency import FXQuote, max_fx_age_for
 from rocket_trader_alpaca_cash_ledger import PaperCashLedgerError
 
 
@@ -129,7 +129,7 @@ class AlpacaPaperReconciliationGate:
         age = current - fx_quote.observed_at
         if age < timedelta(0):
             raise PaperReconciliationError("FX quote timestamp is in the future")
-        if age > self.max_fx_age:
+        if age > max_fx_age_for(fx_quote, self.max_fx_age):
             raise PaperReconciliationError("FX quote is stale; reconciliation is blocked")
 
         status = str(_value(account, "status", "UNKNOWN")).upper()

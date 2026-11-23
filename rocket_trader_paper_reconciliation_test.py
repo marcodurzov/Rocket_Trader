@@ -296,6 +296,15 @@ class PaperReconciliationTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "POSITIONS_MATCHED_ACCOUNTING_INCOMPLETE")
 
+    def test_closed_market_tagged_fx_is_accepted_within_72h(self):
+        tagged = FXQuote(Decimal("18"), NOW - timedelta(hours=45), "x:CLOSED_MARKET_LAST_CLOSE")
+        AlpacaPaperReconciliationGate(FakeBroker()).reconcile(
+            ledger_snapshot=self.snapshot(), fx_quote=tagged, now=NOW)
+        old = FXQuote(Decimal("18"), NOW - timedelta(hours=73), "x:CLOSED_MARKET_LAST_CLOSE")
+        with self.assertRaisesRegex(PaperReconciliationError, "stale"):
+            AlpacaPaperReconciliationGate(FakeBroker()).reconcile(
+                ledger_snapshot=self.snapshot(), fx_quote=old, now=NOW)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -50,6 +50,11 @@ def _decimal(value: Any) -> Decimal:
     return result
 
 
+from rocket_trader_currency import CLOSED_MARKET_MAX_FX_AGE, CLOSED_MARKET_TAG  # noqa: E402
+
+CLOSED_FX_SESSIONS = frozenset({"weekend", "holiday", "closed"})
+
+
 class ExchangerateDevFXProvider:
     """Fetch and validate the last available USD/MXN indicative quote."""
 
@@ -132,14 +137,23 @@ class ExchangerateDevFXProvider:
         if observed_at > fill:
             raise FXProviderError("USD/MXN quote is newer than the fill; look-ahead is blocked")
         age = fill - observed_at
-        if age > self.max_age:
-            raise FXProviderError(
-                f"USD/MXN quote is stale for this fill ({age.total_seconds():.0f}s)"
-            )
-        source_kind = str((payload.get("sources") or {}).get("MXN") or payload.get("source") or "unknown")
         market_session = str(payload.get("market_session") or "unknown")
+        closed_market = False
+        if age > self.max_age:
+            # User-approved weekend/holiday policy: the provider must itself
+            # report a closed FX session (stale=false was checked above), and
+            # the last close may be at most 72 h old.
+            if market_session.strip().lower() in CLOSED_FX_SESSIONS and age <= CLOSED_MARKET_MAX_FX_AGE:
+                closed_market = True
+            else:
+                raise FXProviderError(
+                    f"USD/MXN quote is stale for this fill ({age.total_seconds():.0f}s)"
+                )
+        source_kind = str((payload.get("sources") or {}).get("MXN") or payload.get("source") or "unknown")
         source = (
             f"exchangerate.dev:{source_kind}:indicative_not_settlement:"
             f"market_session={market_session}"
         )
+        if closed_market:
+            source += f":{CLOSED_MARKET_TAG}"
         return LedgerFX(_decimal(rate), observed_at, source)

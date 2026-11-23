@@ -152,6 +152,13 @@ class StrategyEquityMetricsTests(unittest.TestCase):
         with self.assertRaisesRegex(StrategyEquityMetricsError, "future"):
             calculate_strategy_equity_metrics(**data)
 
+    def test_closed_market_tagged_fx_within_72h_is_accepted(self):
+        calculate_strategy_equity_metrics(**fixture(fx_quote=FXQuote(
+            Decimal("18"), NOW - timedelta(hours=45), "x:CLOSED_MARKET_LAST_CLOSE")))
+        with self.assertRaisesRegex(StrategyEquityMetricsError, "stale"):
+            calculate_strategy_equity_metrics(**fixture(fx_quote=FXQuote(
+                Decimal("18"), NOW - timedelta(hours=73), "x:CLOSED_MARKET_LAST_CLOSE")))
+
 
 if __name__ == "__main__":
     unittest.main()

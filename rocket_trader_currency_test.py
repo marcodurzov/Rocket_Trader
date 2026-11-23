@@ -127,6 +127,21 @@ class CurrencyBudgetTests(unittest.TestCase):
         self.assertTrue(budget.allowed)
         self.assertEqual(budget.max_notional_usd, Decimal("2.25"))
 
+    def test_closed_market_tag_extends_fx_window_to_72h_only(self):
+        tagged = FXQuote(mxn_per_usd="18", observed_at=NOW - timedelta(hours=45),
+                         source="exchangerate.dev:x:market_session=weekend:CLOSED_MARKET_LAST_CLOSE")
+        calculate_position_budget(capital_mxn="1000", available_cash_usd="100",
+                                  current_exposure_usd="0", fx_quote=tagged, now=NOW)
+        too_old = FXQuote(mxn_per_usd="18", observed_at=NOW - timedelta(hours=73),
+                          source="exchangerate.dev:x:CLOSED_MARKET_LAST_CLOSE")
+        with self.assertRaisesRegex(CurrencyBudgetError, "stale"):
+            calculate_position_budget(capital_mxn="1000", available_cash_usd="100",
+                                      current_exposure_usd="0", fx_quote=too_old, now=NOW)
+        untagged = FXQuote(mxn_per_usd="18", observed_at=NOW - timedelta(hours=45), source="other")
+        with self.assertRaisesRegex(CurrencyBudgetError, "stale"):
+            calculate_position_budget(capital_mxn="1000", available_cash_usd="100",
+                                      current_exposure_usd="0", fx_quote=untagged, now=NOW)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -96,6 +96,37 @@ class ExchangerateDevFXProviderTests(unittest.TestCase):
         provider.quote_for_fill(NOW + timedelta(minutes=1), now=NOW + timedelta(minutes=1))
         self.assertEqual(len(calls), 1)
 
+    # --- user-approved weekend/holiday policy (2026-11-23) -----------------
+    def _provider(self, payload):
+        return ExchangerateDevFXProvider(opener=lambda _r, timeout=None: FakeResponse(payload))
+
+    def test_weekend_last_close_accepted_and_tagged(self):
+        payload = self.payload(effective_at=(NOW - timedelta(hours=45)).isoformat())
+        payload["market_session"] = "weekend"
+        quote = self._provider(payload).quote_for_fill(NOW, now=NOW)
+        self.assertIn("CLOSED_MARKET_LAST_CLOSE", quote.source)
+
+    def test_weekend_quote_older_than_72h_rejected(self):
+        payload = self.payload(effective_at=(NOW - timedelta(hours=73)).isoformat())
+        payload["market_session"] = "weekend"
+        with self.assertRaises(FXProviderError):
+            self._provider(payload).quote_for_fill(NOW, now=NOW)
+
+    def test_old_quote_during_open_session_still_rejected(self):
+        payload = self.payload(effective_at=(NOW - timedelta(hours=45)).isoformat())
+        with self.assertRaises(FXProviderError):
+            self._provider(payload).quote_for_fill(NOW, now=NOW)
+
+    def test_provider_stale_flag_rejected_even_on_weekend(self):
+        payload = self.payload(effective_at=(NOW - timedelta(hours=10)).isoformat(), stale=True)
+        payload["market_session"] = "weekend"
+        with self.assertRaises(FXProviderError):
+            self._provider(payload).quote_for_fill(NOW, now=NOW)
+
+    def test_fresh_open_quote_is_not_tagged(self):
+        quote = self._provider(self.payload()).quote_for_fill(NOW, now=NOW)
+        self.assertNotIn("CLOSED_MARKET_LAST_CLOSE", quote.source)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
