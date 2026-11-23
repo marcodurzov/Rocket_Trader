@@ -1,0 +1,54 @@
+name: Rocket Trader - T06 Turn-of-Month Research v0.1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_calendar_research_t06_v0_1.py"
+      - "rocket_trader_calendar_research_t06_v0_1_test.py"
+      - ".github/workflows/rocket-trader-calendar-research-t06.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - run: python -m unittest -v rocket_trader_calendar_research_t06_v0_1_test.py
+
+  research:
+    if: github.event_name == 'workflow_dispatch'
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [ALPACA, YAHOO]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - name: Run pre-registered research (no orders)
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python rocket_trader_calendar_research_t06_v0_1.py --source ${{ matrix.source }} --output research_artifacts/t06_${{ matrix.source }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rocket-trader-t06-${{ matrix.source }}
+          path: research_artifacts/
+          retention-days: 90
