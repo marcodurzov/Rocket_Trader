@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, Optional
 
-from rocket_trader_currency import FXQuote
+from rocket_trader_currency import FXQuote, max_fx_age_for
 
 
 class StrategyEquityMetricsError(RuntimeError):
@@ -115,7 +115,7 @@ def calculate_strategy_equity_metrics(
         raise StrategyEquityMetricsError("A validated FXQuote is required")
     fx_time = _utc(fx_quote.observed_at, "FX observed_at")
     fx_age = current - fx_time
-    if fx_age < timedelta(0) or fx_age > max_fx_age:
+    if fx_age < timedelta(0) or fx_age > max_fx_age_for(fx_quote, max_fx_age):
         raise StrategyEquityMetricsError("FX quote is future-dated or stale")
     if not isinstance(session_baseline, StrategySessionBaseline):
         raise StrategyEquityMetricsError("A durable StrategySessionBaseline is required")

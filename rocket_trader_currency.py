@@ -30,6 +30,22 @@ def _decimal(value: object, field: str) -> Decimal:
     return result
 
 
+# Weekend/holiday FX policy (user-approved 2026-11-23). When the FX market is
+# closed, the last official close is the valid reference rate. A quote is only
+# eligible for the longer window when the FX provider itself reported a closed
+# session and did not flag the quote as stale; the provider then tags the
+# source with CLOSED_MARKET_TAG. Everything else keeps the normal limits.
+CLOSED_MARKET_TAG = "CLOSED_MARKET_LAST_CLOSE"
+CLOSED_MARKET_MAX_FX_AGE = timedelta(hours=72)
+
+
+def max_fx_age_for(fx_quote: "FXQuote", default: timedelta) -> timedelta:
+    """Allowed FX age for this quote: default, or up to 72 h for tagged closed-market quotes."""
+    if CLOSED_MARKET_TAG in str(getattr(fx_quote, "source", "")):
+        return max(default, CLOSED_MARKET_MAX_FX_AGE)
+    return default
+
+
 @dataclass(frozen=True)
 class FXQuote:
     """MXN per USD. Example: 18.00 means USD 1 costs MXN 18."""
@@ -113,7 +129,7 @@ def calculate_position_budget(
     age = current_time - fx_quote.observed_at
     if age < timedelta(0):
         raise CurrencyBudgetError("FX quote timestamp is in the future")
-    if age > max_fx_age:
+    if age > max_fx_age_for(fx_quote, max_fx_age):
         raise CurrencyBudgetError("FX quote is stale; trading budget is blocked")
 
     capital_usd = capital / fx_quote.mxn_per_usd
