@@ -199,25 +199,44 @@ def summary_line(result: Dict[str, Any]) -> Dict[str, Any]:
             "crypto": compact(result["crypto"]), "orders_submitted": 0}
 
 
-def _alpaca_fetchers():
+PER_SYMBOL_QUOTE_LIMIT = 100
+
+
+def _alpaca_fetchers(stocks: Any = None, crypto: Any = None):
+    """One request per symbol, newest first.
+
+    Run 45187950954 used one multi-symbol request with a 10,000-quote limit;
+    liquid ETFs (SPY, QQQ, TLT) produce more quotes than that in 60 s, so their
+    samples were truncated away. Newest-first per symbol avoids that bias.
+    """
+    from alpaca.common.enums import Sort
     from alpaca.data.enums import DataFeed
-    from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
     from alpaca.data.requests import CryptoQuoteRequest, StockQuotesRequest
-    key, secret = os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY")
-    if not key or not secret:
-        raise SpreadStudyError("ALPACA_API_KEY/ALPACA_SECRET_KEY are required (read-only market data).")
-    stocks = StockHistoricalDataClient(key, secret)
-    crypto = CryptoHistoricalDataClient(key, secret)
+    if stocks is None or crypto is None:
+        from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
+        key, secret = os.getenv("ALPACA_API_KEY"), os.getenv("ALPACA_SECRET_KEY")
+        if not key or not secret:
+            raise SpreadStudyError("ALPACA_API_KEY/ALPACA_SECRET_KEY are required (read-only market data).")
+        stocks = stocks or StockHistoricalDataClient(key, secret)
+        crypto = crypto or CryptoHistoricalDataClient(key, secret)
 
     def stock_fetch(symbols, start, end):
         if end > datetime.now(timezone.utc) - timedelta(minutes=SIP_SAFETY_MINUTES):
             raise SpreadStudyError("SIP request end must be at least 16 minutes old (free plan).")
-        req = StockQuotesRequest(symbol_or_symbols=symbols, start=start, end=end, feed=DataFeed.SIP, limit=10000)
-        return _quotes_by_symbol(stocks.get_stock_quotes(req))
+        out: Dict[str, List[Any]] = {}
+        for sym in symbols:
+            req = StockQuotesRequest(symbol_or_symbols=sym, start=start, end=end, feed=DataFeed.SIP,
+                                     limit=PER_SYMBOL_QUOTE_LIMIT, sort=Sort.DESC)
+            out.update(_quotes_by_symbol(stocks.get_stock_quotes(req)))
+        return out
 
     def crypto_fetch(symbols, start, end):
-        req = CryptoQuoteRequest(symbol_or_symbols=symbols, start=start, end=end, limit=10000)
-        return _quotes_by_symbol(crypto.get_crypto_quotes(req))
+        out: Dict[str, List[Any]] = {}
+        for sym in symbols:
+            req = CryptoQuoteRequest(symbol_or_symbols=sym, start=start, end=end,
+                                     limit=PER_SYMBOL_QUOTE_LIMIT, sort=Sort.DESC)
+            out.update(_quotes_by_symbol(crypto.get_crypto_quotes(req)))
+        return out
 
     return stock_fetch, crypto_fetch
 
