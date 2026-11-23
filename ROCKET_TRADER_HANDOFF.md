@@ -4,7 +4,7 @@
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Last checkpoint SHA:** `5a8c1a2` (PR #249) — re-verify live `main` SHA before every change  
-**Progress (recalibrated rubric, section 8):** 38% toward a complete, validated, operating system. Not a probability of profitability.
+**Progress (recalibrated rubric, section 8):** 40% toward a complete, validated, operating system. Not a probability of profitability.
 
 ## 1. Resume protocol
 
@@ -129,12 +129,12 @@ From 2026-11-22 progress uses this fixed rubric (weight × completion). The earl
 |---|---|---|---|---|
 | Safety, capital policy, accounting code foundation | 20% | 90% | 18.0 | Default-deny execution, MXN ledger, drawdown guard, fail-closed state, 574+ tests |
 | Data provenance | 10% | 75% | 7.5 | SIP history, close-definition resolved (run 45038550878), 6/8 ETFs cumulative parity; QQQ/SPY dividends open |
-| Real Paper accounting evidence | 10% | 40% | 4.0 | 6/6 fills matched (run 45050961817); position reconciliation MATCHED against the real Paper account in rehearsal 45187395850; fees unallocated; JNLC unclassified; weekend FX policy open |
-| Persistent deployment | 10% | 45% | 4.5 | Genesis (PR #251) + deploy script, backups and restart rehearsed end-to-end with real Paper credentials (run 45057338539); no persistent host |
+| Real Paper accounting evidence | 10% | 55% | 5.5 | First full-account reconciliation RECONCILED (cash, equity, fees, positions) against the real Paper account (run 45225687563, zero post-anchor activity); 6/6 historical fills matched; JNLC = simulator seed; weekend FX policy implemented |
+| Persistent deployment | 10% | 55% | 5.5 | Full procedure incl. cash anchor rehearsed on ARM64 = Oracle Ampere (runs 45222927425, 45225687563); Spanish step-by-step tutorial; host chosen (Oracle) but not yet provisioned |
 | Empirical execution costs | 10% | 15% | 1.5 | Quoted spreads measured for 8 ETFs + 3 crypto (run 45190318213); fees known; slippage/fills still need Paper |
 | Validated strategy edge | 25% | 10% | 2.5 | Research infrastructure + forward recorder; 0 approved candidates |
 | Sustained Paper operation + independent review | 15% | 0% | 0.0 | Not started |
-| **Total** | 100% | | **38%** | |
+| **Total** | 100% | | **40%** | |
 
 Raise a component only with recorded evidence. Documentation alone never raises it.
 
@@ -217,3 +217,6 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 - **Capital feasibility analysis delivered (this PR):** `CAPITAL_FEASIBILITY_ANALYSIS_v0_1.md` + `research/capital_feasibility_calc_v0_1.py`. Findings: MXN 1,000 ≈ USD 53.8 is operable (no account minimum; USD 1 fractional minimum) but coarse; ~0.22%/yr fixed drag from penny-rounded regulatory fees; precise 8-ETF rebalancing needs ≈MXN 7,500; the MXN 100,000 earned milestone takes 25–94 years from MXN 1,000 at 5–20% net returns (driven by operating capital, not the seed). Options A/B/C presented to the user; no policy change made. Engineering gaps recorded: fractional/notional order path, per-asset minimum checks, penny-fee modelling.
 - **ARM64 rehearsal PASSED (run `45222927425`, main `aa5f750`, runner `aarch64` Ubuntu 24.04.5):** genesis ✓, position reconciliation MATCHED ✓, backup (11 files) + restore preflight ✓, restart 6/6 running ✓, second genesis refused ✓. The stack is compatible with Oracle Ampere A1. GDELT still 429 on GitHub IPs.
 - **Deploy script gains `anchor` and `enable-cash-ledger` (this PR):** `anchor` refuses unless the Activity SSE service is healthy, then runs the existing read-only cash-anchor admin; `enable-cash-ledger` sets `ROCKET_TRADER_CASH_LEDGER_ENABLED=true` and recreates the observer. The rehearsal now also runs anchor → enable → waits for `account_reconciliation_complete` (interval 120 s in rehearsal) and reports it (not gated). Result appended after the run.
+- **Full-account reconciliation RECONCILED for the first time (run `45225687563`, ARM64, main `bd12a91`):** after genesis → up → `anchor` → `enable-cash-ledger`, the observer reported `healthy=True` with `account_evidence_status=RECONCILED`, cash `RECONCILED`, equity `RECONCILED`, fee `RECONCILED` (0 fee activities, 0 pending allocations), positions `MATCHED`, `unsupported_activity_count=0`, `paper_buying_power_used_as_capital=false`. Caveat: zero activity occurred after the anchor, so this proves the chain mechanics end-to-end, not reconciliation of a busy account; that evidence must come from the persistent host over weeks. The only unhealthy service was GDELT (429 on GitHub IPs).
+- **Oracle tutorial (Spanish) added:** `DESPLIEGUE_ORACLE_TUTORIAL_ES.md` — account, A1 VM (2 OCPU / 8 GB, Always Free label), Cloud Shell SSH, install → init-env → genesis → up → anchor → enable-cash-ledger, daily backup cron, risks (idle reclamation → PAYG, out of capacity, regenerating Paper keys requires updating GitHub secrets).
+- **Progress:** Paper accounting 40% → 55%, deployment 45% → 55% → total **40%**.
