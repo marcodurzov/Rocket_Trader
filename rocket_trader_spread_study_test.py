@@ -58,6 +58,27 @@ class SpreadStudyTests(unittest.TestCase):
         self.assertEqual(r["orders_submitted"], 0)
         self.assertEqual(st.summary_line(r)["orders_submitted"], 0)
 
+    def test_alpaca_fetch_is_per_symbol_newest_first(self):
+        from alpaca.common.enums import Sort
+        calls = []
+
+        class FakeClient:
+            def get_stock_quotes(self, req):
+                calls.append(req)
+                return SimpleNamespace(data={req.symbol_or_symbols: [q(1, 2, NOW)]})
+            get_crypto_quotes = get_stock_quotes
+
+        stock_fetch, crypto_fetch = st._alpaca_fetchers(FakeClient(), FakeClient())
+        end = datetime.now(timezone.utc) - timedelta(hours=1)
+        got = stock_fetch(["SPY", "QQQ"], end - timedelta(seconds=60), end)
+        self.assertEqual(sorted(got), ["QQQ", "SPY"])
+        self.assertEqual([c.symbol_or_symbols for c in calls], ["SPY", "QQQ"])
+        self.assertTrue(all(c.sort == Sort.DESC and c.limit == st.PER_SYMBOL_QUOTE_LIMIT for c in calls))
+        with self.assertRaises(st.SpreadStudyError):
+            stock_fetch(["SPY"], datetime.now(timezone.utc) - timedelta(minutes=2), datetime.now(timezone.utc))
+        crypto_fetch(["BTC/USD"], end - timedelta(minutes=5), end)
+        self.assertEqual(calls[-1].symbol_or_symbols, "BTC/USD")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
