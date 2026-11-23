@@ -20,6 +20,14 @@ on:
         required: false
         default: "10"
         type: string
+      runner:
+        description: Runner architecture (ubuntu-24.04-arm matches Oracle Ampere A1)
+        required: false
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
 
 permissions:
   contents: read
@@ -52,12 +60,14 @@ jobs:
   rehearsal:
     if: github.event_name == 'workflow_dispatch'
     needs: offline-checks
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       ROCKET_TRADER_BACKUP_DIR: ${{ github.workspace }}/backups
     steps:
       - uses: actions/checkout@v4
+      - name: Host architecture
+        run: echo "ROCKET_TRADER_REHEARSAL_ARCH $(uname -m) $(. /etc/os-release && echo "$PRETTY_NAME")"
       - name: Write private .env from Paper secrets (never printed)
         env:
           K: ${{ secrets.ALPACA_API_KEY }}
