@@ -96,6 +96,27 @@ jobs:
             sleep 20
           done
           deploy/rocket_trader_deploy.sh status
+      - name: Full-account reconciliation (cash anchor + cash ledger)
+        id: fullrec
+        if: steps.genesis.outcome == 'success'
+        run: |
+          for i in $(seq 1 30); do
+            [[ "$(docker inspect --format '{{.State.Health.Status}}' rocket-trader-alpaca-activity-sse 2>/dev/null)" == "healthy" ]] && break
+            sleep 10
+          done
+          deploy/rocket_trader_deploy.sh anchor 2>&1 | python3 deploy/sanitize_health.py
+          printf 'ROCKET_TRADER_ACCOUNT_RECONCILIATION_INTERVAL_SECONDS=120\n' >> .env
+          deploy/rocket_trader_deploy.sh enable-cash-ledger > /dev/null
+          C="docker compose -p rocket_trader -f docker-compose.paper-observer.yml"
+          ok=false
+          for i in $(seq 1 24); do
+            sleep 20
+            out="$($C exec -T rocket-trader-paper-observer python /app/rocket_trader_stream_runtime.py --healthcheck 2>/dev/null || true)"
+            if printf '%s' "$out" | grep -q '"account_reconciliation_complete": true'; then ok=true; break; fi
+          done
+          printf '%s' "$out" | python3 deploy/sanitize_health.py | grep -E 'account_reconciliation|account_evidence_status|full_account_reconciliation\.[a-z_]*status|cash|fee|coverage|^healthy=' | head -40 || true
+          echo "full_account_reconciled=$ok"
+          echo "full_account_reconciled=$ok" >> "$GITHUB_OUTPUT"
       - name: Health detail per service (sanitized)
         if: always()
         run: |
@@ -166,7 +187,7 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo "ROCKET_TRADER_REHEARSAL {\"genesis\": \"${{ steps.genesis.outcome }}\", \"all_healthy\": \"${{ steps.health.outputs.all_healthy }}\", \"backup_restore_ok\": \"${{ steps.backup.outputs.backup_ok }}\", \"restart_ok\": \"${{ steps.restart.outputs.restart_ok }}\", \"orders_submitted\": 0}"
+          echo "ROCKET_TRADER_REHEARSAL {\"genesis\": \"${{ steps.genesis.outcome }}\", \"all_healthy\": \"${{ steps.health.outputs.all_healthy }}\", \"backup_restore_ok\": \"${{ steps.backup.outputs.backup_ok }}\", \"restart_ok\": \"${{ steps.restart.outputs.restart_ok }}\", \"full_account_reconciled\": \"${{ steps.fullrec.outputs.full_account_reconciled }}\", \"orders_submitted\": 0}"
           docker compose -p rocket_trader -f docker-compose.paper-observer.yml down || true
           # Gate on deployment mechanics. Service health is reported above but not
           # gated: by design the observer stays unhealthy until the cash ledger

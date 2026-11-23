@@ -6,6 +6,8 @@
 #   deploy/rocket_trader_deploy.sh init-env       # create .env (asks for Paper keys; chmod 600)
 #   deploy/rocket_trader_deploy.sh genesis        # one-time accounting genesis on an EMPTY volume
 #   deploy/rocket_trader_deploy.sh up             # build and start the six observer services
+#   deploy/rocket_trader_deploy.sh anchor         # one-time USD cash anchor (after the SSE service is healthy)
+#   deploy/rocket_trader_deploy.sh enable-cash-ledger  # turn on full-account reconciliation and restart the observer
 #   deploy/rocket_trader_deploy.sh status         # container health summary (no secrets printed)
 #   deploy/rocket_trader_deploy.sh backup         # online SQLite backup to ./backups/<UTC timestamp>/
 #   deploy/rocket_trader_deploy.sh restore-test   # restore latest backup into a temp volume and verify
@@ -141,6 +143,24 @@ cmd_restore_test() {
   echo "Restore test passed for $latest (live volume untouched)."
 }
 
+cmd_anchor() {
+  require_repo_root
+  [[ -n "$(env_value ACTIVITY_SSE_BOOTSTRAP_SINCE)" ]] || die "Run genesis and up first."
+  local sse
+  sse="$(docker inspect --format '{{.State.Health.Status}}' rocket-trader-alpaca-activity-sse 2>/dev/null || true)"
+  [[ "$sse" == "healthy" ]] || die "The Activity SSE service must be healthy first (now: ${sse:-missing}). Wait and retry."
+  compose run --rm --no-deps -T "$SERVICE" python /app/rocket_trader_paper_cash_ledger_admin.py --initialize-db
+  echo "Cash anchor created. Next: deploy/rocket_trader_deploy.sh enable-cash-ledger"
+}
+
+cmd_enable_cash_ledger() {
+  require_repo_root
+  [[ -n "$(env_value ACTIVITY_SSE_BOOTSTRAP_SINCE)" ]] || die "Run genesis first."
+  set_env_value ROCKET_TRADER_CASH_LEDGER_ENABLED true
+  compose up -d "$SERVICE"
+  echo "Full-account reconciliation enabled; first report within ROCKET_TRADER_ACCOUNT_RECONCILIATION_INTERVAL_SECONDS (default 900 s)."
+}
+
 main() {
   case "${1:-}" in
     install) cmd_install ;;
@@ -148,9 +168,11 @@ main() {
     genesis) cmd_genesis ;;
     up) cmd_up ;;
     status) cmd_status ;;
+    anchor) cmd_anchor ;;
+    enable-cash-ledger) cmd_enable_cash_ledger ;;
     backup) cmd_backup ;;
     restore-test) cmd_restore_test ;;
-    *) sed -n '2,13p' "$0"; exit 2 ;;
+    *) sed -n '2,15p' "$0"; exit 2 ;;
   esac
 }
 
