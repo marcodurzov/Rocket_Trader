@@ -1,0 +1,70 @@
+name: Rocket Trader - Allocation Sleeve (Paper, dry-run by default)
+
+# Monthly rebalance of the candidate risk overlay sma210_trend_inverse_vol in a
+# small isolated Paper "sleeve". It only SIMULATES unless the repository
+# variables ROCKET_TRADER_ALLOCATION_MODE=PAPER_EXECUTE and
+# ROCKET_TRADER_ALLOCATION_APPROVAL_REF=<user approval reference> are both set
+# by the user (Settings -> Secrets and variables -> Actions -> Variables).
+# Paper only; LIVE is impossible (paper=True client, ALPACA_LIVE_ENABLED=false).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_allocation_executor.py"
+      - "rocket_trader_allocation_executor_test.py"
+      - ".github/workflows/rocket-trader-allocation-sleeve.yml"
+  schedule:
+    # Days 1-5 of each month at 15:05 UTC (after the US open); re-runs are idempotent per day.
+    - cron: "5 15 1-5 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocket-trader-allocation-sleeve
+  cancel-in-progress: false
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - run: python -m unittest -v rocket_trader_allocation_executor_test.py
+
+  sleeve:
+    if: github.event_name != 'pull_request'
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+      ALPACA_PAPER: "true"
+      ALPACA_LIVE_ENABLED: "false"
+      ROCKET_TRADER_ALLOCATION_MODE: ${{ vars.ROCKET_TRADER_ALLOCATION_MODE || 'DRY_RUN' }}
+      ROCKET_TRADER_ALLOCATION_APPROVAL_REF: ${{ vars.ROCKET_TRADER_ALLOCATION_APPROVAL_REF || '' }}
+      ROCKET_TRADER_ALLOCATION_SLEEVE_USD: ${{ vars.ROCKET_TRADER_ALLOCATION_SLEEVE_USD || '54.00' }}
+      ROCKET_TRADER_ALLOCATION_SLEEVE_START: ${{ vars.ROCKET_TRADER_ALLOCATION_SLEEVE_START || '2026-11-26T00:00:00+00:00' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - name: Rebalance sleeve (dry-run unless user-approved)
+        run: python rocket_trader_allocation_executor.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rocket-trader-allocation-sleeve
+          path: research_artifacts/
+          retention-days: 90
