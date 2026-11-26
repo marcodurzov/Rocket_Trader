@@ -1,0 +1,50 @@
+name: Repository maintenance - delete branches of closed PRs
+
+# Manual, user-triggered cleanup. Deletes only branches whose pull request is
+# closed or merged and that have no open PR. Never touches main or
+# forward-evidence. Commits stay reachable through refs/pull/<n>/head.
+# Run first with dry_run=true, read the list, then run with dry_run=false.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = only list what would be deleted"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: Delete branches of closed/merged PRs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls?state=closed&per_page=100" --paginate \
+            --jq ".[] | select(.head.repo.full_name == \"$REPO\") | .head.ref" | sort -u > closed.txt
+          gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --jq '.[].head.ref' | sort -u > open.txt
+          gh api "repos/$REPO/branches?per_page=100" --paginate --jq '.[].name' | sort -u > branches.txt
+          comm -12 branches.txt closed.txt | comm -23 - open.txt | grep -v -x -E 'main|forward-evidence' > delete.txt || true
+          echo "Branches: $(wc -l < branches.txt); to delete: $(wc -l < delete.txt); kept: $(comm -23 branches.txt delete.txt | wc -l)"
+          if [[ "$DRY_RUN" == "true" ]]; then
+            echo "DRY RUN - would delete:"; cat delete.txt; exit 0
+          fi
+          deleted=0
+          while IFS= read -r b; do
+            [[ -z "$b" ]] && continue
+            # Branch names keep their slashes: the refs API path is refs/heads/<name>.
+            if gh api -X DELETE "repos/$REPO/git/refs/heads/$b" >/dev/null; then deleted=$((deleted+1)); else echo "could not delete $b"; fi
+          done < delete.txt
+          echo "Deleted $deleted branches."

@@ -217,6 +217,15 @@ class GDELTObserver:
                 message = f"{type(exc).__name__}: {exc}"[:500]
                 self._record_health(topic.key, False, error=message)
                 report["topics"][topic.key] = {"ok": False, "error": message}
+                if getattr(exc, "code", None) == 429:
+                    # Rate limited: stop this cycle instead of hammering the API
+                    # with the remaining topics (seen on shared cloud IPs,
+                    # rehearsals 2026-11-22/23). Remaining topics keep their
+                    # last recorded health and are retried next cycle.
+                    for later in self.topics[index + 1:]:
+                        report["topics"][later.key] = {"ok": False, "skipped": "RATE_LIMITED_CYCLE_STOPPED"}
+                    report["rate_limited"] = True
+                    break
             if index < len(self.topics) - 1:
                 self.sleep_func(REQUEST_GAP_SECONDS)
         report["healthy"] = all(item.get("ok") for item in report["topics"].values())
