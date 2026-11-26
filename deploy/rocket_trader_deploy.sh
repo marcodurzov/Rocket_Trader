@@ -76,6 +76,11 @@ cmd_init_env() {
     set_env_value ALPACA_SECRET_KEY "$secret"
   fi
   [[ -n "$(env_value ROCKET_TRADER_ALPACA_NEWS_SYMBOLS)" ]] || set_env_value ROCKET_TRADER_ALPACA_NEWS_SYMBOLS "SPY,QQQ,IWM,BTCUSD,ETHUSD,SOLUSD"
+  if [[ -z "$(env_value SEC_CONTACT_EMAIL)" && -t 0 ]]; then
+    local contact
+    read -r -p "Contact email for SEC/BLS official feeds (optional, Enter to skip): " contact
+    [[ -z "$contact" ]] || set_env_value SEC_CONTACT_EMAIL "$contact"
+  fi
   chmod 600 .env
   echo ".env ready (permissions 600). It is never committed (.gitignore)."
 }

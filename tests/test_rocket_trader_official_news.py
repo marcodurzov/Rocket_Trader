@@ -41,3 +41,32 @@ class OfficialNewsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class OfficialNewsAgentTests(unittest.TestCase):
+    def _capture(self, key, contact):
+        import urllib.request
+        from unittest.mock import patch
+        import rocket_trader_official_news as m
+        seen = {}
+        class Resp:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n=-1): return b"<rss/>"
+        def fake_open(req, timeout=None):
+            seen["ua"] = req.get_header("User-agent")
+            return Resp()
+        feed = m.FeedConfig(key, "https://www.bls.gov/feed/x.rss", "BLS", "LABOR", "www.bls.gov")
+        tmp = tempfile.TemporaryDirectory()
+        collector_cls = next(getattr(m, n) for n in dir(m) if hasattr(getattr(m, n), "fetch") and hasattr(getattr(m, n), "poll_once"))
+        collector = collector_cls(m.OfficialNewsStore(str(Path(tmp.name) / "o.sqlite3")), feeds=(feed,), contact_email=contact)
+        with patch.object(urllib.request, "urlopen", fake_open):
+            collector.fetch(feed)
+        tmp.cleanup()
+        return seen["ua"]
+
+    def test_bls_identifies_contact_when_configured(self):
+        self.assertIn("contact=ops@example.com", self._capture("bls", "ops@example.com"))
+
+    def test_bls_works_without_contact(self):
+        self.assertNotIn("contact=", self._capture("bls", ""))
+

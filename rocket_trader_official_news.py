@@ -163,6 +163,10 @@ class OfficialRSSCollector:
             if not self.contact_email:
                 raise RuntimeError("SEC feed disabled: SEC_CONTACT_EMAIL is required.")
             agent += f" contact={self.contact_email}"
+        elif feed.key == "bls" and self.contact_email:
+            # BLS returned HTTP 403 to an anonymous automated agent in the
+            # 2026-11-22/23 rehearsals; identify ourselves when a contact exists.
+            agent += f" contact={self.contact_email}"
         request = urllib.request.Request(feed.url, headers={
             "User-Agent": agent, "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml"})
         with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:

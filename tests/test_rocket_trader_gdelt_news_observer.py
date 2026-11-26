@@ -87,6 +87,22 @@ class GDELTObserverTests(unittest.TestCase):
         self.assertFalse(health["topics"]["energy"]["healthy"])
         self.assertIn("temporary API failure", health["topics"]["energy"]["last_error"])
 
+    def test_rate_limit_stops_the_cycle_without_hammering(self):
+        import urllib.error
+        calls = []
+        topics = self.topics + (GDELTTopic("shipping", '(port OR canal)'),)
+        def fetch(topic):
+            calls.append(topic.key)
+            if topic.key == "energy":
+                raise urllib.error.HTTPError("https://api.gdeltproject.org", 429, "Too Many Requests", {}, None)
+            return {"articles": [dict(self.article)]}
+        observer = GDELTObserver(self.db, topics, fetcher=fetch, sleep_func=lambda _s: None)
+        report = observer.poll_once()
+        self.assertEqual(calls, ["geopolitics", "energy"])
+        self.assertTrue(report["rate_limited"])
+        self.assertEqual(report["topics"]["shipping"]["skipped"], "RATE_LIMITED_CYCLE_STOPPED")
+        self.assertFalse(report["healthy"])
+
     def test_empty_topics_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "At least one"):
             GDELTObserver(self.db, (), fetcher=self.fake_payload)
