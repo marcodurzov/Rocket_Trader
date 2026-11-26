@@ -1,0 +1,46 @@
+{
+  "blocked_by": [
+    "MODE_NOT_PAPER_EXECUTE",
+    "NO_VALID_APPROVAL_REFERENCE"
+  ],
+  "main_sha": "5058db360fa82083cfbb5be15d22f67f83dbf5e9",
+  "mode": "DRY_RUN",
+  "planned": [
+    {
+      "notional_usd": "8.80",
+      "qty": null,
+      "side": "buy",
+      "symbol": "DIA"
+    },
+    {
+      "notional_usd": "8.29",
+      "qty": null,
+      "side": "buy",
+      "symbol": "EFA"
+    },
+    {
+      "notional_usd": "6.68",
+      "qty": null,
+      "side": "buy",
+      "symbol": "IWM"
+    },
+    {
+      "notional_usd": "4.88",
+      "qty": null,
+      "side": "buy",
+      "symbol": "QQQ"
+    },
+    {
+      "notional_usd": "8.78",
+      "qty": null,
+      "side": "buy",
+      "symbol": "SPY"
+    }
+  ],
+  "result": "DRY_RUN",
+  "signal_session_utc": "2026-10-30T04:00:00+00:00",
+  "sleeve_cash_usd": "54.00",
+  "sleeve_equity_usd": "54.00",
+  "strategy": "sma210_trend_inverse_vol",
+  "submitted": 0
+}
