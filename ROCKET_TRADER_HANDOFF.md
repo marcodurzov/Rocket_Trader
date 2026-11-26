@@ -83,18 +83,22 @@ Markets: US-listed equities/ETFs and crypto spot, with separate market/execution
 - The observer image has been built/published, but no persistent host deployment is evidenced. GitHub Actions is not a 24/7 runtime.
 - No Paper strategy is approved; no observer orders have been submitted. LIVE remains blocked.
 
-## 5. Immediate work queue (refreshed 2026-11-22)
+## 5. Immediate work queue (refreshed 2026-11-26)
 
-Done this session (see journal): SIP close-condition review (resolved as close-definition difference); crypto cost-model reconciliation (already decomposed correctly); first real read-only Paper audits (6/6 fills matched); T05 allocation research (negative, replicated); forward shadow recorder (live, monthly).
+**User actions (cannot be done by assistant sessions):**
+1. Deploy on Oracle Always Free following `DESPLIEGUE_ORACLE_TUTORIAL_ES.md` (host decision made 2026-11-23; not yet provisioned).
+2. Decide whether to approve **Paper execution** of the allocation sleeve (`sma210_trend_inverse_vol`, ≤USD 100 Paper sleeve) by setting repository variables `ROCKET_TRADER_ALLOCATION_MODE=PAPER_EXECUTE` and `ROCKET_TRADER_ALLOCATION_APPROVAL_REF`. This produces the first real strategy fills (empirical costs, sustained Paper evidence) without needing the host.
+3. Choose capital option A/B/C (`CAPITAL_FEASIBILITY_ANALYSIS_v0_1.md`).
+4. Run `repo-maintenance-delete-merged-branches.yml` (dry run, then real) — 261 stale branches.
 
-1. **User actions (cannot be done from assistant sessions):** enable `main` branch protection; identify the 4 JNLC journals; choose/provision the persistent host (then `deploy/rocket_trader_deploy.sh install → init-env → genesis → up`); decide the weekend FX policy (item 1b). See the latest assistant reply's "Tareas para Marco".
-1b. **DECIDED 2026-11-23 (user: yes) — weekend/holiday FX:** evidence run `45057338539`: provider `stale=false`, `market_session=weekend`, quote 45 h old; provider (45 min), reconciliation gate (24 h) and strategy-equity (24 h) all reject it, so position reconciliation errors every weekend. Proposed (not implemented, awaiting user): accept the last close only when the provider reports a closed session and `stale=false`, up to 72 h, applied consistently in all three places, with the FX source tagged `CLOSED_MARKET_LAST_CLOSE`; otherwise keep failing closed.
-2. Classify the 4 JNLC journals and allocate the 6 CFEE crypto fees to their fills (durable fee-allocation path needs the persistent stack, or a new inception-replay audit with historical FX provenance).
-3. Resolve QQQ (2020-09-21, 2022-09-19) and SPY (2018-06-15) dividend records against issuer distribution notices. Portfolio-level research already replicates across both vendors, so this is a provenance item, not a research blocker.
-4. Deploy the observer stack on the chosen host (observer-only): run the one-time genesis command (`rocket_trader_paper_genesis_admin.py`, runbook "First deployment"), set `ACTIVITY_SSE_BOOTSTRAP_SINCE` from its attestation, create the cash anchor, verify backups/restarts, 72-hour soak, then multi-week Paper evidence for cost telemetry and full-account reconciliation.
-5. Review T05 forward shadow records after 12 months (first strict month: 2026-11 record). Do not change T05 rules.
-6. New research only via pre-registration with a new experiment ID. Families already exhausted on the 2016–2026 window: single-asset trend/breakout (T02), mean reversion (T03), daily cross-sectional top-1 momentum, monthly allocation T05, turn-of-month calendar T06a. Untested: T04 pairs (needs shorting → simulation only), T06 calendar/event (needs point-in-time data), T07 intraday (needs trade/quote data), T08 ML (only after a simple baseline passes).
-7. Independent readiness review precedes any separate Paper-execution authorization. Live remains unauthorized.
+**Assistant queue:**
+1. After approval: monitor sleeve fills; reconcile them with the read-only Paper audit; measure slippage/fees from real fills; keep the sleeve evidence log.
+2. After deployment: verify health, anchor, full-account reconciliation over weeks; 72-hour soak; back up off-host.
+3. Review the T05 forward shadow after 12 monthly records (first strict record 2026-11).
+4. Resolve QQQ/SPY dividend records against issuer notices (provenance item).
+5. Durable strategy-equity/day-P&L producer for Core's bracket path — **deferred**: the sleeve is broker-sourced and does not use Core's bracket path; build it only if a Core-path strategy is approved. The unmerged branch `feat/durable-mxn-strategy-equity-snapshots` must not be merged as-is (ledger write every 60 s).
+6. New research only via pre-registration after searching `HISTORY.md`, this journal and all unmerged `research/*` branches. Exhausted on 2016–2026: T02, T03, daily cross-sectional momentum, T05 (return), turn-of-month (v0.5 2026-11-10 and T06). Untouched pre-2016 data was used once (T05-HIST); do not reuse 2005–2016 for parameter search.
+7. Independent readiness review precedes any LIVE consideration; LIVE remains unauthorized.
 
 ## 6. Server/deployment boundary
 
@@ -138,7 +142,7 @@ From 2026-11-22 progress uses this fixed rubric (weight × completion). The earl
 
 Raise a component only with recorded evidence. Documentation alone never raises it.
 
-**Share that depends on user actions (2026-11-23):** of the remaining 62 points, about **7 points are unlocked directly** by user tasks (persistent host ≈5.5 — deployment component; weekend-FX decision ≈1; JNLC identification ≈0.5) and about **35 more are gated behind the persistent host** (empirical fill costs ≈8.5, remaining Paper accounting ≈5, sustained operation + review 15, plus forward strategy evidence). Branch protection carries no points but is a safety control (it would have blocked the PR #257 mistake).
+**Share that depends on user actions (updated 2026-11-26):** of the remaining 56 points, ≈4.5 are unlocked directly by deployment and ≈33 more are gated by deployment and/or Paper-sleeve approval (empirical fill costs ≈8.5, remaining Paper accounting ≈4.5, sustained operation + review 15, forward strategy evidence ≈5). Previous estimate (2026-11-23): of the remaining 62 points, about **7 points are unlocked directly** by user tasks (persistent host ≈5.5 — deployment component; weekend-FX decision ≈1; JNLC identification ≈0.5) and about **35 more are gated behind the persistent host** (empirical fill costs ≈8.5, remaining Paper accounting ≈5, sustained operation + review 15, plus forward strategy evidence). Branch protection carries no points but is a safety control (it would have blocked the PR #257 mistake).
 
 ## 9. Change journal — append every attempt, success or failure
 
@@ -240,3 +244,5 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 - **Allocation sleeve executor added (this PR) — Paper only, DRY_RUN by default:** `rocket_trader_allocation_executor.py` + monthly workflow `rocket-trader-allocation-sleeve.yml` (days 1–5, 15:05 UTC). Implements the candidate overlay `sma210_trend_inverse_vol` in an isolated sleeve: stateless, rebuilt from its own filled orders (`client_order_id` prefix `rt-alloc-`) and FEE activities since the sleeve start; fractional DAY market orders (notional buys, quantity sells), USD 1 minimum, sells first, buys capped by sleeve cash, idempotent client IDs per day, hard cap USD 100 sleeve capital, fail-closed on any broker/sleeve inconsistency. It submits only if the user sets repository variables `ROCKET_TRADER_ALLOCATION_MODE=PAPER_EXECUTE` and `ROCKET_TRADER_ALLOCATION_APPROVAL_REF` (this is the explicit Paper-execution approval step; LIVE stays impossible). 10 offline tests (gates, dry-run never submits, idempotency, exits, inconsistency, leverage). This closes the "no small-capital order path" gap for Paper without changing Core's bracket path.
 - **PR #269 merged** (`4b98b3f`). **First real dry run** (run `45821039495`, Thanksgiving, market closed): signal 2026-10-30; planned buys DIA 8.80, EFA 8.29, IWM 6.68, QQQ 4.88, SPY 8.78 USD (≈69% invested, 31% cash; EEM/GLD/TLT below trend) — matches the forward-shadow record; `submitted=0`, blocked by `MODE_NOT_PAPER_EXECUTE` and `NO_VALID_APPROVAL_REFERENCE` as designed.
 - **Sleeve evidence log (this PR):** each sleeve run appends its public summary (no order IDs) to `forward-evidence/forward/sleeve/<UTC timestamp>.json`, never overwriting, so the monthly record survives artifact expiry.
+- **Sleeve evidence verified:** run `45821478418` wrote `forward-evidence/forward/sleeve/2026-11-26T1239Z.json`.
+- **Session summary 2026-11-26:** PRs #266–#271 merged, all through the ruleset with green checks. First pre-registered pass (drawdown control, 2005–2016). Paper sleeve executor built and dry-run validated on real data. T06 repetition corrected. Progress **44%** (unchanged by the executor; it is code, the evidence comes once approved).
