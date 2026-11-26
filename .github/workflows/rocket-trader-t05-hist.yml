@@ -1,0 +1,47 @@
+name: Rocket Trader - T05 Independent Sample 2005-2016
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rocket_trader_allocation_research_t05_hist_v0_1.py"
+      - "rocket_trader_allocation_research_t05_hist_v0_1_test.py"
+      - ".github/workflows/rocket-trader-t05-hist.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - run: python -m unittest -v rocket_trader_allocation_research_t05_hist_v0_1_test.py
+
+  research:
+    if: github.event_name == 'workflow_dispatch'
+    needs: offline-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
+      - name: Run pre-registered 2005-2016 study (no orders)
+        run: python rocket_trader_allocation_research_t05_hist_v0_1.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rocket-trader-t05-hist-2005-2016
+          path: research_artifacts/
+          retention-days: 90
