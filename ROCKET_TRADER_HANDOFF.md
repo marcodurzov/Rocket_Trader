@@ -4,7 +4,7 @@
 **Repository:** https://github.com/marcodurzov/Rocket_Trader  
 **Default branch:** `main`  
 **Last checkpoint SHA:** `5a8c1a2` (PR #249) — re-verify live `main` SHA before every change  
-**Progress (recalibrated rubric, section 8):** 40% toward a complete, validated, operating system. Not a probability of profitability.
+**Progress (recalibrated rubric, section 8):** 44% toward a complete, validated, operating system. Not a probability of profitability.
 
 ## 1. Resume protocol
 
@@ -132,9 +132,9 @@ From 2026-11-22 progress uses this fixed rubric (weight × completion). The earl
 | Real Paper accounting evidence | 10% | 55% | 5.5 | First full-account reconciliation RECONCILED (cash, equity, fees, positions) against the real Paper account (run 45225687563, zero post-anchor activity); 6/6 historical fills matched; JNLC = simulator seed; weekend FX policy implemented |
 | Persistent deployment | 10% | 55% | 5.5 | Full procedure incl. cash anchor rehearsed on ARM64 = Oracle Ampere (runs 45222927425, 45225687563); Spanish step-by-step tutorial; host chosen (Oracle) but not yet provisioned |
 | Empirical execution costs | 10% | 15% | 1.5 | Quoted spreads measured for 8 ETFs + 3 crypto (run 45190318213); fees known; slippage/fills still need Paper |
-| Validated strategy edge | 25% | 10% | 2.5 | Research infrastructure + forward recorder; 0 approved candidates |
+| Validated strategy edge | 25% | 25% | 6.25 | First pre-registered pass: SMA210 trend overlays pass the drawdown-control test on the independent 2005–2016 sample (run 45819942795), consistent with 2016–2026; no return edge; forward evidence pending; no approval |
 | Sustained Paper operation + independent review | 15% | 0% | 0.0 | Not started |
-| **Total** | 100% | | **40%** | |
+| **Total** | 100% | | **44%** | |
 
 Raise a component only with recorded evidence. Documentation alone never raises it.
 
@@ -229,3 +229,11 @@ Each entry: date, owner, PR/run IDs, what was tried, exact result, decision, and
 - **T05 independent historical sample pre-registered (this PR):** `RESEARCH_T05_HIST_2005_2016_PREREGISTRATION_v0_1.md` — the never-used window 2005-11 → 2016-11-18 (includes 2008), unchanged T05 rules, plus a pre-registered drawdown-control test for the two SMA210 trend rules (DD ≥10 pp smaller, CAGR ≤3 pp/yr lower, Sharpe ≤0.05 lower). Yahoo only (declared limitation). 4 offline tests.
 - **News observer politeness (this PR):** GDELT now stops the current cycle on HTTP 429 instead of firing the remaining topics (they keep their last health and retry next cycle); BLS gets the same identified contact User-Agent as SEC when `SEC_CONTACT_EMAIL` is configured (`init-env` now asks for it, optional). 3 new tests.
 - **User-run maintenance workflow (this PR):** `repo-maintenance-delete-merged-branches.yml` — manual, `dry_run=true` by default; deletes only branches of closed/merged PRs with no open PR; never `main`/`forward-evidence`.
+- **PR #266 (T05-HIST prereg) and PR #267 (news politeness + cleanup workflow) merged** (`6715841`, `0e8587b`), all checks green.
+- **T05-HIST-2005-2016 result — FIRST PRE-REGISTERED PASS (drawdown control), run `45819942795` on `6715841` (Yahoo, evaluation 2006-11-22 → 2016-11-17, holdout from 2014-11-20):**
+  - Equal-weight benchmark: CAGR 6.71%, max DD −41.9%, Sharpe 0.49.
+  - `sma210_trend_equal_weight`: CAGR 4.7%, max DD −14.5%, Sharpe 0.53 → DD −27.5 pp, CAGR −2.0 pp/yr, Sharpe +0.04 → **PASS**.
+  - `sma210_trend_inverse_vol`: CAGR 5.8%, max DD −11.2%, Sharpe 0.665 → DD −30.7 pp, CAGR −0.9 pp/yr, Sharpe +0.175 → **PASS**.
+  - Return family (replication of T05): **0/5** pre-screen passes (holdout 2014–2016 trend rules lagged; best holdout excess inverse-vol +0.4%). No return edge.
+  - Interpretation: across two independent decades (2006–2016 pre-registered; 2017–2026 observed) the trend overlays roughly cut maximum drawdown by 60–75% at a small CAGR cost — a **risk-control** property consistent with the survival objective, not an alpha source. Status: candidate risk overlay for **forward shadow + Paper validation review**; not approved for orders. Limitations: single vendor (Yahoo) for this window; 0% cash yield assumed (conservative); MXN 1,000 implies fractional orders.
+- **Progress:** strategy component 10% → 25% (first pre-registered pass on independent data) → total **44%**.
