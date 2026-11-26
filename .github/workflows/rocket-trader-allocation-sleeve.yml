@@ -44,6 +44,8 @@ jobs:
     needs: offline-tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write  # only to append the public summary to the forward-evidence branch
     env:
       ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
       ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -61,7 +63,24 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt -r requirements-alpaca.txt -r requirements-yahoo.txt
       - name: Rebalance sleeve (dry-run unless user-approved)
-        run: python rocket_trader_allocation_executor.py
+        run: python rocket_trader_allocation_executor.py | tee executor.log
+      - name: Append public summary to forward-evidence (never overwritten)
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          line="$(grep -m1 '^ROCKET_TRADER_ALLOCATION_EXECUTOR ' executor.log | cut -d' ' -f2-)"
+          git clone --quiet --branch forward-evidence --single-branch "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" evidence
+          cd evidence
+          git config user.name "rocket-trader-evidence-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          f="forward/sleeve/$(date -u +%Y-%m-%dT%H%MZ).json"
+          mkdir -p forward/sleeve
+          [[ -e "$f" ]] && { echo "exists"; exit 0; }
+          printf '%s\n' "$line" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); d["main_sha"]="'"${GITHUB_SHA}"'"; print(json.dumps(d, indent=2, sort_keys=True))' > "$f"
+          git add "$f"
+          git commit --quiet -m "Record allocation sleeve run (${GITHUB_SHA::8})"
+          git push --quiet origin forward-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
